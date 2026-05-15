@@ -81,10 +81,24 @@ export async function saveDatosTaller(data: DatosTaller): Promise<void> {
     telefono: data.telefono.trim(),
     email: data.email.trim(),
     logoUrl: data.logoUrl.trim(),
+    configVistas: data.configVistas || [],
     updatedAt: serverTimestamp(),
   };
   if (!snap.exists()) payload.createdAt = serverTimestamp();
   await setDoc(ref, payload, { merge: true });
+}
+
+export async function getConfiguracionVistas(): Promise<any[]> {
+  const taller = await getDatosTaller();
+  return taller.configVistas || [];
+}
+
+export async function saveConfiguracionVistas(config: any[]): Promise<void> {
+  const taller = await getDatosTaller();
+  await saveDatosTaller({
+    ...taller,
+    configVistas: config,
+  });
 }
 
 const LOGO_MAX_BYTES = 2 * 1024 * 1024;
