@@ -1,0 +1,23 @@
+rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// allow write: if firestore.get(
+//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Permitir acceso a la ruta donde se guardan los logos del taller
+    match /configuracion/logo/{allPaths=**} {
+      allow read, write: if true;
+    }
+    
+    // Permitir acceso a las fotos de las órdenes de trabajo
+    match /ordenes/{allPaths=**} {
+      allow read, write: if true;
+    }
+    
+    // Default restrictive rule for other paths
+    match /{allPaths=**} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# I.F. Soluciones Automotrices — PWA
 
-## Getting Started
+Sistema de gestión de taller mecánico. Construido con Next.js 15, Tailwind CSS v4 y Firebase.
 
-First, run the development server:
+## 🚀 Primer Inicio
+
+### 1. Crear el usuario administrador
+
+Ve a: **http://localhost:3000/setup**
+
+Rellena el formulario con las credenciales del administrador y haz clic en **"Crear Administrador"**.
+
+> ⚠️ Esta página solo debe usarse UNA vez. Después de crear el admin, no vuelvas a usarla.
+
+### 2. Ingresar al sistema
+
+Ve a: **http://localhost:3000/login**
+
+Usa las credenciales que acabas de crear.
+
+---
+
+## 🔧 Desarrollo Local
 
 ```bash
+cd if-soluciones
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+La app estará disponible en: **http://localhost:3000**
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 👥 Roles de Usuario
 
-## Learn More
+| Rol | Acceso |
+|---|---|
+| `admin` | Todo el sistema |
+| `recepcion` | Recepción, órdenes, clientes, vehículos |
+| `tecnico` | Órdenes de trabajo (vista y edición) |
+| `contador` | Órdenes, clientes, cobros y pagos |
 
-To learn more about Next.js, take a look at the following resources:
+Para crear más usuarios ve a **Configuración → Gestión de Usuarios** (próximamente en la UI, por ahora hazlo desde `/setup`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📁 Estructura del Proyecto
 
-## Deploy on Vercel
+```
+src/
+├── app/
+│   ├── login/           # Página de login
+│   ├── setup/           # Setup inicial (1 sola vez)
+│   ├── dashboard/       # Dashboard principal
+│   ├── recepcion/       # Módulo de recepción (wizard 4 pasos)
+│   ├── ordenes/         # Lista + detalle de órdenes
+│   │   └── [id]/        # Detalle con items, fotos, informe
+│   ├── clientes/        # CRUD de clientes
+│   ├── vehiculos/       # CRUD de vehículos
+│   ├── pagos/           # Módulo de cobros y abonos
+│   ├── progreso/        # Tracker de desarrollo
+│   └── configuracion/   # Ajustes del sistema
+├── components/
+│   ├── layout/          # AppShell, Sidebar, Header
+│   ├── providers/       # AuthProvider
+│   ├── recepcion/       # DamageSelector, Checklist, FuelSelector
+│   └── clientes/        # ClienteModal
+├── lib/
+│   ├── firebase.ts      # Configuración Firebase
+│   └── services.ts      # Todos los servicios Firestore/Storage
+├── store/
+│   └── index.ts         # Zustand stores (auth, UI, recepcion)
+└── types/
+    └── index.ts         # Todos los tipos TypeScript
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🗃️ Estructura Firestore
+
+```
+clientes/           → id, nombre, apellido, identificacion, telefono, email, direccion
+vehiculos/          → id, clienteId, placa, marca, modelo, anio, color, vin, tipoVehiculo
+ordenesTrabajo/     → id, vehiculoId, clienteId, estado, tipoServicio, motivo, km, combustible...
+  └── itemsOrden/   → (subcolección) descripcion, cantidad, precioUnitario, impuesto, subtotal
+pagos/              → id, ordenId, monto, metodoPago, referencia, createdAt
+usuarios/           → uid, email, displayName, role, activo
+```
+
+---
+
+## ✅ Módulos Completados
+
+- ✅ Autenticación con roles
+- ✅ Dashboard con métricas en tiempo real
+- ✅ Módulo de Recepción (wizard 4 pasos)
+  - 🔍 Buscador por placa
+  - 🗺️ Selector visual de daños (SVG interactivo)
+  - ✔️ Checklist de inventario
+  - ⛽ Selector de nivel de combustible
+- ✅ Gestión de Órdenes (lista, filtros, detalle)
+- ✅ Items de Orden (productos y servicios con IVA)
+- ✅ Carga de fotos a Firebase Storage
+- ✅ Informe Técnico por orden
+- ✅ Integración WhatsApp (botón de envío con mensaje formateado)
+- ✅ Gestión de Clientes (CRUD)
+- ✅ Gestión de Vehículos (CRUD)
+- ✅ Módulo de Cobros y Pagos (abonos + historial)
+- ✅ Módulo de Progreso de Desarrollo
+- ✅ PWA Manifest (instalable)
+
+## 🔄 Próximos Pasos
+
+- 📄 Generador de PDF (@react-pdf/renderer)
+- 💬 Plantillas de WhatsApp personalizables
+- 👤 Panel de gestión de usuarios y roles
+- 📊 Reportes e informes financieros
+- 🔔 Notificaciones push PWA
