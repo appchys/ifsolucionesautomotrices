@@ -1,8 +1,8 @@
 "use client";
 import AppShell from "@/components/layout/AppShell";
 import DatosTallerForm from "@/components/configuracion/DatosTallerForm";
-import VehicleViewImagesManager from "@/components/setup/VehicleViewImagesManager";
-import { Settings, Shield, Bell, Image as ImageIcon } from "lucide-react";
+import VehicleViewImagesManager from "@/components/configuracion/VehicleViewImagesManager";
+import { Settings, Shield, Bell } from "lucide-react";
 
 const MODULOS_PROXIMOS = [
   {
@@ -33,21 +33,9 @@ export default function ConfiguracionPage() {
 
       <DatosTallerForm />
 
-      {/* Sección de Imágenes de Vistas */}
-      <div className="card mt-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="stat-icon" style={{ background: "rgba(59,130,246,0.12)" }}>
-            <ImageIcon size={22} style={{ color: "#3b82f6" }} />
-          </div>
-          <div>
-            <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>Imágenes de Vistas de Vehículos</h2>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Administra las imágenes de cada vista que se usarán en inspecciones visuales</p>
-          </div>
-        </div>
-        <VehicleViewImagesManager />
-      </div>
+      <VehicleViewImagesManager />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mt-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {MODULOS_PROXIMOS.map((s) => (
           <div key={s.title} className="card">
             <div className="flex items-center gap-3 mb-4">

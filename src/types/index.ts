@@ -25,18 +25,19 @@ export interface Cliente {
 }
 
 export type TipoVehiculo = "sedan" | "suv" | "pickup" | "camioneta" | "moto" | "otro";
-export type VistaConfigurable = "superior" | "izquierda" | "derecha" | "trasera";
+export type VehiculoVista = "superior" | "izquierda" | "derecha" | "delantera" | "trasera";
 
-export interface ConfiguracionVista {
-  tipoVehiculo: TipoVehiculo;
-  vistas: VistaConfigurable[];
-  descripcion?: string;
+/** Representa una imagen de vista para un tipo de vehículo */
+export interface VehicleViewImage {
+  vista: VehiculoVista;
+  imageUrl: string;
 }
 
-export interface ImagenVista {
-  vista: VistaConfigurable;
-  url: string;
-  uploadedAt?: Timestamp;
+/** Configuración de imágenes de vistas para cada tipo de vehículo */
+export interface VehicleViewImagesConfig {
+  tipoVehiculo: TipoVehiculo;
+  imagenes: VehicleViewImage[];
+  updatedAt?: Timestamp;
 }
 
 export interface Vehiculo {
@@ -50,7 +51,6 @@ export interface Vehiculo {
   color: string;
   vin?: string;
   tipoVehiculo: TipoVehiculo;
-  imagenesVistas?: ImagenVista[];
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -70,7 +70,6 @@ export interface DanoVehiculo {
   y: number;
   tipo: "abolladura" | "rayón" | "rotura" | "otro";
   descripcion?: string;
-  vista?: VistaConfigurable;
 }
 
 export interface InspeccionVisual {
@@ -155,8 +154,6 @@ export interface DatosTaller {
   email: string;
   /** URL en Firebase Storage (subida desde configuración) */
   logoUrl: string;
-  /** Configuración de vistas por tipo de vehículo */
-  configVistas?: ConfiguracionVista[];
 }
 
 export interface Producto {

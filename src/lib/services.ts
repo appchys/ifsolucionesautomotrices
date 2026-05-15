@@ -28,6 +28,9 @@ import {
   DatosTaller,
   Producto,
   Servicio,
+  VehicleViewImagesConfig,
+  VehiculoVista,
+  TipoVehiculo,
 } from "@/types";
 
 export const DATOS_TALLER_DEFAULT: DatosTaller = {
@@ -81,24 +84,10 @@ export async function saveDatosTaller(data: DatosTaller): Promise<void> {
     telefono: data.telefono.trim(),
     email: data.email.trim(),
     logoUrl: data.logoUrl.trim(),
-    configVistas: data.configVistas || [],
     updatedAt: serverTimestamp(),
   };
   if (!snap.exists()) payload.createdAt = serverTimestamp();
   await setDoc(ref, payload, { merge: true });
-}
-
-export async function getConfiguracionVistas(): Promise<any[]> {
-  const taller = await getDatosTaller();
-  return taller.configVistas || [];
-}
-
-export async function saveConfiguracionVistas(config: any[]): Promise<void> {
-  const taller = await getDatosTaller();
-  await saveDatosTaller({
-    ...taller,
-    configVistas: config,
-  });
 }
 
 const LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -235,62 +224,6 @@ export async function createVehiculo(data: Omit<Vehiculo, "id">): Promise<string
 
 export async function updateVehiculo(id: string, data: Partial<Vehiculo>): Promise<void> {
   await updateDoc(doc(db, "vehiculos", id), { ...data, updatedAt: serverTimestamp() });
-}
-
-// ─── IMÁGENES DE VISTAS DE VEHÍCULOS ───────────────────────────────────────────
-const VISTA_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const VISTA_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-
-function extensionForVistaImage(file: File): string {
-  if (file.type === "image/png") return "png";
-  if (file.type === "image/jpeg") return "jpg";
-  if (file.type === "image/webp") return "webp";
-  const m = /\.([a-zA-Z0-9]+)$/.exec(file.name);
-  return (m?.[1] ?? "png").toLowerCase().slice(0, 8);
-}
-
-export async function uploadVistaImage(
-  vehiculoId: string,
-  vista: string,
-  file: File,
-  previousUrl?: string | null
-): Promise<string> {
-  if (!VISTA_IMAGE_TYPES.has(file.type)) {
-    throw new Error("INVALID_IMAGE_TYPE");
-  }
-  if (file.size > VISTA_IMAGE_MAX_BYTES) {
-    throw new Error("IMAGE_TOO_LARGE");
-  }
-  const ext = extensionForVistaImage(file);
-  const path = `vehiculos/${vehiculoId}/vistas/${vista}_${Date.now()}.${ext}`;
-  const storageRef = ref(storage, path);
-  await uploadBytes(storageRef, file);
-  const url = await getDownloadURL(storageRef);
-
-  const prev = previousUrl?.trim();
-  if (prev) {
-    const prevPath = storagePathFromDownloadUrl(prev);
-    if (prevPath) {
-      try {
-        await deleteObject(ref(storage, prevPath));
-      } catch {
-        /* archivo ya borrado o URL antigua */
-      }
-    }
-  }
-  return url;
-}
-
-export async function deleteVistaImageFile(url: string): Promise<void> {
-  const u = url.trim();
-  if (!u) return;
-  const path = storagePathFromDownloadUrl(u);
-  if (!path) return;
-  try {
-    await deleteObject(ref(storage, path));
-  } catch {
-    /* ignorar */
-  }
 }
 
 // ─── ÓRDENES DE TRABAJO ───────────────────────────────────────────────────────
@@ -471,4 +404,91 @@ export async function uploadInventarioImagen(id: string, file: File, tipo: "prod
   const storageRef = ref(storage, path);
   await uploadBytes(storageRef, file);
   return getDownloadURL(storageRef);
+}
+
+// ─── IMÁGENES DE VISTAS DE VEHÍCULOS ───────────────────────────────────────
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function extensionForVehicleViewImage(file: File): string {
+  if (file.type === "image/png") return "png";
+  if (file.type === "image/jpeg") return "jpg";
+  if (file.type === "image/webp") return "webp";
+  const m = /\.([a-zA-Z0-9]+)$/.exec(file.name);
+  return (m?.[1] ?? "png").toLowerCase().slice(0, 8);
+}
+
+export async function getVehicleViewImages(tipoVehiculo: TipoVehiculo): Promise<VehicleViewImagesConfig | null> {
+  const snap = await getDoc(
+    doc(db, "configuracion", `vehicleViewImages_${tipoVehiculo}`)
+  );
+  return snap.exists() ? (snap.data() as VehicleViewImagesConfig) : null;
+}
+
+export async function getAllVehicleViewImages(): Promise<VehicleViewImagesConfig[]> {
+  const vehicleTypes: TipoVehiculo[] = ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
+  const configs: VehicleViewImagesConfig[] = [];
+  
+  for (const tipo of vehicleTypes) {
+    const config = await getVehicleViewImages(tipo);
+    if (config) configs.push(config);
+  }
+  
+  return configs;
+}
+
+export async function uploadVehicleViewImage(
+  tipoVehiculo: TipoVehiculo,
+  vista: VehiculoVista,
+  file: File,
+  previousUrl?: string | null
+): Promise<string> {
+  if (!IMAGE_TYPES.has(file.type)) {
+    throw new Error("INVALID_IMAGE_TYPE");
+  }
+  if (file.size > IMAGE_MAX_BYTES) {
+    throw new Error("IMAGE_TOO_LARGE");
+  }
+
+  const ext = extensionForVehicleViewImage(file);
+  const path = `configuracion/vehicleViews/${tipoVehiculo}/${vista}/${Date.now()}.${ext}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+
+  // Eliminar imagen anterior si existe
+  const prev = previousUrl?.trim();
+  if (prev) {
+    const prevPath = storagePathFromDownloadUrl(prev);
+    if (prevPath) {
+      try {
+        await deleteObject(ref(storage, prevPath));
+      } catch {
+        /* archivo ya borrado o URL antigua */
+      }
+    }
+  }
+
+  return url;
+}
+
+export async function deleteVehicleViewImage(url: string): Promise<void> {
+  const u = url.trim();
+  if (!u) return;
+  const path = storagePathFromDownloadUrl(u);
+  if (!path) return;
+  try {
+    await deleteObject(ref(storage, path));
+  } catch {
+    /* ignorar */
+  }
+}
+
+export async function saveVehicleViewImagesConfig(config: VehicleViewImagesConfig): Promise<void> {
+  const ref = doc(db, "configuracion", `vehicleViewImages_${config.tipoVehiculo}`);
+  const payload: Record<string, unknown> = {
+    ...config,
+    updatedAt: serverTimestamp(),
+  };
+  await setDoc(ref, payload, { merge: true });
 }
