@@ -80,7 +80,7 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
             { name: "modelo", label: "Modelo *", placeholder: "Corolla" },
             { name: "anio", label: "Año *", placeholder: "2020", type: "number" },
             { name: "color", label: "Color *", placeholder: "Blanco" },
-            { name: "vin", label: "VIN", placeholder: "Opcional" },
+            { name: "vin", label: "Chasis", placeholder: "Opcional" },
           ].map((f) => (
             <div key={f.name} className="form-group">
               <label className="label">{f.label}</label>

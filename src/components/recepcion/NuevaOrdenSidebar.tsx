@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   Calculator,
+  Camera,
   Car,
   Check,
   FileText,
   Loader2,
   Plus,
+  Save,
   Search,
   Trash2,
   User,
@@ -30,13 +32,16 @@ import {
   getVehiculoByPlaca,
   searchVehiculosByPlacaPrefix,
   updateCliente,
+  updateOrden,
   updateVehiculo,
+  uploadOrdenFoto,
 } from "@/lib/services";
 import {
   ChecklistItem,
   AppUser,
   Cliente,
   DanoVehiculo,
+  FlujoTrabajo,
   ItemOrden,
   NivelCombustible,
   TipoServicio,
@@ -55,6 +60,39 @@ const CHECKLIST_DEFAULT: ChecklistItem[] = [
 
 const TIPOS_VEHICULO: TipoVehiculo[] = ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
 const TIPOS_SERVICIO: TipoServicio[] = ["Mantenimiento", "Reparación", "Garantía"];
+type PasoOrden = "inspeccion" | "orden" | "ejecucion" | "reparacion" | "entrega";
+
+const FLUJO_DEFAULT: FlujoTrabajo = {
+  ejecucionRepuestos: {
+    compraProveedorAutorizada: false,
+    logisticaRetiraRepuestos: false,
+    tecnicosInicianDespiece: false,
+    compraRepuestosRegistrada: false,
+    notas: "",
+  },
+  ordenReparacion: {
+    presupuestoConvertidoOrden: false,
+    tecnicoConfirmaCargado: false,
+    reparacionFinalizada: false,
+    pruebaRutaRealizada: false,
+    notas: "",
+  },
+  entregaCierre: {
+    controlCalidadCompletado: false,
+    lavadoRealizado: false,
+    lavadoNoAplica: false,
+    clienteNotificado: false,
+    ordenEnviadaWhatsApp: false,
+    pagoEfectivo: false,
+    pagoTransferencia: false,
+    pagoTarjeta: false,
+    vehiculoEntregado: false,
+    pendientesInformados: false,
+    facturaElectronicaEmitida: false,
+    ordenCerradaSistema: false,
+    notas: "",
+  },
+};
 
 type FormData = {
   nombre: string;
@@ -110,7 +148,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [editandoCliente, setEditandoCliente] = useState(true);
   const [editandoVehiculo, setEditandoVehiculo] = useState(true);
   const [numeroOrden, setNumeroOrden] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"orden" | "inspeccion">("inspeccion");
+  const [activeTab, setActiveTab] = useState<PasoOrden>("inspeccion");
   const [sugerencias, setSugerencias] = useState<Vehiculo[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
@@ -127,10 +165,16 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [nivelCombustible, setNivelCombustible] = useState<NivelCombustible>("1/2");
   const [checklist, setChecklist] = useState<ChecklistItem[]>(CHECKLIST_DEFAULT);
   const [danos, setDanos] = useState<DanoVehiculo[]>([]);
+  const [flujoTrabajo, setFlujoTrabajo] = useState<FlujoTrabajo>(FLUJO_DEFAULT);
+  const [fotosDiagnostico, setFotosDiagnostico] = useState<{ id: string; file: File; previewUrl: string; descripcion: string }[]>([]);
+  const [fotoEditandoId, setFotoEditandoId] = useState<string | null>(null);
+  const [descripcionFotoDraft, setDescripcionFotoDraft] = useState("");
   const [items, setItems] = useState<Omit<ItemOrden, "id" | "ordenId">[]>([]);
   const [activeModal, setActiveModal] = useState<"producto" | "servicio" | null>(null);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const fotosDiagnosticoRef = useRef<HTMLInputElement>(null);
+  const fotosDiagnosticoActualesRef = useRef<typeof fotosDiagnostico>([]);
   const {
     register,
     handleSubmit,
@@ -236,6 +280,16 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   }, []);
 
   useEffect(() => {
+    fotosDiagnosticoActualesRef.current = fotosDiagnostico;
+  }, [fotosDiagnostico]);
+
+  useEffect(() => {
+    return () => {
+      fotosDiagnosticoActualesRef.current.forEach((foto) => URL.revokeObjectURL(foto.previewUrl));
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     const cargarTecnicos = async () => {
@@ -273,6 +327,100 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const eliminarItem = (index: number) => {
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
+
+  const agregarFotosDiagnostico = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length === 0) return;
+
+    const nuevasFotos = files
+      .filter((file) => file.type.startsWith("image/"))
+      .map((file) => ({
+        id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        descripcion: "",
+      }));
+
+    if (nuevasFotos.length === 0) {
+      toast.error("Selecciona imagenes validas");
+      return;
+    }
+
+    setFotosDiagnostico((current) => [...current, ...nuevasFotos]);
+    event.target.value = "";
+  };
+
+  const eliminarFotoDiagnostico = (id: string) => {
+    setFotosDiagnostico((current) => {
+      const foto = current.find((item) => item.id === id);
+      if (foto) URL.revokeObjectURL(foto.previewUrl);
+      return current.filter((item) => item.id !== id);
+    });
+    if (fotoEditandoId === id) {
+      setFotoEditandoId(null);
+      setDescripcionFotoDraft("");
+    }
+  };
+
+  const editarDescripcionFoto = (id: string) => {
+    const foto = fotosDiagnostico.find((item) => item.id === id);
+    setFotoEditandoId(id);
+    setDescripcionFotoDraft(foto?.descripcion ?? "");
+  };
+
+  const guardarDescripcionFoto = (id: string) => {
+    const descripcion = descripcionFotoDraft.trim();
+    setFotosDiagnostico((current) =>
+      current.map((foto) => (foto.id === id ? { ...foto, descripcion } : foto))
+    );
+    setFotoEditandoId(null);
+    setDescripcionFotoDraft("");
+  };
+
+  const cancelarDescripcionVacia = () => {
+    if (!descripcionFotoDraft.trim()) {
+      setFotoEditandoId(null);
+      setDescripcionFotoDraft("");
+    }
+  };
+
+  const updateFlujo = <T extends keyof FlujoTrabajo>(
+    seccion: T,
+    campo: keyof FlujoTrabajo[T],
+    value: FlujoTrabajo[T][keyof FlujoTrabajo[T]]
+  ) => {
+    setFlujoTrabajo((current) => ({
+      ...current,
+      [seccion]: {
+        ...current[seccion],
+        [campo]: value,
+      },
+    }));
+  };
+
+  const renderProcesoCheck = (
+    checked: boolean,
+    onChange: (checked: boolean) => void,
+    label: string,
+    detalle?: string
+  ) => (
+    <label className="flex items-start gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3 cursor-pointer">
+      <input
+        type="checkbox"
+        className="mt-0.5 h-5 w-5 rounded border-[var(--border)]"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold">{label}</span>
+        {detalle ? (
+          <span className="block text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+            {detalle}
+          </span>
+        ) : null}
+      </span>
+    </label>
+  );
 
   const onSubmit = async (data: FormData, esCotizacion = false) => {
     if (!data.placa.trim()) {
@@ -352,12 +500,26 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         informeTecnico: diagnostico.trim(),
         tecnicoId,
         presupuestoConfirmadoPorCliente: presupuestoConfirmado,
+        flujoTrabajo,
         fotoUrls: [],
         esCotizacion: guardarComoCotizacion,
       });
 
       if (items.length > 0) {
         await Promise.all(items.map((item) => addItemOrden(orderId, { ...item, ordenId: orderId })));
+      }
+
+      if (fotosDiagnostico.length > 0) {
+        const fotoUrls = await Promise.all(
+          fotosDiagnostico.map((foto) => uploadOrdenFoto(orderId, foto.file))
+        );
+        await updateOrden(orderId, {
+          fotoUrls,
+          fotosDiagnostico: fotoUrls.map((url, index) => ({
+            url,
+            descripcion: fotosDiagnostico[index]?.descripcion.trim() || "",
+          })),
+        });
       }
 
       toast.success(guardarComoCotizacion ? "Cotizacion guardada" : "Orden creada");
@@ -474,6 +636,53 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     </section>
   );
 
+  const renderBusquedaVehiculo = () => (
+    <section className="card">
+      <div className="flex items-center gap-2 mb-4">
+        <Search size={18} className="text-[var(--accent)]" />
+        <h3 className="font-semibold text-sm">Buscar vehiculo</h3>
+      </div>
+      <div className="flex gap-2" ref={wrapperRef}>
+        <div className="relative flex-1">
+          <input
+            type="text"
+            className={`input uppercase font-mono text-lg tracking-widest ${errors.placa ? "border-red-500" : ""}`}
+            placeholder="ABC-1234"
+            {...register("placa", { required: true })}
+            onChange={onPlateChange}
+            onFocus={() => setMostrarSugerencias(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                ejecutarBusqueda(placaValue);
+              }
+            }}
+          />
+          {mostrarSugerencias && sugerencias.length > 0 && (
+            <div className="absolute z-20 w-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-lg max-h-56 overflow-y-auto">
+              {sugerencias.map((vehiculo) => (
+                <button
+                  key={vehiculo.id}
+                  type="button"
+                  className="w-full px-3 py-2 text-left hover:bg-[var(--bg-secondary)] border-b border-[var(--border)] last:border-0"
+                  onClick={() => ejecutarBusqueda(vehiculo.placa)}
+                >
+                  <span className="block font-mono font-bold text-sm">{vehiculo.placa}</span>
+                  <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
+                    {vehiculo.marca} {vehiculo.modelo}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button type="button" onClick={() => ejecutarBusqueda(placaValue)} disabled={buscando} className="btn-primary btn-icon">
+          {buscando ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+        </button>
+      </div>
+    </section>
+  );
+
   return (
     <div className="fixed inset-0 z-[100] flex justify-end">
       <button
@@ -519,8 +728,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         <div className="flex-1 overflow-y-auto p-4 sm:p-5">
           <form id="nueva-orden-form" onSubmit={handleSubmit((data) => onSubmit(data, false))}>
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
-              <aside className="xl:col-span-4 space-y-3">
-                <section className="card">
+              <aside className={`${busquedaRealizada || vehiculoData ? "xl:col-span-4" : "hidden"} space-y-3`}>
+                <section className="hidden">
                   <div className="flex items-center gap-2 mb-4">
                     <Search size={18} className="text-[var(--accent)]" />
                     <h3 className="font-semibold text-sm">Buscar vehículo</h3>
@@ -642,16 +851,19 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                 )}
               </aside>
 
-              <main className="xl:col-span-8">
+              <main className={busquedaRealizada || vehiculoData ? "xl:col-span-8" : "xl:col-span-12"}>
                 <div className="nueva-orden-tabs flex gap-3 border-b border-[var(--border)] bg-[var(--bg-primary)] sticky top-[-24px] z-10 py-2">
                   {[
                     ["inspeccion", "1", "Inspeccion de ingreso"],
                     ["orden", "2", "Diagnostico y presupuesto"],
+                    ["ejecucion", "3", "Ejecucion y repuestos"],
+                    ["reparacion", "4", "Orden y reparacion"],
+                    ["entrega", "5", "Entrega y cierre"],
                   ].map(([tab, step, label]) => (
                     <button
                       key={tab}
                       type="button"
-                      onClick={() => setActiveTab(tab as "orden" | "inspeccion")}
+                      onClick={() => setActiveTab(tab as PasoOrden)}
                       className={`nueva-orden-step-button ${
                         activeTab === tab
                           ? "nueva-orden-step-button-active"
@@ -678,6 +890,81 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                           placeholder="Describe el diagnostico, hallazgos y trabajo recomendado."
                         />
                       </div>
+                    </section>
+
+                    <section className="card space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="font-semibold text-sm">Fotografias del diagnostico</h3>
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          onClick={() => fotosDiagnosticoRef.current?.click()}
+                        >
+                          <Camera size={14} />
+                          Adjuntar fotos
+                        </button>
+                      </div>
+                      <input
+                        ref={fotosDiagnosticoRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={agregarFotosDiagnostico}
+                      />
+                      {fotosDiagnostico.length > 0 ? (
+                        <div className="nueva-orden-photo-carousel">
+                          {fotosDiagnostico.map((foto) => (
+                            <div key={foto.id} className="nueva-orden-photo-item">
+                              <button
+                                type="button"
+                                className="nueva-orden-photo-thumb"
+                                onClick={() => editarDescripcionFoto(foto.id)}
+                              >
+                                <img src={foto.previewUrl} alt={foto.file.name} className="h-full w-full object-cover" />
+                                {foto.descripcion ? (
+                                  <span className="nueva-orden-photo-has-description" title={foto.descripcion}>
+                                    i
+                                  </span>
+                                ) : null}
+                              </button>
+                              <button
+                                type="button"
+                                className="nueva-orden-photo-remove"
+                                title="Quitar foto"
+                                onClick={() => eliminarFotoDiagnostico(foto.id)}
+                              >
+                                <X size={13} />
+                              </button>
+                              {fotoEditandoId === foto.id ? (
+                                <div className="nueva-orden-photo-description">
+                                  <input
+                                    className="input text-xs"
+                                    value={descripcionFotoDraft}
+                                    onChange={(event) => setDescripcionFotoDraft(event.target.value)}
+                                    onBlur={cancelarDescripcionVacia}
+                                    placeholder="Descripcion"
+                                    autoFocus
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn-primary btn-icon"
+                                    title="Guardar descripcion"
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => guardarDescripcionFoto(foto.id)}
+                                  >
+                                    <Save size={13} />
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                          Sin fotografias adjuntas.
+                        </p>
+                      )}
                     </section>
 
                     <section className="card space-y-4">
@@ -744,8 +1031,199 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                       </label>
                     </section>
                   </div>
+                ) : activeTab === "ejecucion" ? (
+                  <div className="nueva-orden-section-stack">
+                    <section className="card space-y-4">
+                      <div>
+                        <h3 className="font-semibold text-sm">Ejecucion y repuestos</h3>
+                        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                          Controla aprobacion, compra, logistica y registro de repuestos.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {renderProcesoCheck(
+                          flujoTrabajo.ejecucionRepuestos.compraProveedorAutorizada,
+                          (checked) => updateFlujo("ejecucionRepuestos", "compraProveedorAutorizada", checked),
+                          "Compra con proveedor autorizada",
+                          "La asesora o responsable procede con la compra."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.ejecucionRepuestos.logisticaRetiraRepuestos,
+                          (checked) => updateFlujo("ejecucionRepuestos", "logisticaRetiraRepuestos", checked),
+                          "Logistica retira repuestos",
+                          "El encargado de logistica retira los repuestos."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.ejecucionRepuestos.tecnicosInicianDespiece,
+                          (checked) => updateFlujo("ejecucionRepuestos", "tecnicosInicianDespiece", checked),
+                          "Tecnicos inician despiece",
+                          "El trabajo tecnico puede avanzar mientras llega el repuesto."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.ejecucionRepuestos.compraRepuestosRegistrada,
+                          (checked) => updateFlujo("ejecucionRepuestos", "compraRepuestosRegistrada", checked),
+                          "Compra registrada en sistema",
+                          "Registrar la compra al llegar los repuestos al local."
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="label">Notas de repuestos y logistica</label>
+                        <textarea
+                          className="input text-sm"
+                          rows={3}
+                          value={flujoTrabajo.ejecucionRepuestos.notas ?? ""}
+                          onChange={(event) => updateFlujo("ejecucionRepuestos", "notas", event.target.value)}
+                        />
+                      </div>
+                    </section>
+                  </div>
+                ) : activeTab === "reparacion" ? (
+                  <div className="nueva-orden-section-stack">
+                    <section className="card space-y-4">
+                      <div>
+                        <h3 className="font-semibold text-sm">Orden de trabajo y reparacion</h3>
+                        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                          Seguimiento de conversion, control tecnico, reparacion y prueba de ruta.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {renderProcesoCheck(
+                          flujoTrabajo.ordenReparacion.presupuestoConvertidoOrden,
+                          (checked) => updateFlujo("ordenReparacion", "presupuestoConvertidoOrden", checked),
+                          "Presupuesto convertido en orden",
+                          "La asesora de servicio confirma la creacion de la orden de trabajo."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.ordenReparacion.tecnicoConfirmaCargado,
+                          (checked) => updateFlujo("ordenReparacion", "tecnicoConfirmaCargado", checked),
+                          "Tecnico confirma orden cargada",
+                          "Se valida que diagnostico, repuestos y servicios esten en la orden."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.ordenReparacion.reparacionFinalizada,
+                          (checked) => updateFlujo("ordenReparacion", "reparacionFinalizada", checked),
+                          "Reparacion finalizada",
+                          "El tecnico marca el trabajo como terminado."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.ordenReparacion.pruebaRutaRealizada,
+                          (checked) => updateFlujo("ordenReparacion", "pruebaRutaRealizada", checked),
+                          "Prueba de ruta realizada",
+                          "Se verifica que el vehiculo funcione correctamente."
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="label">Notas de reparacion</label>
+                        <textarea
+                          className="input text-sm"
+                          rows={3}
+                          value={flujoTrabajo.ordenReparacion.notas ?? ""}
+                          onChange={(event) => updateFlujo("ordenReparacion", "notas", event.target.value)}
+                        />
+                      </div>
+                    </section>
+                  </div>
+                ) : activeTab === "entrega" ? (
+                  <div className="nueva-orden-section-stack">
+                    <section className="card space-y-4">
+                      <div>
+                        <h3 className="font-semibold text-sm">Entrega y cierre</h3>
+                        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                          Control final, limpieza, pago, entrega y cierre administrativo.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.controlCalidadCompletado,
+                          (checked) => updateFlujo("entregaCierre", "controlCalidadCompletado", checked),
+                          "Control de calidad completado",
+                          "Hoja de salida/inspeccion y registro de lo realizado."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.lavadoRealizado,
+                          (checked) => updateFlujo("entregaCierre", "lavadoRealizado", checked),
+                          "Lavado realizado",
+                          "Opcional segun el caso."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.lavadoNoAplica,
+                          (checked) => updateFlujo("entregaCierre", "lavadoNoAplica", checked),
+                          "Lavado no aplica",
+                          "Usar cuando no corresponde realizar lavado."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.clienteNotificado,
+                          (checked) => updateFlujo("entregaCierre", "clienteNotificado", checked),
+                          "Cliente notificado",
+                          "Se informa que el vehiculo esta listo."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.ordenEnviadaWhatsApp,
+                          (checked) => updateFlujo("entregaCierre", "ordenEnviadaWhatsApp", checked),
+                          "Orden enviada por WhatsApp",
+                          "Solo si el cliente lo solicita."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.vehiculoEntregado,
+                          (checked) => updateFlujo("entregaCierre", "vehiculoEntregado", checked),
+                          "Vehiculo entregado",
+                          "El cliente retira el vehiculo y recibe la hoja impresa."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.pendientesInformados,
+                          (checked) => updateFlujo("entregaCierre", "pendientesInformados", checked),
+                          "Pendientes informados",
+                          "Servicios pendientes a corto o mediano plazo."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.ordenCerradaSistema,
+                          (checked) => updateFlujo("entregaCierre", "ordenCerradaSistema", checked),
+                          "Orden cerrada en sistema",
+                          "Finalizacion administrativa de la orden."
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.facturaElectronicaEmitida,
+                          (checked) => updateFlujo("entregaCierre", "facturaElectronicaEmitida", checked),
+                          "Factura electronica emitida",
+                          "Emision final de la factura electronica."
+                        )}
+                      </div>
+                    </section>
+
+                    <section className="card space-y-4">
+                      <h3 className="font-semibold text-sm">Metodos de pago</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.pagoEfectivo,
+                          (checked) => updateFlujo("entregaCierre", "pagoEfectivo", checked),
+                          "Efectivo"
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.pagoTransferencia,
+                          (checked) => updateFlujo("entregaCierre", "pagoTransferencia", checked),
+                          "Transferencia"
+                        )}
+                        {renderProcesoCheck(
+                          flujoTrabajo.entregaCierre.pagoTarjeta,
+                          (checked) => updateFlujo("entregaCierre", "pagoTarjeta", checked),
+                          "Tarjeta"
+                        )}
+                      </div>
+                      <div className="form-group">
+                        <label className="label">Notas de entrega y cierre</label>
+                        <textarea
+                          className="input text-sm"
+                          rows={3}
+                          value={flujoTrabajo.entregaCierre.notas ?? ""}
+                          onChange={(event) => updateFlujo("entregaCierre", "notas", event.target.value)}
+                        />
+                      </div>
+                    </section>
+                  </div>
                 ) : (
                   <div className="nueva-orden-section-stack">
+                    {renderBusquedaVehiculo()}
+
                     <section className="card">
                       <div className="flex items-center gap-2 mb-4">
                         <FileText size={18} className="text-[#8b5cf6]" />

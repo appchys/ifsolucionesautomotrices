@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { use, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import DatosTallerForm from "@/components/configuracion/DatosTallerForm";
 import UsuariosManager from "@/components/configuracion/UsuariosManager";
 import VehicleViewImagesManager from "@/components/configuracion/VehicleViewImagesManager";
-import { Bell, Car, Shield, Wrench } from "lucide-react";
+import { Bell, Settings, Shield, SlidersHorizontal } from "lucide-react";
 
 const MODULOS_PROXIMOS = [
   {
@@ -18,17 +18,24 @@ const MODULOS_PROXIMOS = [
   },
 ];
 
-const CONFIG_TABS = [
-  { id: "taller", label: "Taller", icon: Wrench },
-  { id: "usuarios", label: "Gestión de Usuarios", icon: Shield },
-  { id: "vehiculos", label: "Vistas de Vehículos", icon: Car },
-  { id: "notificaciones", label: "Notificaciones", icon: Bell },
-] as const;
+type ConfiguracionTab = "general" | "usuarios" | "avanzado";
 
-type ConfigTab = (typeof CONFIG_TABS)[number]["id"];
+type ConfiguracionSearchParams = Promise<{
+  tab?: string | string[];
+}>;
 
-export default function ConfiguracionPage() {
-  const [activeTab, setActiveTab] = useState<ConfigTab>("taller");
+function getTabFromSearchParams(tab: string | string[] | undefined): ConfiguracionTab {
+  const value = Array.isArray(tab) ? tab[0] : tab;
+  return value === "usuarios" || value === "avanzado" ? value : "general";
+}
+
+export default function ConfiguracionPage({
+  searchParams,
+}: {
+  searchParams: ConfiguracionSearchParams;
+}) {
+  const initialTab = getTabFromSearchParams(use(searchParams).tab);
+  const [activeTab, setActiveTab] = useState<ConfiguracionTab>(initialTab);
 
   return (
     <AppShell>
@@ -38,45 +45,45 @@ export default function ConfiguracionPage() {
       </div>
 
       <div
-        role="tablist"
-        aria-label="Secciones de configuración"
-        className="flex gap-2 overflow-x-auto border-b pb-2"
-        style={{ borderColor: "var(--border)" }}
+        className="flex flex-wrap gap-2 p-1 rounded-lg border w-fit"
+        style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}
       >
-        {CONFIG_TABS.map((tab) => {
-          const selected = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              aria-controls={`config-panel-${tab.id}`}
-              id={`config-tab-${tab.id}`}
-              className="btn btn-sm whitespace-nowrap"
-              style={{
-                background: selected ? "var(--accent)" : "var(--bg-card)",
-                border: `1px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-                color: selected ? "#fff" : "var(--text-secondary)",
-              }}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <tab.icon size={16} />
-              {tab.label}
-            </button>
-          );
-        })}
+        <button
+          type="button"
+          className={`btn-sm inline-flex items-center gap-2 rounded-lg transition-colors ${
+            activeTab === "general" ? "btn-primary" : "btn-ghost"
+          }`}
+          onClick={() => setActiveTab("general")}
+        >
+          <Settings size={16} />
+          General
+        </button>
+        <button
+          type="button"
+          className={`btn-sm inline-flex items-center gap-2 rounded-lg transition-colors ${
+            activeTab === "usuarios" ? "btn-primary" : "btn-ghost"
+          }`}
+          onClick={() => setActiveTab("usuarios")}
+        >
+          <Shield size={16} />
+          Usuarios
+        </button>
+        <button
+          type="button"
+          className={`btn-sm inline-flex items-center gap-2 rounded-lg transition-colors ${
+            activeTab === "avanzado" ? "btn-primary" : "btn-ghost"
+          }`}
+          onClick={() => setActiveTab("avanzado")}
+        >
+          <SlidersHorizontal size={16} />
+          Avanzado
+        </button>
       </div>
 
-      <section
-        role="tabpanel"
-        id={`config-panel-${activeTab}`}
-        aria-labelledby={`config-tab-${activeTab}`}
-      >
-        {activeTab === "taller" ? <DatosTallerForm /> : null}
-        {activeTab === "usuarios" ? <UsuariosManager /> : null}
-        {activeTab === "vehiculos" ? <VehicleViewImagesManager /> : null}
-        {activeTab === "notificaciones" ? (
+      {activeTab === "general" ? (
+        <>
+          <DatosTallerForm />
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {MODULOS_PROXIMOS.map((s) => (
               <div key={s.title} className="card">
@@ -110,8 +117,12 @@ export default function ConfiguracionPage() {
               </div>
             ))}
           </div>
-        ) : null}
-      </section>
+        </>
+      ) : activeTab === "usuarios" ? (
+        <UsuariosManager />
+      ) : (
+        <VehicleViewImagesManager />
+      )}
     </AppShell>
   );
 }

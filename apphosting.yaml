@@ -8,14 +8,25 @@ runConfig:
   # memoryMiB: 512
 
 # Environment variables and secrets.
-# env:
+env:
   # Configure environment variables.
   # See https://firebase.google.com/docs/app-hosting/configure#user-defined-environment
-  # - variable: MESSAGE
-  #   value: Hello world!
-  #   availability:
-  #     - BUILD
-  #     - RUNTIME
+  - variable: GOOGLE_GMAIL_APP_ORIGIN
+    value: https://ifsolucionesautomotrices.web.app
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GMAIL_REDIRECT_URI
+    value: https://ifsolucionesautomotrices.web.app/api/gmail/callback
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GMAIL_CLIENT_ID
+    value: 239117748860-9es680vanfa132etutqj5hnibo99r4mc.apps.googleusercontent.com
+    availability:
+      - RUNTIME
+  - variable: GOOGLE_GMAIL_CLIENT_SECRET
+    secret: googleGmailClientSecret
+    availability:
+      - RUNTIME
 
   # Grant access to secrets in Cloud Secret Manager.
   # You can create secrets with the CLI command `firebase apphosting:secrets:set <secretName>`.

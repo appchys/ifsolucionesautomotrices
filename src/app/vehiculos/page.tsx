@@ -120,7 +120,7 @@ export default function VehiculosPage() {
                 <p className="text-xs" style={{ color: "var(--accent-light)" }}>
                   👤 {getClienteNombre(v.clienteId)}
                 </p>
-                {v.vin && <p className="text-xs font-mono truncate" style={{ color: "var(--text-muted)" }}>VIN: {v.vin}</p>}
+                {v.vin && <p className="text-xs font-mono truncate" style={{ color: "var(--text-muted)" }}>Chasis: {v.vin}</p>}
               </div>
             </div>
           ))}

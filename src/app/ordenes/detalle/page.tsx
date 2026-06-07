@@ -1,5 +1,5 @@
 "use client";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
 import OrdenDetalleSidebar from "@/components/ordenes/OrdenDetalleSidebar";
@@ -7,12 +7,13 @@ import OrdenDetalleSidebar from "@/components/ordenes/OrdenDetalleSidebar";
 function OrdenDetalleContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const id = searchParams.get("id") || "";
+  const id = searchParams.get("id");
 
-  if (!id) {
-    router.push("/ordenes");
-    return null;
-  }
+  useEffect(() => {
+    if (!id) router.replace("/ordenes");
+  }, [id, router]);
+
+  if (!id) return null;
 
   return (
     <AppShell>
@@ -23,7 +24,7 @@ function OrdenDetalleContent() {
       
       <OrdenDetalleSidebar 
         ordenId={id} 
-        onClose={() => router.push("/ordenes")} 
+        onClose={() => router.replace("/ordenes")} 
       />
     </AppShell>
   );
