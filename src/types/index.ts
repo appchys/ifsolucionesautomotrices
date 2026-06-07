@@ -69,6 +69,7 @@ export interface DanoVehiculo {
   x: number;
   y: number;
   tipo: "abolladura" | "rayón" | "rotura" | "otro";
+  vista?: VehiculoVista;
   descripcion?: string;
 }
 

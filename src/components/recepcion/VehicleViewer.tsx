@@ -8,6 +8,7 @@ import { getVehicleViewImages } from "@/lib/services";
 interface VehicleViewerProps {
   tipoVehiculo?: "suv" | "camioneta" | "sedan" | "pickup";
   onImageUrlChange?: (imageUrl: string, vista: VehiculoVista) => void;
+  showImage?: boolean;
 }
 
 const VISTA_LABELS: Record<VehiculoVista, string> = {
@@ -20,7 +21,7 @@ const VISTA_LABELS: Record<VehiculoVista, string> = {
 
 const VISTA_ORDER: VehiculoVista[] = ["superior", "izquierda", "derecha", "delantera", "trasera"];
 
-export default function VehicleViewer({ tipoVehiculo = "suv", onImageUrlChange }: VehicleViewerProps) {
+export default function VehicleViewer({ tipoVehiculo = "suv", onImageUrlChange, showImage = true }: VehicleViewerProps) {
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<VehicleViewImagesConfig | null>(null);
   const [selectedVista, setSelectedVista] = useState<VehiculoVista>("superior");
@@ -36,17 +37,18 @@ export default function VehicleViewer({ tipoVehiculo = "suv", onImageUrlChange }
         if (!cancelled) {
           if (data) {
             setConfig(data);
-            // Asegurarse de que la vista seleccionada existe
-            const vistaExiste = data.imagenes.some((img) => img.vista === selectedVista);
-            if (!vistaExiste && data.imagenes.length > 0) {
-              setSelectedVista(data.imagenes[0].vista);
-            }
+            setSelectedVista((currentVista) => {
+              const vistaExiste = data.imagenes.some((img) => img.vista === currentVista);
+              return !vistaExiste && data.imagenes.length > 0 ? data.imagenes[0].vista : currentVista;
+            });
           } else {
+            setConfig(null);
             setError("No hay imágenes configuradas para este tipo de vehículo");
           }
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
+          setConfig(null);
           setError("Error al cargar las imágenes del vehículo");
         }
       } finally {
@@ -56,13 +58,13 @@ export default function VehicleViewer({ tipoVehiculo = "suv", onImageUrlChange }
     return () => {
       cancelled = true;
     };
-  }, [tipoVehiculo, selectedVista]);
+  }, [tipoVehiculo]);
 
   const currentImage = config?.imagenes.find((img) => img.vista === selectedVista);
 
   useEffect(() => {
-    if (currentImage?.imageUrl && onImageUrlChange) {
-      onImageUrlChange(currentImage.imageUrl, selectedVista);
+    if (onImageUrlChange) {
+      onImageUrlChange(currentImage?.imageUrl ?? "", selectedVista);
     }
   }, [currentImage?.imageUrl, selectedVista, onImageUrlChange]);
 
@@ -116,22 +118,23 @@ export default function VehicleViewer({ tipoVehiculo = "suv", onImageUrlChange }
         })}
       </div>
 
-      {/* Imagen */}
-      <div className="relative w-full aspect-square rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
-        {currentImage?.imageUrl ? (
-          <img
-            src={currentImage.imageUrl}
-            alt={`Vista ${VISTA_LABELS[selectedVista]}`}
-            className="w-full h-full object-contain"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Imagen no disponible
-            </p>
-          </div>
-        )}
-      </div>
+      {showImage && (
+        <div className="relative w-full aspect-square rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--bg-secondary)" }}>
+          {currentImage?.imageUrl ? (
+            <img
+              src={currentImage.imageUrl}
+              alt={`Vista ${VISTA_LABELS[selectedVista]}`}
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Imagen no disponible
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

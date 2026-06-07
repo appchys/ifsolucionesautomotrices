@@ -687,7 +687,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                         </div>
                         <div className="card">
                           <h3 className="font-semibold text-sm mb-3">Inspección Visual</h3>
-                          <DamageSelector danos={danos} onChange={setDanos} tipoVehiculo={(watch("tipoVehiculo") as any) || "suv"} />
+                          <DamageSelector danos={danos} onChange={setDanos} tipoVehiculo="suv" />
                         </div>
                       </div>
                     </>
