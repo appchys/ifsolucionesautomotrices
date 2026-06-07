@@ -80,6 +80,43 @@ export interface InspeccionVisual {
   fotoUrls?: string[];
 }
 
+export interface FlujoTrabajo {
+  ejecucionRepuestos: {
+    compraProveedorAutorizada: boolean;
+    logisticaRetiraRepuestos: boolean;
+    tecnicosInicianDespiece: boolean;
+    compraRepuestosRegistrada: boolean;
+    notas?: string;
+  };
+  ordenReparacion: {
+    presupuestoConvertidoOrden: boolean;
+    tecnicoConfirmaCargado: boolean;
+    reparacionFinalizada: boolean;
+    pruebaRutaRealizada: boolean;
+    notas?: string;
+  };
+  entregaCierre: {
+    controlCalidadCompletado: boolean;
+    lavadoRealizado: boolean;
+    lavadoNoAplica: boolean;
+    clienteNotificado: boolean;
+    ordenEnviadaWhatsApp: boolean;
+    pagoEfectivo: boolean;
+    pagoTransferencia: boolean;
+    pagoTarjeta: boolean;
+    vehiculoEntregado: boolean;
+    pendientesInformados: boolean;
+    facturaElectronicaEmitida: boolean;
+    ordenCerradaSistema: boolean;
+    notas?: string;
+  };
+}
+
+export interface FotoDiagnostico {
+  url: string;
+  descripcion?: string;
+}
+
 export interface OrdenTrabajo {
   id?: string;
   vehiculoId: string;
@@ -97,6 +134,8 @@ export interface OrdenTrabajo {
   notasInternas?: string;
   informeTecnico?: string;
   tecnicoId?: string;
+  presupuestoConfirmadoPorCliente?: boolean;
+  flujoTrabajo?: FlujoTrabajo;
   personalAsignado?: {
     uid: string;
     email: string;
@@ -104,6 +143,7 @@ export interface OrdenTrabajo {
     role: UserRole;
   }[];
   fotoUrls?: string[];
+  fotosDiagnostico?: FotoDiagnostico[];
   esCotizacion?: boolean;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;

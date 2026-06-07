@@ -113,6 +113,7 @@ type FormData = {
 interface Props {
   onClose: () => void;
   onSuccess?: (orderId: string) => void;
+  ordenId?: string;
 }
 
 const emptyForm = (placa = ""): FormData => ({
@@ -1291,7 +1292,6 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                       <DamageSelector
                         danos={danos}
                         onChange={setDanos}
-                        tipoVehiculo="suv"
                       />
                     </section>
 
