@@ -1,14 +1,16 @@
 import { Timestamp } from "firebase/firestore";
 
-export type UserRole = "admin" | "recepcion" | "tecnico" | "contador";
+export type UserRole = "admin" | "recepcion" | "tecnico" | "contador" | "asesor_servicio" | "logistica";
 
 export interface AppUser {
+  id?: string;
   uid: string;
   email: string;
   displayName: string;
   role: UserRole;
   photoURL?: string;
-  createdAt: Timestamp;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
   activo: boolean;
 }
 

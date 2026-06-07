@@ -39,7 +39,7 @@ export const useAuthStore = create<AuthStore>((set) => ({
 }));
 
 export const useUIStore = create<UIStore>((set) => ({
-  sidebarOpen: true,
+  sidebarOpen: false,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   activeModule: "dashboard",

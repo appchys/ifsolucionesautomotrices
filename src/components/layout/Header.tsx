@@ -20,7 +20,13 @@ export default function Header() {
         paddingRight: "var(--app-content-gutter-x)",
       }}
     >
-      <button onClick={toggleSidebar} className="btn-ghost btn-icon">
+      <button
+        onClick={toggleSidebar}
+        className="btn-ghost btn-icon"
+        aria-label={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
+        aria-expanded={sidebarOpen}
+        aria-controls="app-sidebar"
+      >
         <Menu size={20} />
       </button>
 

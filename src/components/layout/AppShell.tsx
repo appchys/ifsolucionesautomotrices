@@ -1,10 +1,23 @@
 "use client";
-import { useAuthStore, useUIStore } from "@/store";
+import { useEffect } from "react";
+import { useUIStore } from "@/store";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 
+const DESKTOP_SIDEBAR_QUERY = "(min-width: 1024px)";
+
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { sidebarOpen } = useUIStore();
+  const { sidebarOpen, setSidebarOpen } = useUIStore();
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(DESKTOP_SIDEBAR_QUERY);
+    const syncSidebar = () => setSidebarOpen(mediaQuery.matches);
+
+    syncSidebar();
+    mediaQuery.addEventListener("change", syncSidebar);
+
+    return () => mediaQuery.removeEventListener("change", syncSidebar);
+  }, [setSidebarOpen]);
 
   return (
     <div className="min-h-screen flex" style={{ background: "var(--bg-primary)" }}>

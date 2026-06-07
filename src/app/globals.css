@@ -82,7 +82,7 @@ html, body {
   left: 0;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   .sidebar-displaced {
     margin-left: var(--sidebar-width);
   }
@@ -442,6 +442,33 @@ textarea.input { resize: vertical; }
 .checklist-item.checked { border-color: var(--success); background: rgba(16,185,129,0.05); }
 
 } /* end @layer components */
+
+/* Ritmo compacto para el sidebar de nueva orden, sin afectar el resto de la app */
+.nueva-orden-sidebar .card {
+  padding: 16px;
+}
+
+.nueva-orden-sidebar .form-group {
+  gap: 6px;
+}
+
+.nueva-orden-sidebar .label {
+  margin-bottom: 0;
+}
+
+.nueva-orden-sidebar .card h3 {
+  line-height: 1.2;
+}
+
+.nueva-orden-sidebar .nueva-orden-tabs {
+  margin-bottom: 18px;
+}
+
+.nueva-orden-sidebar .nueva-orden-section-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 
 /* ─── Animations ──────────────────────────────────────────────────── */
 @keyframes fadeIn {

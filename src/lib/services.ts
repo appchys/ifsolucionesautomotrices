@@ -326,19 +326,37 @@ export async function deletePago(id: string): Promise<void> {
 
 // ─── USUARIOS ────────────────────────────────────────────────────────────────
 export async function getUsuarios(): Promise<AppUser[]> {
-  const snap = await getDocs(collection(db, "usuarios"));
-  return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as AppUser));
+  const snap = await getDocs(query(collection(db, "usuarios"), orderBy("displayName")));
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return { id: d.id, uid: String(data.uid ?? d.id), ...data } as AppUser;
+  });
 }
 
 export async function createUsuarioDB(uid: string, data: Omit<AppUser, "uid">): Promise<void> {
-  await addDoc(collection(db, "usuarios"), { uid, ...data, createdAt: serverTimestamp() });
+  await addDoc(collection(db, "usuarios"), {
+    uid,
+    ...data,
+    activo: data.activo ?? true,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function getUsuarioByUid(uid: string): Promise<AppUser | null> {
   const snap = await getDocs(query(collection(db, "usuarios"), where("uid", "==", uid)));
   if (snap.empty) return null;
   const d = snap.docs[0];
-  return { uid: d.data().uid, ...d.data() } as AppUser;
+  const data = d.data();
+  return { id: d.id, uid: String(data.uid ?? d.id), ...data } as AppUser;
+}
+
+export async function updateUsuario(uid: string, data: Partial<Omit<AppUser, "id" | "uid" | "createdAt">>): Promise<void> {
+  const snap = await getDocs(query(collection(db, "usuarios"), where("uid", "==", uid)));
+  if (snap.empty) {
+    throw new Error("USER_NOT_FOUND");
+  }
+  await updateDoc(snap.docs[0].ref, { ...data, updatedAt: serverTimestamp() });
 }
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────

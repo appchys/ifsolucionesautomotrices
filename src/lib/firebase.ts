@@ -1,5 +1,5 @@
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { deleteApp, initializeApp, getApps } from "firebase/app";
+import { createUserWithEmailAndPassword, getAuth, signOut } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -18,3 +18,16 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export default app;
+
+export async function createAuthUser(email: string, password: string): Promise<string> {
+  const secondaryApp = initializeApp(firebaseConfig, `user-creation-${Date.now()}`);
+  const secondaryAuth = getAuth(secondaryApp);
+
+  try {
+    const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    await signOut(secondaryAuth).catch(() => {});
+    return credential.user.uid;
+  } finally {
+    await deleteApp(secondaryApp).catch(() => {});
+  }
+}
