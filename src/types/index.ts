@@ -98,6 +98,7 @@ export interface OrdenTrabajo {
   notasInternas?: string;
   informeTecnico?: string;
   tecnicoId?: string;
+  presupuestoConfirmadoPorCliente?: boolean;
   fotoUrls?: string[];
   esCotizacion?: boolean;
   createdAt?: Timestamp;

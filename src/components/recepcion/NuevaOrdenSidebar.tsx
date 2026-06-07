@@ -121,6 +121,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [notasInternas, setNotasInternas] = useState("");
   const [mostrarNotasInternas, setMostrarNotasInternas] = useState(false);
   const [tecnicoId, setTecnicoId] = useState("");
+  const [diagnostico, setDiagnostico] = useState("");
+  const [presupuestoConfirmado, setPresupuestoConfirmado] = useState(false);
   const [km, setKm] = useState("");
   const [nivelCombustible, setNivelCombustible] = useState<NivelCombustible>("1/2");
   const [checklist, setChecklist] = useState<ChecklistItem[]>(CHECKLIST_DEFAULT);
@@ -277,6 +279,11 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       toast.error("La placa es obligatoria");
       return;
     }
+    if (!tecnicoId) {
+      toast.error("Selecciona un tecnico");
+      setActiveTab("inspeccion");
+      return;
+    }
     if (!motivo.trim()) {
       toast.error("Ingresa el motivo de la visita");
       setActiveTab("inspeccion");
@@ -287,9 +294,16 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       setActiveTab("inspeccion");
       return;
     }
+    if (!esCotizacion && !presupuestoConfirmado) {
+      toast.error("El cliente debe confirmar el presupuesto");
+      setActiveTab("orden");
+      return;
+    }
 
     setGuardando(true);
     try {
+      const guardarComoCotizacion = esCotizacion && !presupuestoConfirmado;
+
       const clientePayload = {
         nombre: data.nombre.trim(),
         apellido: data.apellido.trim(),
@@ -335,17 +349,18 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         checklistInventario: checklist,
         inspeccionVisual: { danos, fotoUrls: [] },
         notasInternas: notasInternas.trim(),
-        informeTecnico: "",
-        ...(tecnicoId ? { tecnicoId } : {}),
+        informeTecnico: diagnostico.trim(),
+        tecnicoId,
+        presupuestoConfirmadoPorCliente: presupuestoConfirmado,
         fotoUrls: [],
-        esCotizacion,
+        esCotizacion: guardarComoCotizacion,
       });
 
       if (items.length > 0) {
         await Promise.all(items.map((item) => addItemOrden(orderId, { ...item, ordenId: orderId })));
       }
 
-      toast.success(esCotizacion ? "Cotizacion guardada" : "Orden creada");
+      toast.success(guardarComoCotizacion ? "Cotizacion guardada" : "Orden creada");
       onSuccess?.(orderId);
       if (!onSuccess) onClose();
     } catch (error) {
@@ -430,6 +445,35 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     </div>
   );
 
+  const renderAsignacionTecnica = () => (
+    <section className="card">
+      <h3 className="font-semibold text-sm mb-3">Asignacion tecnica</h3>
+      <div className="form-group">
+        <label className="label">Tecnico asignado *</label>
+        <select
+          className="input text-sm"
+          value={tecnicoId}
+          onChange={(event) => setTecnicoId(event.target.value)}
+          disabled={cargandoTecnicos}
+        >
+          <option value="">
+            {cargandoTecnicos ? "Cargando tecnicos..." : "Seleccionar tecnico"}
+          </option>
+          {tecnicos.map((tecnico) => (
+            <option key={tecnico.uid} value={tecnico.uid}>
+              {tecnico.displayName || tecnico.email}
+            </option>
+          ))}
+        </select>
+        {!cargandoTecnicos && tecnicos.length === 0 ? (
+          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            No hay usuarios activos con rol tecnico.
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+
   return (
     <div className="fixed inset-0 z-[100] flex justify-end">
       <button
@@ -459,7 +503,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
               type="button"
               className="btn-secondary btn-sm"
               title="Guardar como cotizacion"
-              disabled={guardando}
+              disabled={guardando || presupuestoConfirmado}
               onClick={handleSubmit((data) => onSubmit(data, true))}
             >
               <Calculator size={15} />
@@ -599,22 +643,23 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
               </aside>
 
               <main className="xl:col-span-8">
-                <div className="nueva-orden-tabs flex gap-4 border-b border-[var(--border)] bg-[var(--bg-primary)] sticky top-[-24px] z-10 py-2">
+                <div className="nueva-orden-tabs flex gap-3 border-b border-[var(--border)] bg-[var(--bg-primary)] sticky top-[-24px] z-10 py-2">
                   {[
-                    ["inspeccion", "Inspeccion de ingreso"],
-                    ["orden", "Presupuesto"],
-                  ].map(([tab, label]) => (
+                    ["inspeccion", "1", "Inspeccion de ingreso"],
+                    ["orden", "2", "Diagnostico y presupuesto"],
+                  ].map(([tab, step, label]) => (
                     <button
                       key={tab}
                       type="button"
                       onClick={() => setActiveTab(tab as "orden" | "inspeccion")}
-                      className={`pb-2 px-1 text-sm font-semibold border-b-2 transition-all ${
+                      className={`nueva-orden-step-button ${
                         activeTab === tab
-                          ? "border-[var(--accent)] text-[var(--accent)]"
-                          : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                          ? "nueva-orden-step-button-active"
+                          : "nueva-orden-step-button-idle"
                       }`}
                     >
-                      {label}
+                      <span className="nueva-orden-step-number">{step}</span>
+                      <span>{label}</span>
                     </button>
                   ))}
                 </div>
@@ -622,29 +667,16 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                 {activeTab === "orden" ? (
                   <div className="nueva-orden-section-stack">
                     <section className="card">
-                      <h3 className="font-semibold text-sm mb-3">Asignacion tecnica</h3>
+                      <h3 className="font-semibold text-sm mb-3">Diagnostico</h3>
                       <div className="form-group">
-                        <label className="label">Tecnico asignado</label>
-                        <select
+                        <label className="label">Diagnostico del tecnico</label>
+                        <textarea
                           className="input text-sm"
-                          value={tecnicoId}
-                          onChange={(event) => setTecnicoId(event.target.value)}
-                          disabled={cargandoTecnicos}
-                        >
-                          <option value="">
-                            {cargandoTecnicos ? "Cargando tecnicos..." : "Sin asignar"}
-                          </option>
-                          {tecnicos.map((tecnico) => (
-                            <option key={tecnico.uid} value={tecnico.uid}>
-                              {tecnico.displayName || tecnico.email}
-                            </option>
-                          ))}
-                        </select>
-                        {!cargandoTecnicos && tecnicos.length === 0 ? (
-                          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                            No hay usuarios activos con rol tecnico.
-                          </p>
-                        ) : null}
+                          rows={4}
+                          value={diagnostico}
+                          onChange={(event) => setDiagnostico(event.target.value)}
+                          placeholder="Describe el diagnostico, hallazgos y trabajo recomendado."
+                        />
                       </div>
                     </section>
 
@@ -693,6 +725,23 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                           Sin productos ni servicios agregados.
                         </p>
                       )}
+                    </section>
+
+                    <section className="card">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-5 w-5 rounded border-[var(--border)]"
+                          checked={presupuestoConfirmado}
+                          onChange={(event) => setPresupuestoConfirmado(event.target.checked)}
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-semibold text-sm">Cliente confirma diagnostico y presupuesto</span>
+                          <span className="block text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                            Al confirmar, esta cotizacion se crea como orden de trabajo.
+                          </span>
+                        </span>
+                      </label>
                     </section>
                   </div>
                 ) : (
@@ -767,6 +816,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                         tipoVehiculo="suv"
                       />
                     </section>
+
+                    {renderAsignacionTecnica()}
                   </div>
                 )}
               </main>

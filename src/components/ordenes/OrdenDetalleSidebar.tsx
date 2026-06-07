@@ -1,13 +1,13 @@
 "use client";
 import { useEffect, useState, useRef } from "react";
 import {
-  getOrdenById, getItemsOrden, addItemOrden, updateItemOrden, deleteItemOrden,
+  getOrdenById, getItemsOrden, addItemOrden, deleteItemOrden,
   updateOrden, updateEstadoOrden, uploadOrdenFoto, getClienteById, getVehiculoById
 } from "@/lib/services";
 import { OrdenTrabajo, ItemOrden, EstadoOrden } from "@/types";
 import {
   X, Plus, Trash2, Save, Camera, MessageCircle, FileText,
-  Loader2, Check, Car, User, Wrench, DollarSign
+  Loader2, Check, Car, User
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { format } from "date-fns";
@@ -37,32 +37,41 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate }: Prop
   const fileRef = useRef<HTMLInputElement>(null);
   const [activeModal, setActiveModal] = useState<"producto" | "servicio" | null>(null);
 
-  const load = async () => {
-    if (!ordenId) return;
-    setLoading(true);
-    const o = await getOrdenById(ordenId);
-    if (!o) { 
-      toast.error("Orden no encontrada"); 
-      onClose(); 
-      return; 
-    }
-    const [cliente, vehiculo] = await Promise.all([
-      getClienteById(o.clienteId),
-      getVehiculoById(o.vehiculoId)
-    ]);
-    setOrden({ ...o, cliente: cliente ?? undefined, vehiculo: vehiculo ?? undefined });
-    setItems(await getItemsOrden(ordenId));
-    setInformeTecnico(o.informeTecnico ?? "");
-    setNotasInternas(o.notasInternas ?? "");
-    setLoading(false);
-  };
-
   useEffect(() => {
-    load();
+    let cancelled = false;
+
+    const loadOrden = async () => {
+      if (!ordenId) return;
+      const o = await getOrdenById(ordenId);
+      if (cancelled) return;
+      if (!o) {
+        toast.error("Orden no encontrada");
+        onClose();
+        return;
+      }
+
+      const [cliente, vehiculo, ordenItems] = await Promise.all([
+        getClienteById(o.clienteId),
+        getVehiculoById(o.vehiculoId),
+        getItemsOrden(ordenId),
+      ]);
+      if (cancelled) return;
+
+      setOrden({ ...o, cliente: cliente ?? undefined, vehiculo: vehiculo ?? undefined });
+      setItems(ordenItems);
+      setInformeTecnico(o.informeTecnico ?? "");
+      setNotasInternas(o.notasInternas ?? "");
+      setLoading(false);
+    };
+
+    void loadOrden();
     // Bloquear scroll del body
     document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = "auto"; };
-  }, [ordenId]);
+    return () => {
+      cancelled = true;
+      document.body.style.overflow = "auto";
+    };
+  }, [ordenId, onClose]);
 
   const cambiarEstado = async (estado: EstadoOrden) => {
     await updateEstadoOrden(ordenId, estado);
@@ -82,8 +91,8 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate }: Prop
   const convertirAOrden = async () => {
     setSavingInforme(true);
     try {
-      await updateOrden(ordenId, { esCotizacion: false });
-      setOrden((prev) => prev ? { ...prev, esCotizacion: false } : prev);
+      await updateOrden(ordenId, { esCotizacion: false, presupuestoConfirmadoPorCliente: true });
+      setOrden((prev) => prev ? { ...prev, esCotizacion: false, presupuestoConfirmadoPorCliente: true } : prev);
       toast.success("¡Cotización convertida a Orden!");
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -159,7 +168,7 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate }: Prop
               </h2>
               {orden && (
                 <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {orden.createdAt ? format((orden.createdAt as any).toDate(), "d 'de' MMMM, yyyy", { locale: es }) : ""}
+                  {orden.createdAt ? format(orden.createdAt.toDate(), "d 'de' MMMM, yyyy", { locale: es }) : ""}
                 </p>
               )}
             </div>
