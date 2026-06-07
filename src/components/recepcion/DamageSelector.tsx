@@ -1,261 +1,358 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
-import { AlertCircle, Check, X } from "lucide-react";
-import { DanoVehiculo, VehiculoVista } from "@/types";
-import VehicleViewer from "./VehicleViewer";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DanoVehiculo, VehicleViewImage, VehiculoVista } from "@/types";
+import { getVehicleViewImages } from "@/lib/services";
+import { X, AlertCircle, ImageOff, Loader2, Check } from "lucide-react";
 
 interface Props {
   danos: DanoVehiculo[];
   onChange: (danos: DanoVehiculo[]) => void;
-  tipoVehiculo?: "suv" | "camioneta" | "sedan" | "pickup";
 }
 
-const TIPO_CONFIG: Record<DanoVehiculo["tipo"], { label: string; color: string }> = {
+const TIPO_CONFIG = {
   abolladura: { label: "Abolladura", color: "#ef4444" },
   rayón: { label: "Rayón", color: "#f59e0b" },
   rotura: { label: "Rotura", color: "#7c3aed" },
   otro: { label: "Otro", color: "#06b6d4" },
 };
 
-const VISTA_LABELS: Record<VehiculoVista, string> = {
-  superior: "Superior",
-  izquierda: "Izquierda",
-  derecha: "Derecha",
-  delantera: "Delantera",
-  trasera: "Trasera",
-};
+const VISTAS: { label: string; value: VehiculoVista }[] = [
+  { label: "Superior", value: "superior" },
+  { label: "Izquierda", value: "izquierda" },
+  { label: "Derecha", value: "derecha" },
+  { label: "Delantera", value: "delantera" },
+  { label: "Trasera", value: "trasera" },
+];
 
-const VISTA_ORDER: VehiculoVista[] = ["superior", "izquierda", "derecha", "delantera", "trasera"];
+export default function DamageSelector({ danos, onChange }: Props) {
+  const [vistaSeleccionada, setVistaSeleccionada] = useState<VehiculoVista>("superior");
+  const [imagenes, setImagenes] = useState<VehicleViewImage[]>([]);
+  const [loadingImages, setLoadingImages] = useState(true);
+  const [loadedImageUrl, setLoadedImageUrl] = useState("");
+  const nextIdRef = useRef(0);
 
-export default function DamageSelector({ danos, onChange, tipoVehiculo = "suv" }: Props) {
-  const [currentImageUrl, setCurrentImageUrl] = useState("");
-  const [currentVista, setCurrentVista] = useState<VehiculoVista>("superior");
-  const [pendingPoint, setPendingPoint] = useState<{ x: number; y: number } | null>(null);
-  const [customDamage, setCustomDamage] = useState("");
-  const [showCustomDamage, setShowCustomDamage] = useState(false);
-  const damageIdRef = useRef(0);
+  const [menuPos, setMenuPos] = useState<{
+    x: number; y: number; left: number; top: number;
+  } | null>(null);
+  const [menuStep, setMenuStep] = useState<"tipo" | "otro">("tipo");
+  const [otroTexto, setOtroTexto] = useState("");
 
-  const handleImageChange = useCallback((imageUrl: string, vista: VehiculoVista) => {
-    setCurrentImageUrl(imageUrl);
-    setCurrentVista(vista);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoadingImages(true);
+        const config = await getVehicleViewImages("suv");
+        if (!cancelled) setImagenes(config?.imagenes ?? []);
+      } catch (error) {
+        console.error("Error cargando imagenes SUV para inspeccion visual", error);
+        if (!cancelled) setImagenes([]);
+      } finally {
+        if (!cancelled) setLoadingImages(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!currentImageUrl) return;
+  const imagenActual = useMemo(
+    () => imagenes.find((img) => img.vista === vistaSeleccionada && img.imageUrl.trim()),
+    [imagenes, vistaSeleccionada]
+  );
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 100;
-    const y = ((event.clientY - rect.top) / rect.height) * 100;
-    setPendingPoint({ x, y });
-    setCustomDamage("");
-    setShowCustomDamage(false);
+  const imageReady = loadedImageUrl === imagenActual?.imageUrl;
+  const danosVistaActual = danos.filter((d) => (d.vista ?? "superior") === vistaSeleccionada);
+  const viewerHeight = "clamp(220px, 45vh, 360px)";
+
+  const handleClickDiagram = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!imagenActual || !imageReady) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+    const x = (localX / rect.width) * 100;
+    const y = (localY / rect.height) * 100;
+
+    let left = e.clientX;
+    let top = e.clientY;
+    const menuW = 190;
+    const menuH = 200;
+    if (left + menuW > window.innerWidth - 8) left = window.innerWidth - menuW - 8;
+    if (top + menuH > window.innerHeight - 8) top = window.innerHeight - menuH - 8;
+
+    setMenuPos({ x, y, left, top });
+    setMenuStep("tipo");
+    setOtroTexto("");
   };
 
   const addDano = (tipo: DanoVehiculo["tipo"], descripcion?: string) => {
-    if (!pendingPoint) return;
-
-    damageIdRef.current += 1;
-    onChange([
-      ...danos,
-      {
-        id: `dano-${damageIdRef.current}`,
-        x: pendingPoint.x,
-        y: pendingPoint.y,
-        tipo,
-        vista: currentVista,
-        descripcion,
-      },
-    ]);
-    setPendingPoint(null);
-    setCustomDamage("");
-    setShowCustomDamage(false);
+    if (!menuPos) return;
+    nextIdRef.current += 1;
+    const nuevo: DanoVehiculo = {
+      id: `dano-${vistaSeleccionada}-${nextIdRef.current}`,
+      x: menuPos.x,
+      y: menuPos.y,
+      vista: vistaSeleccionada,
+      tipo,
+      ...(descripcion ? { descripcion } : {}),
+    };
+    onChange([...danos, nuevo]);
+    setMenuPos(null);
   };
 
   const removeDano = (id: string) => {
-    onChange(danos.filter((dano) => dano.id !== id));
+    onChange(danos.filter((d) => d.id !== id));
   };
 
   return (
     <div>
-      <p className="text-xs mb-3" style={{ color: "var(--text-muted)" }}>
-        Selecciona una vista, haz clic en la imagen y elige el tipo de daño
-      </p>
-
-      <div className="mb-4">
-        <VehicleViewer tipoVehiculo={tipoVehiculo} onImageUrlChange={handleImageChange} showImage={false} />
+      <div className="flex flex-wrap gap-2 mb-3">
+        {VISTAS.map((vista) => {
+          const hasImage = imagenes.some((img) => img.vista === vista.value && img.imageUrl.trim());
+          const isActive = vistaSeleccionada === vista.value;
+          return (
+            <button
+              key={vista.value}
+              type="button"
+              onClick={() => setVistaSeleccionada(vista.value)}
+              className="btn btn-sm"
+              style={{
+                background: isActive ? "rgba(59,130,246,0.12)" : "var(--bg-secondary)",
+                border: `1px solid ${isActive ? "var(--accent)" : "var(--border)"}`,
+                color: isActive ? "var(--accent)" : "var(--text-muted)",
+                opacity: hasImage ? 1 : 0.72,
+              }}
+            >
+              {vista.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div
-        className="relative w-full max-w-md mx-auto cursor-crosshair rounded-lg overflow-hidden"
-        style={{
-          background: "var(--bg-secondary)",
-          border: "2px solid var(--border)",
-          aspectRatio: "1",
-        }}
-        onClick={handleClick}
-      >
-        {currentImageUrl ? (
-          <img
-            src={currentImageUrl}
-            alt="Vehiculo"
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Cargando imagen...
-            </p>
-          </div>
-        )}
-
-        <svg
-          viewBox="0 0 100 100"
-          className="absolute inset-0 w-full h-full"
-          style={{ pointerEvents: "none" }}
+      <div className="relative w-full max-w-3xl mx-auto">
+        <div
+          className="relative w-full rounded-lg overflow-hidden"
+          style={{
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+            height: viewerHeight,
+          }}
         >
-          {danos
-            .filter((dano) => (dano.vista ?? "superior") === currentVista)
-            .map((dano) => {
-              const cfg = TIPO_CONFIG[dano.tipo];
-              return (
-                <g key={dano.id}>
-                  <circle cx={dano.x} cy={dano.y} r="3" fill={cfg.color} opacity="0.25" />
-                  <circle cx={dano.x} cy={dano.y} r="2" fill={cfg.color} opacity="0.9" />
-                  <circle cx={dano.x} cy={dano.y} r="0.8" fill="white" />
-                </g>
-              );
-            })}
-
-          {pendingPoint && (
-            <g>
-              <circle cx={pendingPoint.x} cy={pendingPoint.y} r="3" fill="var(--accent)" opacity="0.2" />
-              <circle cx={pendingPoint.x} cy={pendingPoint.y} r="2" fill="var(--accent)" opacity="0.9" />
-              <circle cx={pendingPoint.x} cy={pendingPoint.y} r="0.8" fill="white" />
-            </g>
-          )}
-        </svg>
-
-        {pendingPoint && (
-          <div
-            className="absolute z-10 min-w-40 rounded-lg border shadow-lg p-2"
-            style={{
-              left: "50%",
-              top: "50%",
-              transform: "translate(-50%, -50%)",
-              background: "var(--bg-card)",
-              borderColor: "var(--border)",
-            }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="grid gap-1">
-              {(["abolladura", "rayón", "rotura", "otro"] as DanoVehiculo["tipo"][]).map((tipo) => {
-                const cfg = TIPO_CONFIG[tipo];
-                if (tipo === "otro" && showCustomDamage) {
-                  return (
-                    <div key={tipo} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cfg.color }} />
-                      <input
-                        type="text"
-                        className="input text-xs min-w-0 flex-1"
-                        value={customDamage}
-                        onChange={(event) => setCustomDamage(event.target.value)}
-                        placeholder="Escribe el daño"
-                        onClick={(event) => event.stopPropagation()}
-                      />
-                      <button
-                        type="button"
-                        title="Guardar"
-                        aria-label="Guardar otro daño"
-                        onClick={() => addDano("otro", customDamage.trim())}
-                        disabled={!customDamage.trim()}
-                        className="btn-secondary btn-icon shrink-0"
-                        style={{ opacity: customDamage.trim() ? 1 : 0.5 }}
-                      >
-                        <Check size={14} />
-                      </button>
-                    </div>
-                  );
-                }
-
-                return (
-                  <button
-                    key={tipo}
-                    type="button"
-                    onClick={() => {
-                      if (tipo === "otro") {
-                        setShowCustomDamage(true);
-                        return;
-                      }
-                      addDano(tipo);
-                    }}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-left hover:bg-[var(--bg-secondary)]"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ background: cfg.color }} />
-                    {cfg.label}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                onClick={() => {
-                  setPendingPoint(null);
-                  setCustomDamage("");
-                  setShowCustomDamage(false);
-                }}
-                className="w-full px-2 py-1.5 rounded-md text-xs text-left hover:bg-[var(--bg-secondary)]"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Cancelar
-              </button>
+          {loadingImages ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 size={28} className="animate-spin" style={{ color: "var(--accent)" }} />
             </div>
-          </div>
-        )}
+          ) : imagenActual ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Marcar daño en vista ${vistaSeleccionada}`}
+                className="relative cursor-crosshair"
+                onClick={handleClickDiagram}
+              >
+                <img
+                  src={imagenActual.imageUrl}
+                  alt={`Vista ${vistaSeleccionada} SUV`}
+                  className="block max-w-full select-none"
+                  style={{ maxHeight: viewerHeight }}
+                  draggable={false}
+                  onLoad={() => setLoadedImageUrl(imagenActual.imageUrl)}
+                />
+                {imageReady &&
+                  danosVistaActual.map((d) => {
+                    const cfg = TIPO_CONFIG[d.tipo];
+                    return (
+                      <span
+                        key={d.id}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                        style={{ left: `${d.x}%`, top: `${d.y}%` }}
+                      >
+                        <span
+                          className="absolute -left-[9px] -top-[9px] h-[18px] w-[18px] rounded-full"
+                          style={{ background: cfg.color, opacity: 0.25 }}
+                        />
+                        <span
+                          className="absolute -left-[5px] -top-[5px] h-[10px] w-[10px] rounded-full"
+                          style={{ background: cfg.color, opacity: 0.9 }}
+                        />
+                        <span className="absolute -left-[2px] -top-[2px] h-1 w-1 rounded-full bg-white" />
+                      </span>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+              <ImageOff size={34} style={{ color: "var(--text-muted)", opacity: 0.45 }} />
+              <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+                No hay imagen SUV para esta vista
+              </p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Sube la imagen en Configuración para usarla en la inspección visual.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {danos.length > 0 && (
-        <div className="mt-4 space-y-2">
-          <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-            Daños registrados ({danos.length})
-          </p>
-          {VISTA_ORDER.map((vista) => {
-            const danosVista = danos.filter((dano) => (dano.vista ?? "superior") === vista);
-            if (danosVista.length === 0) return null;
-
-            return (
-              <div key={vista} className="space-y-2">
-                <p className="text-[11px] uppercase font-bold" style={{ color: "var(--text-muted)" }}>
-                  {VISTA_LABELS[vista]}
-                </p>
-                {danosVista.map((dano) => {
-                  const cfg = TIPO_CONFIG[dano.tipo];
+      {menuPos && (
+        <>
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9998,
+            }}
+            onClick={() => setMenuPos(null)}
+          />
+          <div
+            style={{
+              position: "fixed",
+              left: menuPos.left,
+              top: menuPos.top,
+              zIndex: 9999,
+              background: "var(--bg-primary)",
+              border: "1px solid var(--border)",
+              borderRadius: "12px",
+              boxShadow: "0 8px 30px rgba(0,0,0,0.18)",
+              padding: "8px",
+              minWidth: "180px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menuStep === "tipo" ? (
+              <div className="flex flex-col gap-1">
+                {(Object.keys(TIPO_CONFIG) as DanoVehiculo["tipo"][]).map((tipo) => {
+                  const cfg = TIPO_CONFIG[tipo];
                   return (
-                    <div
-                      key={dano.id}
-                      className="flex items-center justify-between px-3 py-2 rounded-lg"
-                      style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                    <button
+                      key={tipo}
+                      type="button"
+                      onClick={() => {
+                        if (tipo === "otro") {
+                          setMenuStep("otro");
+                        } else {
+                          addDano(tipo);
+                        }
+                      }}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left"
+                      style={{ color: "var(--text-primary)", background: "transparent" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-secondary)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
-                        <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                          {dano.descripcion?.trim() || cfg.label}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeDano(dano.id)}
-                        className="btn-ghost btn-icon p-1"
-                        style={{ color: "var(--danger)" }}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
+                      <span
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ background: cfg.color }}
+                      />
+                      {cfg.label}
+                    </button>
                   );
                 })}
               </div>
-            );
-          })}
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2 px-1">
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: TIPO_CONFIG.otro.color }} />
+                  <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Otro</span>
+                </div>
+                <input
+                  type="text"
+                  value={otroTexto}
+                  onChange={(e) => setOtroTexto(e.target.value)}
+                  placeholder="Describe el daño..."
+                  className="w-full px-3 py-2 text-sm rounded-lg"
+                  style={{
+                    background: "var(--bg-secondary)",
+                    border: "1px solid var(--border)",
+                    color: "var(--text-primary)",
+                    outline: "none",
+                  }}
+                  autoFocus
+                />
+                <div className="flex gap-2 justify-end mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setMenuStep("tipo")}
+                    className="btn btn-sm"
+                  >
+                    Atrás
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (otroTexto.trim()) {
+                        addDano("otro", otroTexto.trim());
+                      }
+                    }}
+                    className="btn btn-sm"
+                    style={{
+                      background: TIPO_CONFIG.otro.color,
+                      color: "#fff",
+                      opacity: otroTexto.trim() ? 1 : 0.5,
+                    }}
+                    disabled={!otroTexto.trim()}
+                  >
+                    <Check size={14} />
+                    Agregar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {danos.length > 0 && (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+            Daños registrados ({danos.length})
+          </p>
+          {(() => {
+            const grouped = new Map<VehiculoVista, DanoVehiculo[]>();
+            for (const d of danos) {
+              const v = d.vista ?? "superior";
+              if (!grouped.has(v)) grouped.set(v, []);
+              grouped.get(v)!.push(d);
+            }
+            return VISTAS.filter((v) => grouped.has(v.value)).map((vista) => {
+              const items = grouped.get(vista.value)!;
+              return (
+                <div key={vista.value}>
+                  <p className="text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
+                    {vista.label}
+                  </p>
+                  <div className="space-y-1">
+                    {items.map((d) => {
+                      const cfg = TIPO_CONFIG[d.tipo];
+                      return (
+                        <div
+                          key={d.id}
+                          className="flex items-center justify-between px-3 py-2 rounded-lg"
+                          style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
+                            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                              {cfg.label}{d.descripcion ? `: ${d.descripcion}` : ""}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeDano(d.id)}
+                            className="btn-ghost btn-icon p-1"
+                            style={{ color: "var(--danger)" }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 

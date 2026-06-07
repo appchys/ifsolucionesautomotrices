@@ -1,22 +1,57 @@
 "use client";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { getOrdenes, getItemsOrden, getPagos, createPago, deletePago } from "@/lib/services";
-import { OrdenTrabajo, ItemOrden, Pago, MetodoPago } from "@/types";
+import {
+  getOrdenes,
+  getItemsOrden,
+  getPagos,
+  createPago,
+  deletePago,
+  getClienteById,
+  getVehiculoById,
+  getDevolucionesByOrden,
+} from "@/lib/services";
+import { OrdenTrabajo, Pago, MetodoPago } from "@/types";
 import { format } from "date-fns";
-import { es } from "date-fns/locale";
 import { CreditCard, Plus, Trash2, Loader2, DollarSign, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "react-hot-toast";
+import { BANCOS_TRANSFERENCIA, BANCO_TRANSFERENCIA_LIST_ID } from "@/lib/paymentBanks";
+import {
+  calcularPagoConRecargo,
+  getPagoMetodoLabel,
+  getPagoMontoBase,
+  getPagoRecargo,
+  METODOS_PAGO_ORDEN,
+} from "@/lib/orderPayments";
 
 interface OrdenConSaldo {
   orden: OrdenTrabajo;
   total: number;
+  totalBruto: number;
+  devuelto: number;
+  recargos: number;
   pagado: number;
+  abonadoBase: number;
+  cobradoNeto: number;
   saldo: number;
+  saldoAFavor: number;
   pagos: Pago[];
 }
 
-const METODOS: MetodoPago[] = ["efectivo", "transferencia", "tarjeta", "otro"];
+const isPagada = (orden: OrdenConSaldo) => orden.saldo <= 0.01;
+
+const getClienteLabel = (orden: OrdenTrabajo) => {
+  const nombre = [orden.cliente?.nombre, orden.cliente?.apellido].filter(Boolean).join(" ");
+  return nombre || "Cliente sin datos";
+};
+
+const getVehiculoLabel = (orden: OrdenTrabajo) => {
+  const vehiculo = orden.vehiculo;
+  if (!vehiculo) return "Vehículo sin datos";
+  return [vehiculo.marca, vehiculo.modelo, vehiculo.anio, vehiculo.placa ? `· ${vehiculo.placa}` : ""]
+    .filter(Boolean)
+    .join(" ");
+};
 
 export default function PagosPage() {
   const [data, setData] = useState<OrdenConSaldo[]>([]);
@@ -24,6 +59,7 @@ export default function PagosPage() {
   const [selected, setSelected] = useState<OrdenConSaldo | null>(null);
   const [monto, setMonto] = useState("");
   const [metodo, setMetodo] = useState<MetodoPago>("efectivo");
+  const [banco, setBanco] = useState("");
   const [referencia, setReferencia] = useState("");
   const [savingPago, setSavingPago] = useState(false);
 
@@ -32,38 +68,78 @@ export default function PagosPage() {
     const ordenes = await getOrdenes();
     const result: OrdenConSaldo[] = [];
     for (const o of ordenes) {
-      if (o.estado === "Entregado") continue;
-      const items = await getItemsOrden(o.id!);
-      const pagos = await getPagos(o.id!);
-      const total = items.reduce((s, i) => s + i.subtotal, 0);
+      if (!o.id || o.estado === "Entregado") continue;
+      const [items, pagos, cliente, vehiculo, devoluciones] = await Promise.all([
+        getItemsOrden(o.id),
+        getPagos(o.id),
+        getClienteById(o.clienteId),
+        getVehiculoById(o.vehiculoId),
+        getDevolucionesByOrden(o.id),
+      ]);
+      const totalBruto = items.reduce((s, i) => s + i.subtotal, 0);
+      const devuelto = devoluciones.reduce((s, devolucion) => s + devolucion.subtotalDevuelto, 0);
+      const montoDevuelto = devoluciones.reduce((s, devolucion) => s + devolucion.montoDevuelto, 0);
+      const total = Math.max(0, totalBruto - devuelto);
       const pagado = pagos.reduce((s, p) => s + p.monto, 0);
-      result.push({ orden: o, total, pagado, saldo: total - pagado, pagos });
+      const abonadoBase = pagos.reduce((s, p) => s + getPagoMontoBase(p), 0);
+      const recargos = pagos.reduce((s, p) => s + getPagoRecargo(p), 0);
+      const abonoBaseNeto = Math.max(0, abonadoBase - montoDevuelto);
+      const cobradoNeto = Math.max(0, pagado - montoDevuelto);
+      result.push({
+        orden: { ...o, cliente: cliente ?? undefined, vehiculo: vehiculo ?? undefined },
+        total,
+        totalBruto,
+        devuelto,
+        recargos,
+        pagado,
+        abonadoBase,
+        cobradoNeto,
+        saldo: Math.max(0, total - abonoBaseNeto),
+        saldoAFavor: Math.max(0, abonoBaseNeto - total),
+        pagos,
+      });
     }
     setData(result);
     setLoading(false);
+    return result;
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      void load();
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, []);
 
   const handlePago = async () => {
     if (!selected || !monto || isNaN(Number(monto)) || Number(monto) <= 0) {
       toast.error("Ingrese un monto válido");
       return;
     }
+    if (Number(monto) > selected.saldo + 0.01) {
+      toast.error(`El monto no puede superar el saldo pendiente ($${selected.saldo.toFixed(2)})`);
+      return;
+    }
+    const pagoCalculado = calcularPagoConRecargo(Number(monto), metodo);
     setSavingPago(true);
     try {
       await createPago({
         ordenId: selected.orden.id!,
-        monto: Number(monto),
+        monto: pagoCalculado.montoCobrado,
+        montoBase: pagoCalculado.montoBase,
+        recargo: pagoCalculado.recargo,
+        porcentajeRecargo: pagoCalculado.porcentajeRecargo,
         metodoPago: metodo,
+        banco: metodo === "transferencia" ? banco.trim() || undefined : undefined,
         referencia,
       });
       toast.success("Pago registrado");
       setMonto("");
+      setBanco("");
       setReferencia("");
-      await load();
-      // refresh selected
-      const updated = data.find((d) => d.orden.id === selected.orden.id);
+      const updatedData = await load();
+      // refresh selected with the newly loaded data
+      const updated = updatedData.find((d) => d.orden.id === selected.orden.id);
       if (updated) setSelected(updated);
     } finally {
       setSavingPago(false);
@@ -77,8 +153,66 @@ export default function PagosPage() {
     load();
   };
 
-  const totalSaldo = data.reduce((s, d) => s + d.saldo, 0);
-  const totalCobrado = data.reduce((s, d) => s + d.pagado, 0);
+  const pendientes = data.filter((d) => !isPagada(d));
+  const pagadas = data.filter(isPagada);
+  const totalSaldo = pendientes.reduce((s, d) => s + Math.max(d.saldo, 0), 0);
+  const totalCobrado = data.reduce((s, d) => s + d.cobradoNeto, 0);
+  const pagoPreview = calcularPagoConRecargo(Number(monto || 0), metodo);
+
+  const renderOrdenCard = (d: OrdenConSaldo) => {
+    const pct = d.total > 0 ? Math.min(((d.total - d.saldo) / d.total) * 100, 100) : 0;
+    const isSelected = selected?.orden.id === d.orden.id;
+    const pagada = isPagada(d);
+    return (
+      <div
+        key={d.orden.id}
+        className="p-4 rounded-xl cursor-pointer transition-all"
+        style={{
+          background: isSelected ? "rgba(37,99,235,0.08)" : "var(--bg-secondary)",
+          border: `1px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
+        }}
+        onClick={() => setSelected(d)}
+      >
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-mono text-sm font-bold" style={{ color: "var(--accent-light)" }}>
+                #{String(d.orden.numero ?? 0).padStart(4, "0")}
+              </span>
+              <span className={`badge ${pagada ? "badge-green" : "badge-yellow"}`}>
+                {pagada ? "Pagada" : "Pago pendiente"}
+              </span>
+            </div>
+            <p className="text-sm mt-2 font-medium" style={{ color: "var(--text-primary)" }}>
+              {getClienteLabel(d.orden)}
+            </p>
+            <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              {getVehiculoLabel(d.orden)}
+            </p>
+            {(d.orden.cliente?.telefono || d.orden.cliente?.identificacion) && (
+              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                {[d.orden.cliente?.telefono, d.orden.cliente?.identificacion].filter(Boolean).join(" · ")}
+              </p>
+            )}
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-sm font-bold" style={{ color: pagada ? "var(--success)" : "var(--warning)" }}>
+              ${(d.saldoAFavor > 0.01 ? d.saldoAFavor : Math.max(d.saldo, 0)).toFixed(2)}
+            </p>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              {d.saldoAFavor > 0.01 ? "a favor" : `de $${d.total.toFixed(2)}`}
+            </p>
+          </div>
+        </div>
+        <div className="progress-bar">
+          <div className="progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+          {Math.round(pct)}% pagado
+        </p>
+      </div>
+    );
+  };
 
   return (
     <AppShell>
@@ -91,7 +225,7 @@ export default function PagosPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
         {[
           { label: "Órdenes Activas", value: data.length, icon: Clock, color: "#2563eb", bg: "rgba(37,99,235,0.12)" },
-          { label: "Total Cobrado", value: `$${totalCobrado.toFixed(2)}`, icon: CheckCircle2, color: "#10b981", bg: "rgba(16,185,129,0.12)" },
+          { label: "Cobro Neto", value: `$${totalCobrado.toFixed(2)}`, icon: CheckCircle2, color: "#10b981", bg: "rgba(16,185,129,0.12)" },
           { label: "Saldo Pendiente", value: `$${totalSaldo.toFixed(2)}`, icon: AlertCircle, color: "#f59e0b", bg: "rgba(245,158,11,0.12)" },
         ].map((s) => (
           <div key={s.label} className="stat-card">
@@ -120,45 +254,38 @@ export default function PagosPage() {
               <p className="text-sm">Sin saldos pendientes</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {data.map((d) => {
-                const pct = d.total > 0 ? (d.pagado / d.total) * 100 : 0;
-                const isSelected = selected?.orden.id === d.orden.id;
-                return (
-                  <div
-                    key={d.orden.id}
-                    className="p-4 rounded-xl cursor-pointer transition-all"
-                    style={{
-                      background: isSelected ? "rgba(37,99,235,0.08)" : "var(--bg-secondary)",
-                      border: `1px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
-                    }}
-                    onClick={() => setSelected(d)}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <span className="font-mono text-sm font-bold" style={{ color: "var(--accent-light)" }}>
-                          #{String(d.orden.numero ?? 0).padStart(4, "0")}
-                        </span>
-                        <span className="text-sm ml-2" style={{ color: "var(--text-secondary)" }}>
-                          {d.orden.cliente?.nombre} {d.orden.cliente?.apellido}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold" style={{ color: d.saldo > 0 ? "var(--warning)" : "var(--success)" }}>
-                          ${d.saldo.toFixed(2)}
-                        </p>
-                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>de ${d.total.toFixed(2)}</p>
-                      </div>
-                    </div>
-                    <div className="progress-bar">
-                      <div className="progress-fill" style={{ width: `${pct}%` }} />
-                    </div>
-                    <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                      {Math.round(pct)}% pagado
-                    </p>
-                  </div>
-                );
-              })}
+            <div className="space-y-6">
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    Pagos pendientes
+                  </h3>
+                  <span className="badge badge-yellow">{pendientes.length}</span>
+                </div>
+                {pendientes.length === 0 ? (
+                  <p className="text-sm rounded-lg p-3" style={{ color: "var(--text-muted)", background: "var(--bg-secondary)" }}>
+                    No hay órdenes con saldo pendiente.
+                  </p>
+                ) : (
+                  <div className="space-y-3">{pendientes.map(renderOrdenCard)}</div>
+                )}
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                    Pagadas
+                  </h3>
+                  <span className="badge badge-green">{pagadas.length}</span>
+                </div>
+                {pagadas.length === 0 ? (
+                  <p className="text-sm rounded-lg p-3" style={{ color: "var(--text-muted)", background: "var(--bg-secondary)" }}>
+                    Aún no hay órdenes totalmente pagadas.
+                  </p>
+                ) : (
+                  <div className="space-y-3">{pagadas.map(renderOrdenCard)}</div>
+                )}
+              </section>
             </div>
           )}
         </div>
@@ -173,9 +300,12 @@ export default function PagosPage() {
                 </h3>
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   {[
-                    { label: "Total Orden", value: `$${selected.total.toFixed(2)}`, color: "var(--text-primary)" },
-                    { label: "Pagado", value: `$${selected.pagado.toFixed(2)}`, color: "var(--success)" },
-                    { label: "Saldo", value: `$${selected.saldo.toFixed(2)}`, color: selected.saldo > 0 ? "var(--warning)" : "var(--success)" },
+                    { label: "Venta Bruta", value: `$${selected.totalBruto.toFixed(2)}`, color: "var(--text-primary)" },
+                    { label: "Devuelto", value: `-$${selected.devuelto.toFixed(2)}`, color: "var(--danger)" },
+                    { label: "Venta Neta", value: `$${selected.total.toFixed(2)}`, color: "var(--text-primary)" },
+                    { label: "Abonado", value: `$${selected.abonadoBase.toFixed(2)}`, color: "var(--success)" },
+                    { label: "Recargos", value: `$${selected.recargos.toFixed(2)}`, color: "var(--accent)" },
+                    { label: selected.saldoAFavor > 0.01 ? "A Favor" : "Saldo", value: `$${(selected.saldoAFavor > 0.01 ? selected.saldoAFavor : selected.saldo).toFixed(2)}`, color: selected.saldo > 0 ? "var(--warning)" : "var(--success)" },
                     { label: "Estado", value: selected.saldo <= 0 ? "Pagado" : "Pendiente", color: selected.saldo <= 0 ? "var(--success)" : "var(--warning)" },
                   ].map((s) => (
                     <div key={s.label} className="p-3 rounded-lg" style={{ background: "var(--bg-secondary)" }}>
@@ -203,11 +333,40 @@ export default function PagosPage() {
                   <div className="form-group">
                     <label className="label">Método de pago</label>
                     <select className="input" value={metodo} onChange={(e) => setMetodo(e.target.value as MetodoPago)}>
-                      {METODOS.map((m) => (
-                        <option key={m} value={m}>{m.charAt(0).toUpperCase() + m.slice(1)}</option>
+                      {METODOS_PAGO_ORDEN.map((m) => (
+                        <option key={m} value={m}>{getPagoMetodoLabel(m)}</option>
                       ))}
                     </select>
                   </div>
+                  {pagoPreview.recargo > 0 && (
+                    <div className="rounded-lg p-3 text-sm" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+                      <div className="flex items-center justify-between">
+                        <span style={{ color: "var(--text-secondary)" }}>Recargo tarjeta ({pagoPreview.porcentajeRecargo}%)</span>
+                        <strong>${pagoPreview.recargo.toFixed(2)}</strong>
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span style={{ color: "var(--text-secondary)" }}>Total a cobrar</span>
+                        <strong style={{ color: "var(--success)" }}>${pagoPreview.montoCobrado.toFixed(2)}</strong>
+                      </div>
+                    </div>
+                  )}
+                  {metodo === "transferencia" && (
+                    <div className="form-group">
+                      <label className="label">Banco</label>
+                      <input
+                        className="input"
+                        list={BANCO_TRANSFERENCIA_LIST_ID}
+                        placeholder="Selecciona o escribe el banco"
+                        value={banco}
+                        onChange={(e) => setBanco(e.target.value)}
+                      />
+                      <datalist id={BANCO_TRANSFERENCIA_LIST_ID}>
+                        {BANCOS_TRANSFERENCIA.map((b) => (
+                          <option key={b} value={b} />
+                        ))}
+                      </datalist>
+                    </div>
+                  )}
                   <div className="form-group">
                     <label className="label">Referencia (opcional)</label>
                     <input
@@ -243,15 +402,21 @@ export default function PagosPage() {
                       >
                         <div>
                           <p className="text-sm font-semibold" style={{ color: "var(--success)" }}>
-                            ${p.monto.toFixed(2)}
+                            ${getPagoMontoBase(p).toFixed(2)}
                           </p>
                           <p className="text-xs capitalize" style={{ color: "var(--text-muted)" }}>
-                            {p.metodoPago}
+                            {getPagoMetodoLabel(p.metodoPago)}
+                            {p.banco ? ` · ${p.banco}` : ""}
                             {p.referencia ? ` · ${p.referencia}` : ""}
                           </p>
+                          {getPagoRecargo(p) > 0 && (
+                            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                              Recargo: ${getPagoRecargo(p).toFixed(2)} - Cobrado: ${p.monto.toFixed(2)}
+                            </p>
+                          )}
                           {p.createdAt && (
                             <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                              {format((p.createdAt as any).toDate(), "dd/MM/yyyy HH:mm")}
+                              {format(p.createdAt.toDate(), "dd/MM/yyyy HH:mm")}
                             </p>
                           )}
                         </div>

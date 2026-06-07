@@ -1,12 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Wrench, Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store";
-import { getDatosTaller } from "@/lib/services";
+import { getDatosTaller, getUsuarioByUid } from "@/lib/services";
 import type { DatosTaller } from "@/types";
 
 export default function LoginPage() {
@@ -32,12 +32,19 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      const appUser = await getUsuarioByUid(cred.user.uid);
+      if (!appUser?.activo) {
+        await signOut(auth);
+        toast.error("Usuario inactivo. Contacta al administrador.");
+        return;
+      }
       toast.success("¡Bienvenido!");
       router.replace("/dashboard");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const code = typeof err === "object" && err && "code" in err ? String(err.code) : undefined;
       const msg =
-        err.code === "auth/invalid-credential"
+        code === "auth/invalid-credential"
           ? "Credenciales incorrectas"
           : "Error al iniciar sesión";
       toast.error(msg);

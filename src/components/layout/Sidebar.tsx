@@ -1,10 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Users, Car, CreditCard,
-  Settings, Wrench, LogOut, Package
+  Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -14,18 +14,21 @@ import { getDatosTaller } from "@/lib/services";
 import type { DatosTaller } from "@/types";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin","recepcion","tecnico","contador","asesor_servicio","logistica"] },
-  { href: "/ordenes", label: "Órdenes de Trabajo", icon: ClipboardList, roles: ["admin","recepcion","tecnico","contador","asesor_servicio","logistica"] },
-  { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin","recepcion","contador","asesor_servicio"] },
-  { href: "/vehiculos", label: "Vehículos", icon: Car, roles: ["admin","recepcion","asesor_servicio","logistica"] },
-  { href: "/inventario", label: "Productos y Servicios", icon: Package, roles: ["admin","recepcion","contador","logistica"] },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin","recepcion","tecnico","contador"] },
+  { href: "/ordenes", label: "Órdenes de Trabajo", icon: ClipboardList, roles: ["admin","recepcion","tecnico","contador"] },
+  { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin","recepcion","contador"] },
+  { href: "/vehiculos", label: "Vehículos", icon: Car, roles: ["admin","recepcion"] },
+  { href: "/inventario", label: "Productos y Servicios", icon: Package, roles: ["admin","recepcion","contador"] },
+  { href: "/compras", label: "Compras", icon: ShoppingCart, roles: ["admin","contador"] },
   { href: "/pagos", label: "Cobros y Pagos", icon: CreditCard, roles: ["admin","contador"] },
+  { href: "/reporte-financiero", label: "Reporte Financiero", icon: BarChart3, roles: ["admin","contador"] },
   { href: "/configuracion", label: "Configuración", icon: Settings, roles: ["admin"] },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user } = useAuthStore();
+  const router = useRouter();
+  const { user, setUser } = useAuthStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const [datosTaller, setDatosTaller] = useState<DatosTaller | null>(null);
 
@@ -35,6 +38,8 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     await signOut(auth);
+    setUser(null);
+    router.replace("/login");
     toast.success("Sesión cerrada");
   };
 
@@ -47,13 +52,12 @@ export default function Sidebar() {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/60 z-30 lg:hidden"
+          className="fixed inset-0 bg-black/60 z-30 md:hidden"
           onClick={toggleSidebar}
         />
       )}
 
       <aside
-        id="app-sidebar"
         className="app-sidebar fixed top-0 left-0 h-full z-40 flex flex-col transition-all duration-300"
         style={{
           width: sidebarOpen ? "260px" : "0px",
@@ -111,7 +115,7 @@ export default function Sidebar() {
                   href={item.href}
                   className={`sidebar-link ${active ? "active" : ""}`}
                   onClick={() => {
-                    if (window.innerWidth < 1024) toggleSidebar();
+                    if (window.innerWidth < 768) toggleSidebar();
                   }}
                 >
                   <item.icon size={18} className="flex-shrink-0" />

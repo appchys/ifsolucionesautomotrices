@@ -5,20 +5,20 @@ import { subscribeOrdenes, updateEstadoOrden, getClientes, getVehiculos } from "
 import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search, Filter, Plus, Wrench } from "lucide-react";
+import { Search, Plus, Wrench } from "lucide-react";
 import { toast } from "react-hot-toast";
 import OrdenDetalleSidebar from "@/components/ordenes/OrdenDetalleSidebar";
 import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
 
 const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
-const BADGES: Record<EstadoOrden, string> = {
-  Ingreso: "status-ingreso",
-  Proceso: "status-proceso",
-  Finalizado: "status-finalizado",
-  Entregado: "status-entregado",
-};
+
+function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const maybeTimestamp = value as { toDate?: () => Date };
+  return typeof maybeTimestamp.toDate === "function" ? maybeTimestamp.toDate() : null;
+}
 
 export default function OrdenesPage() {
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
@@ -29,6 +29,7 @@ export default function OrdenesPage() {
   const [filtroEstado, setFiltroEstado] = useState<EstadoOrden | "Todos">("Todos");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [showNuevaOrden, setShowNuevaOrden] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -46,7 +47,17 @@ export default function OrdenesPage() {
       }
     };
     loadMaps();
-    const unsub = subscribeOrdenes((data) => { setOrdenes(data); setLoading(false); });
+    const unsub = subscribeOrdenes(
+      (data) => {
+        setOrdenes(data);
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Error cargando ordenes", err);
+        toast.error("No se pudieron cargar las ordenes");
+        setLoading(false);
+      }
+    );
     return () => unsub();
   }, []);
 
@@ -100,7 +111,7 @@ export default function OrdenesPage() {
           {(["Todos", ...ESTADOS] as const).map((e) => (
             <button
               key={e}
-              onClick={() => setFiltroEstado(e as any)}
+              onClick={() => setFiltroEstado(e)}
               className="btn btn-sm"
               style={{
                 background: filtroEstado === e ? "var(--accent)" : "var(--bg-card)",
@@ -181,8 +192,8 @@ export default function OrdenesPage() {
                       )}
                     </td>
                     <td className="text-xs">
-                      {o.createdAt
-                        ? format((o.createdAt as any).toDate(), "dd/MM/yy", { locale: es })
+                      {toDate(o.createdAt)
+                        ? format(toDate(o.createdAt)!, "dd/MM/yy", { locale: es })
                         : "—"}
                     </td>
                   </tr>
@@ -197,15 +208,24 @@ export default function OrdenesPage() {
         <OrdenDetalleSidebar 
           ordenId={selectedOrderId} 
           onClose={() => setSelectedOrderId(null)} 
+          onEdit={(id) => {
+            setSelectedOrderId(null);
+            setEditingOrderId(id);
+          }}
         />
       )}
 
-      {showNuevaOrden && (
+      {(showNuevaOrden || editingOrderId) && (
         <NuevaOrdenSidebar 
-          onClose={() => setShowNuevaOrden(false)} 
+          ordenId={editingOrderId ?? undefined}
+          onClose={() => {
+            setShowNuevaOrden(false);
+            setEditingOrderId(null);
+          }} 
           onSuccess={(id) => {
             setShowNuevaOrden(false);
-            router.push(`/ordenes/detalle?id=${id}`);
+            setEditingOrderId(null);
+            if (!editingOrderId) router.push(`/ordenes/detalle?id=${id}`);
           }}
         />
       )}

@@ -10,10 +10,13 @@ import {
   query,
   where,
   orderBy,
-  Timestamp,
+  writeBatch,
+  increment,
+  runTransaction,
   serverTimestamp,
   onSnapshot,
   QueryConstraint,
+  type Transaction,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "./firebase";
@@ -27,11 +30,74 @@ import {
   EstadoOrden,
   DatosTaller,
   Producto,
+  MovimientoStock,
   Servicio,
   VehicleViewImagesConfig,
   VehiculoVista,
   TipoVehiculo,
+  Compra,
+  CompraPago,
+  CompraInventarioSyncResult,
+  GmailXmlDraft,
+  GmailXmlDraftStatus,
+  Devolucion,
+  AccionInventarioDevolucion,
+  DevolucionProveedor,
 } from "@/types";
+
+function normalizarMargenGanancia(value: unknown): 25 | 40 {
+  return Number(value) === 40 ? 40 : 25;
+}
+
+const IVA_RATE = 15;
+
+function calcularPrecioVenta(costoBase: number, margenGanancia: 25 | 40, aplicaIva = false): number {
+  const precioConMargen = Number(costoBase || 0) * (1 + margenGanancia / 100);
+  const precioFinal = aplicaIva ? precioConMargen * (1 + IVA_RATE / 100) : precioConMargen;
+  return Number(precioFinal.toFixed(2));
+}
+
+function resolverMargenProducto(producto?: Producto | null): 25 | 40 {
+  if (!producto) return 25;
+  if (producto.margenGanancia === 25 || producto.margenGanancia === 40) return producto.margenGanancia;
+  const costoBase = Number(producto.costoBase ?? 0);
+  if (costoBase <= 0) return 25;
+  const margenActual = (Number(producto.precioBase ?? 0) / costoBase - 1) * 100;
+  return Math.abs(margenActual - 40) < Math.abs(margenActual - 25) ? 40 : 25;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function removeUndefinedFields<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => item !== undefined)
+      .map((item) => removeUndefinedFields(item)) as T;
+  }
+
+  if (!isPlainObject(value)) return value;
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, fieldValue]) => fieldValue !== undefined)
+      .map(([key, fieldValue]) => [key, removeUndefinedFields(fieldValue)])
+  ) as T;
+}
+
+function getCantidadStock(value: unknown): number {
+  const cantidad = Math.floor(Number(value ?? 0));
+  return Number.isFinite(cantidad) ? cantidad : 0;
+}
+
+function itemDescuentaStock<T extends Partial<ItemOrden>>(item: T): item is T & { productoId: string } {
+  return item.tipo === "producto" && Boolean(item.productoId);
+}
+
+function calcularSubtotalItem(cantidad: number, precioUnitario: number, impuestoAplicable: number): number {
+  return Number((cantidad * precioUnitario * (1 + impuestoAplicable / 100)).toFixed(2));
+}
 
 export const DATOS_TALLER_DEFAULT: DatosTaller = {
   razonSocial: "",
@@ -234,18 +300,36 @@ export async function getOrdenes(filters?: { estado?: EstadoOrden }): Promise<Or
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo));
 }
 
+export async function getOrdenesByVehiculoId(vehiculoId: string): Promise<OrdenTrabajo[]> {
+  const snap = await getDocs(
+    query(collection(db, "ordenesTrabajo"), where("vehiculoId", "==", vehiculoId))
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo))
+    .sort((a, b) => {
+      const aTime = a.createdAt?.toDate?.().getTime() ?? 0;
+      const bTime = b.createdAt?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
+}
+
 export async function getOrdenById(id: string): Promise<OrdenTrabajo | null> {
   const snap = await getDoc(doc(db, "ordenesTrabajo", id));
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as OrdenTrabajo) : null;
 }
 
 export function subscribeOrdenes(
-  callback: (ordenes: OrdenTrabajo[]) => void
+  callback: (ordenes: OrdenTrabajo[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
   const q = query(collection(db, "ordenesTrabajo"), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo)));
-  });
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo)));
+    },
+    onError
+  );
 }
 
 export async function createOrden(data: Omit<OrdenTrabajo, "id">): Promise<string> {
@@ -253,12 +337,53 @@ export async function createOrden(data: Omit<OrdenTrabajo, "id">): Promise<strin
   const countSnap = await getDocs(collection(db, "ordenesTrabajo"));
   const numero = countSnap.size + 1;
   const ref = await addDoc(collection(db, "ordenesTrabajo"), {
-    ...data,
+    ...removeUndefinedFields(data),
     numero,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+export async function createOrdenConItems(
+  data: Omit<OrdenTrabajo, "id">,
+  items: Omit<ItemOrden, "id" | "ordenId">[]
+): Promise<string> {
+  const countSnap = await getDocs(collection(db, "ordenesTrabajo"));
+  const numero = countSnap.size + 1;
+  const ordenRef = doc(collection(db, "ordenesTrabajo"));
+
+  await runTransaction(db, async (transaction) => {
+    if (!data.esCotizacion) {
+      await aplicarMovimientosStockOrden(
+        transaction,
+        items
+          .filter(itemDescuentaStock)
+          .map((item) => ({
+            item,
+            cantidadDelta: -getCantidadStock(item.cantidad),
+            nota: `Salida por orden ${ordenRef.id}`,
+          }))
+      );
+    }
+
+    transaction.set(ordenRef, {
+      ...removeUndefinedFields(data),
+      numero,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    items.forEach((item) => {
+      transaction.set(doc(collection(db, "ordenesTrabajo", ordenRef.id, "itemsOrden")), {
+        ...removeUndefinedFields(item),
+        ordenId: ordenRef.id,
+        createdAt: serverTimestamp(),
+      });
+    });
+  });
+
+  return ordenRef.id;
 }
 
 export async function getProximoNumeroOrden(): Promise<number> {
@@ -267,13 +392,162 @@ export async function getProximoNumeroOrden(): Promise<number> {
 }
 
 export async function updateOrden(id: string, data: Partial<OrdenTrabajo>): Promise<void> {
-  await updateDoc(doc(db, "ordenesTrabajo", id), { ...data, updatedAt: serverTimestamp() });
+  if (data.esCotizacion === false) {
+    const items = await getItemsOrden(id);
+    const ordenRef = doc(db, "ordenesTrabajo", id);
+
+    await runTransaction(db, async (transaction) => {
+      const ordenSnap = await transaction.get(ordenRef);
+      if (!ordenSnap.exists()) throw new Error("ORDEN_NO_ENCONTRADA");
+      const ordenActual = ordenSnap.data() as OrdenTrabajo;
+
+      if (ordenActual.esCotizacion) {
+        await aplicarMovimientosStockOrden(
+          transaction,
+          items
+            .filter(itemDescuentaStock)
+            .map((item) => ({
+              item,
+              cantidadDelta: -getCantidadStock(item.cantidad),
+              nota: `Conversion de cotizacion a orden ${id}`,
+            }))
+        );
+      }
+
+      transaction.update(ordenRef, {
+        ...removeUndefinedFields(data),
+        updatedAt: serverTimestamp(),
+      });
+    });
+    return;
+  }
+
+  await updateDoc(doc(db, "ordenesTrabajo", id), {
+    ...removeUndefinedFields(data),
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export async function updateEstadoOrden(id: string, estado: EstadoOrden): Promise<void> {
   const update: Record<string, unknown> = { estado, updatedAt: serverTimestamp() };
   if (estado === "Entregado") update.fechaEntrega = serverTimestamp();
   await updateDoc(doc(db, "ordenesTrabajo", id), update);
+}
+
+type MovimientoStockOrden = {
+  item: Partial<ItemOrden> & { productoId: string };
+  cantidadDelta: number;
+  nota: string;
+};
+
+type AplicarMovimientosStockOrdenOptions = {
+  omitirProductosEliminados?: boolean;
+};
+
+async function aplicarMovimientosStockOrden(
+  transaction: Transaction,
+  movimientos: MovimientoStockOrden[],
+  options: AplicarMovimientosStockOrdenOptions = {}
+): Promise<void> {
+  const movimientosAgrupados = Array.from(
+    movimientos.reduce((acc, movimiento) => {
+      const cantidadDelta = getCantidadStock(Math.abs(movimiento.cantidadDelta)) * Math.sign(movimiento.cantidadDelta);
+      if (cantidadDelta === 0) return acc;
+
+      const current = acc.get(movimiento.item.productoId);
+      if (current) {
+        current.cantidadDelta += cantidadDelta;
+        current.nota = `${current.nota}; ${movimiento.nota}`;
+      } else {
+        acc.set(movimiento.item.productoId, { ...movimiento, cantidadDelta });
+      }
+      return acc;
+    }, new Map<string, MovimientoStockOrden>()).values()
+  );
+
+  const productoSnaps = await Promise.all(
+    movimientosAgrupados.map((movimiento) => transaction.get(doc(db, "productos", movimiento.item.productoId)))
+  );
+
+  movimientosAgrupados.forEach((movimiento, index) => {
+    const productoSnap = productoSnaps[index];
+    if (!productoSnap.exists()) {
+      if (options.omitirProductosEliminados && movimiento.cantidadDelta > 0) return;
+      throw new Error("PRODUCTO_NO_ENCONTRADO");
+    }
+
+    const cantidad = getCantidadStock(Math.abs(movimiento.cantidadDelta));
+    const producto = { id: productoSnap.id, ...productoSnap.data() } as Producto;
+    const stockAnterior = getCantidadStock(producto.stockActual);
+    const stockNuevo = stockAnterior + movimiento.cantidadDelta;
+    if (stockNuevo < 0) throw new Error("STOCK_INSUFICIENTE");
+
+    transaction.update(productoSnap.ref, {
+      stockActual: stockNuevo,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(doc(collection(db, "movimientosStock")), {
+      productoId: productoSnap.id,
+      productoNombre: producto.nombre,
+      sku: producto.sku,
+      tipo: movimiento.cantidadDelta < 0 ? "salida" : "entrada",
+      cantidad,
+      stockAnterior,
+      stockNuevo,
+      nota: movimiento.nota,
+      unidadMedida: producto.unidadMedida ?? "",
+      createdAt: serverTimestamp(),
+    } satisfies Omit<MovimientoStock, "id" | "createdAt"> & { createdAt: ReturnType<typeof serverTimestamp> });
+  });
+}
+
+async function aplicarMovimientoStockOrden(
+  transaction: Transaction,
+  item: Partial<ItemOrden> & { productoId: string },
+  cantidadDelta: number,
+  nota: string,
+  options?: AplicarMovimientosStockOrdenOptions
+): Promise<void> {
+  await aplicarMovimientosStockOrden(transaction, [{ item, cantidadDelta, nota }], options);
+}
+
+export async function deleteOrden(id: string): Promise<void> {
+  const items = await getItemsOrden(id);
+  const orden = await getOrdenById(id);
+  const pagos = await getPagos(id);
+
+  await runTransaction(db, async (transaction) => {
+    const ordenRef = doc(db, "ordenesTrabajo", id);
+    const ordenSnap = await transaction.get(ordenRef);
+    if (!ordenSnap.exists()) return;
+    const ordenActual = ordenSnap.data() as OrdenTrabajo;
+
+    if (!ordenActual.esCotizacion) {
+      await aplicarMovimientosStockOrden(
+        transaction,
+        items
+          .filter(itemDescuentaStock)
+          .map((item) => ({
+            item,
+            cantidadDelta: getCantidadStock(item.cantidad),
+            nota: `Reversa por eliminar orden ${id}`,
+          })),
+        { omitirProductosEliminados: true }
+      );
+    }
+
+    items.forEach((item) => {
+      if (item.id) transaction.delete(doc(db, "ordenesTrabajo", id, "itemsOrden", item.id));
+    });
+    pagos.forEach((p) => {
+      if (p.id) transaction.delete(doc(db, "pagos", p.id));
+    });
+    transaction.delete(ordenRef);
+  });
+
+  if (orden?.fotoUrls?.length) {
+    await Promise.allSettled(orden.fotoUrls.map((url) => deleteOrdenFoto(url)));
+  }
 }
 
 // ─── ITEMS DE ORDEN ───────────────────────────────────────────────────────────
@@ -285,22 +559,192 @@ export async function getItemsOrden(ordenId: string): Promise<ItemOrden[]> {
 }
 
 export async function addItemOrden(ordenId: string, item: Omit<ItemOrden, "id">): Promise<string> {
-  const ref = await addDoc(collection(db, "ordenesTrabajo", ordenId, "itemsOrden"), {
-    ...item,
-    createdAt: serverTimestamp(),
+  const itemRef = doc(collection(db, "ordenesTrabajo", ordenId, "itemsOrden"));
+  const ordenRef = doc(db, "ordenesTrabajo", ordenId);
+
+  await runTransaction(db, async (transaction) => {
+    const ordenSnap = await transaction.get(ordenRef);
+    if (!ordenSnap.exists()) throw new Error("ORDEN_NO_ENCONTRADA");
+    const orden = ordenSnap.data() as OrdenTrabajo;
+
+    if (!orden.esCotizacion && itemDescuentaStock(item)) {
+      await aplicarMovimientoStockOrden(
+        transaction,
+        item,
+        -getCantidadStock(item.cantidad),
+        `Salida por orden ${ordenId}`
+      );
+    }
+
+    transaction.set(itemRef, {
+      ...removeUndefinedFields(item),
+      createdAt: serverTimestamp(),
+    });
   });
-  return ref.id;
+  return itemRef.id;
 }
 
 export async function updateItemOrden(ordenId: string, itemId: string, data: Partial<ItemOrden>): Promise<void> {
-  await updateDoc(doc(db, "ordenesTrabajo", ordenId, "itemsOrden", itemId), data);
+  const ordenRef = doc(db, "ordenesTrabajo", ordenId);
+  const itemRef = doc(db, "ordenesTrabajo", ordenId, "itemsOrden", itemId);
+
+  await runTransaction(db, async (transaction) => {
+    const [ordenSnap, itemSnap] = await Promise.all([
+      transaction.get(ordenRef),
+      transaction.get(itemRef),
+    ]);
+    if (!ordenSnap.exists()) throw new Error("ORDEN_NO_ENCONTRADA");
+    if (!itemSnap.exists()) throw new Error("ITEM_NO_ENCONTRADO");
+
+    const orden = ordenSnap.data() as OrdenTrabajo;
+    const itemActual = { id: itemSnap.id, ...itemSnap.data() } as ItemOrden;
+    const itemSiguiente = { ...itemActual, ...data };
+
+    if (!orden.esCotizacion && itemDescuentaStock(itemSiguiente) && data.cantidad !== undefined) {
+      const diferencia = getCantidadStock(data.cantidad) - getCantidadStock(itemActual.cantidad);
+      if (diferencia !== 0) {
+        await aplicarMovimientoStockOrden(
+          transaction,
+          itemSiguiente,
+          -diferencia,
+          `Ajuste de cantidad en orden ${ordenId}`
+        );
+      }
+    }
+
+    transaction.update(itemRef, removeUndefinedFields(data));
+  });
 }
 
 export async function deleteItemOrden(ordenId: string, itemId: string): Promise<void> {
-  await deleteDoc(doc(db, "ordenesTrabajo", ordenId, "itemsOrden", itemId));
+  const ordenRef = doc(db, "ordenesTrabajo", ordenId);
+  const itemRef = doc(db, "ordenesTrabajo", ordenId, "itemsOrden", itemId);
+
+  await runTransaction(db, async (transaction) => {
+    const [ordenSnap, itemSnap] = await Promise.all([
+      transaction.get(ordenRef),
+      transaction.get(itemRef),
+    ]);
+    if (!ordenSnap.exists()) throw new Error("ORDEN_NO_ENCONTRADA");
+    if (!itemSnap.exists()) return;
+
+    const orden = ordenSnap.data() as OrdenTrabajo;
+    const item = { id: itemSnap.id, ...itemSnap.data() } as ItemOrden;
+
+    if (!orden.esCotizacion && itemDescuentaStock(item)) {
+      await aplicarMovimientoStockOrden(
+        transaction,
+        item,
+        getCantidadStock(item.cantidad),
+        `Reversa por eliminar item de orden ${ordenId}`,
+        { omitirProductosEliminados: true }
+      );
+    }
+
+    transaction.delete(itemRef);
+  });
 }
 
 // ─── PAGOS ────────────────────────────────────────────────────────────────────
+// ─── DEVOLUCIONES ────────────────────────────────────────────────────────────
+export async function getDevoluciones(): Promise<Devolucion[]> {
+  const snap = await getDocs(query(collection(db, "devoluciones"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Devolucion));
+}
+
+export async function getDevolucionesByOrden(ordenId: string): Promise<Devolucion[]> {
+  const snap = await getDocs(
+    query(collection(db, "devoluciones"), where("ordenId", "==", ordenId))
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as Devolucion))
+    .sort((a, b) => {
+      const aTime = a.createdAt?.toDate?.().getTime() ?? 0;
+      const bTime = b.createdAt?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
+}
+
+export async function createDevolucion(data: {
+  ordenId: string;
+  itemOrdenId: string;
+  cantidad: number;
+  motivo: string;
+  accionInventario: AccionInventarioDevolucion;
+  montoDevuelto?: number;
+  metodoDevolucion?: Devolucion["metodoDevolucion"];
+  clienteNombre?: string;
+  vehiculoPlaca?: string;
+  notas?: string;
+}): Promise<string> {
+  const cantidad = getCantidadStock(data.cantidad);
+  if (cantidad <= 0) throw new Error("CANTIDAD_INVALIDA");
+  if (!data.motivo.trim()) throw new Error("MOTIVO_REQUERIDO");
+
+  const devolucionesExistentes = await getDevolucionesByOrden(data.ordenId);
+  const cantidadDevuelta = devolucionesExistentes
+    .filter((devolucion) => devolucion.itemOrdenId === data.itemOrdenId)
+    .reduce((sum, devolucion) => sum + getCantidadStock(devolucion.cantidad), 0);
+
+  const devolucionRef = doc(collection(db, "devoluciones"));
+  const ordenRef = doc(db, "ordenesTrabajo", data.ordenId);
+  const itemRef = doc(db, "ordenesTrabajo", data.ordenId, "itemsOrden", data.itemOrdenId);
+
+  await runTransaction(db, async (transaction) => {
+    const [ordenSnap, itemSnap] = await Promise.all([
+      transaction.get(ordenRef),
+      transaction.get(itemRef),
+    ]);
+    if (!ordenSnap.exists()) throw new Error("ORDEN_NO_ENCONTRADA");
+    if (!itemSnap.exists()) throw new Error("ITEM_NO_ENCONTRADO");
+
+    const orden = { id: ordenSnap.id, ...ordenSnap.data() } as OrdenTrabajo;
+    const item = { id: itemSnap.id, ...itemSnap.data() } as ItemOrden;
+    if (!itemDescuentaStock(item)) throw new Error("ITEM_NO_DEVOLVIBLE");
+    if (cantidadDevuelta + cantidad > getCantidadStock(item.cantidad)) {
+      throw new Error("DEVOLUCION_EXCEDE_CANTIDAD");
+    }
+
+    const subtotalDevuelto = calcularSubtotalItem(cantidad, item.precioUnitario, item.impuestoAplicable);
+    const payload: Omit<Devolucion, "id" | "createdAt"> & { createdAt: ReturnType<typeof serverTimestamp> } = {
+      ordenId: data.ordenId,
+      numeroOrden: orden.numero,
+      clienteId: orden.clienteId,
+      clienteNombre: data.clienteNombre ?? [orden.cliente?.nombre, orden.cliente?.apellido].filter(Boolean).join(" "),
+      vehiculoId: orden.vehiculoId,
+      vehiculoPlaca: data.vehiculoPlaca ?? orden.vehiculo?.placa,
+      itemOrdenId: data.itemOrdenId,
+      productoId: item.productoId,
+      productoSku: item.productoSku ?? "",
+      productoNombre: item.productoNombre ?? item.descripcion,
+      cantidad,
+      precioUnitario: item.precioUnitario,
+      impuestoAplicable: item.impuestoAplicable,
+      subtotalDevuelto,
+      motivo: data.motivo.trim(),
+      accionInventario: data.accionInventario,
+      estado: "registrada",
+      montoDevuelto: Number(data.montoDevuelto ?? subtotalDevuelto),
+      metodoDevolucion: data.metodoDevolucion,
+      notas: data.notas?.trim() || undefined,
+      createdAt: serverTimestamp(),
+    };
+
+    if (data.accionInventario === "reingresar_stock") {
+      await aplicarMovimientoStockOrden(
+        transaction,
+        item,
+        cantidad,
+        `Devolucion de cliente - orden ${data.ordenId}: ${data.motivo.trim()}`
+      );
+    }
+
+    transaction.set(devolucionRef, removeUndefinedFields(payload));
+  });
+
+  return devolucionRef.id;
+}
+
 export async function getPagos(ordenId: string): Promise<Pago[]> {
   const snap = await getDocs(
     query(
@@ -312,9 +756,17 @@ export async function getPagos(ordenId: string): Promise<Pago[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Pago));
 }
 
+export async function getTodosPagos(): Promise<Pago[]> {
+  const snap = await getDocs(query(collection(db, "pagos"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Pago));
+}
+
 export async function createPago(pago: Omit<Pago, "id">): Promise<string> {
+  const data = Object.fromEntries(
+    Object.entries(pago).filter(([, value]) => value !== undefined)
+  );
   const ref = await addDoc(collection(db, "pagos"), {
-    ...pago,
+    ...data,
     createdAt: serverTimestamp(),
   });
   return ref.id;
@@ -329,34 +781,36 @@ export async function getUsuarios(): Promise<AppUser[]> {
   const snap = await getDocs(query(collection(db, "usuarios"), orderBy("displayName")));
   return snap.docs.map((d) => {
     const data = d.data();
-    return { id: d.id, uid: String(data.uid ?? d.id), ...data } as AppUser;
+    return {
+      id: d.id,
+      uid: String(data.uid ?? d.id),
+      email: String(data.email ?? ""),
+      displayName: String(data.displayName ?? ""),
+      role: data.role,
+      photoURL: data.photoURL,
+      activo: Boolean(data.activo),
+      createdAt: data.createdAt,
+    } as AppUser;
   });
 }
 
-export async function createUsuarioDB(uid: string, data: Omit<AppUser, "uid">): Promise<void> {
-  await addDoc(collection(db, "usuarios"), {
-    uid,
-    ...data,
-    activo: data.activo ?? true,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+export async function createUsuarioDB(uid: string, data: Omit<AppUser, "id" | "uid" | "createdAt">): Promise<void> {
+  await setDoc(doc(db, "usuarios", uid), { uid, ...data, createdAt: serverTimestamp() });
 }
 
 export async function getUsuarioByUid(uid: string): Promise<AppUser | null> {
   const snap = await getDocs(query(collection(db, "usuarios"), where("uid", "==", uid)));
   if (snap.empty) return null;
   const d = snap.docs[0];
-  const data = d.data();
-  return { id: d.id, uid: String(data.uid ?? d.id), ...data } as AppUser;
+  return { id: d.id, uid: d.data().uid, ...d.data() } as AppUser;
 }
 
-export async function updateUsuario(uid: string, data: Partial<Omit<AppUser, "id" | "uid" | "createdAt">>): Promise<void> {
-  const snap = await getDocs(query(collection(db, "usuarios"), where("uid", "==", uid)));
-  if (snap.empty) {
-    throw new Error("USER_NOT_FOUND");
-  }
-  await updateDoc(snap.docs[0].ref, { ...data, updatedAt: serverTimestamp() });
+export async function updateUsuario(id: string, data: Partial<Omit<AppUser, "id" | "uid" | "createdAt">>): Promise<void> {
+  await updateDoc(doc(db, "usuarios", id), { ...data, updatedAt: serverTimestamp() });
+}
+
+export async function deleteUsuario(id: string): Promise<void> {
+  await deleteDoc(doc(db, "usuarios", id));
 }
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
@@ -378,9 +832,23 @@ export async function getProductos(): Promise<Producto[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Producto));
 }
 
+export async function getProductoBySku(sku: string): Promise<Producto | null> {
+  const value = sku.trim().toUpperCase();
+  if (!value) return null;
+  const snap = await getDocs(query(collection(db, "productos"), where("sku", "==", value)));
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() } as Producto;
+}
+
 export async function createProducto(data: Omit<Producto, "id">): Promise<string> {
+  const margenGanancia = normalizarMargenGanancia(data.margenGanancia);
   const ref = await addDoc(collection(db, "productos"), {
     ...data,
+    margenGanancia,
+    precioBase: calcularPrecioVenta(data.costoBase, margenGanancia, data.aplicaIva),
+    sku: data.sku.trim().toUpperCase(),
+    stockActual: Math.floor(Number(data.stockActual ?? 0)),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -388,7 +856,57 @@ export async function createProducto(data: Omit<Producto, "id">): Promise<string
 }
 
 export async function updateProducto(id: string, data: Partial<Producto>): Promise<void> {
-  await updateDoc(doc(db, "productos", id), { ...data, updatedAt: serverTimestamp() });
+  const payload: Partial<Producto> = { ...data };
+  if (typeof payload.sku === "string") payload.sku = payload.sku.trim().toUpperCase();
+  if (payload.costoBase !== undefined || payload.margenGanancia !== undefined || payload.aplicaIva !== undefined) {
+    let current: Producto | null = null;
+    if (payload.costoBase === undefined || payload.margenGanancia === undefined || payload.aplicaIva === undefined) {
+      const snap = await getDoc(doc(db, "productos", id));
+      current = snap.exists() ? ({ id: snap.id, ...snap.data() } as Producto) : null;
+    }
+    const margenGanancia =
+      payload.margenGanancia !== undefined
+        ? normalizarMargenGanancia(payload.margenGanancia)
+        : resolverMargenProducto(current);
+    const costoBase = Number(payload.costoBase ?? current?.costoBase ?? 0);
+    const aplicaIva = Boolean(payload.aplicaIva ?? current?.aplicaIva ?? false);
+    payload.margenGanancia = margenGanancia;
+    payload.precioBase = calcularPrecioVenta(costoBase, margenGanancia, aplicaIva);
+  }
+  await updateDoc(doc(db, "productos", id), { ...payload, updatedAt: serverTimestamp() });
+}
+
+export async function registrarMovimientoStockManual(
+  producto: Producto,
+  tipo: MovimientoStock["tipo"],
+  cantidad: number,
+  nota?: string
+): Promise<number> {
+  if (!producto.id) throw new Error("PRODUCTO_SIN_ID");
+  const stockAnterior = Math.floor(Number(producto.stockActual ?? 0));
+  const stockNuevo = tipo === "entrada" ? stockAnterior + cantidad : stockAnterior - cantidad;
+  if (stockNuevo < 0) throw new Error("STOCK_INSUFICIENTE");
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, "productos", producto.id), {
+    stockActual: stockNuevo,
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(doc(collection(db, "movimientosStock")), {
+    productoId: producto.id,
+    productoNombre: producto.nombre,
+    sku: producto.sku,
+    tipo,
+    cantidad,
+    stockAnterior,
+    stockNuevo,
+    nota: nota?.trim() ?? "",
+    unidadMedida: producto.unidadMedida ?? "",
+    createdAt: serverTimestamp(),
+  } satisfies Omit<MovimientoStock, "id" | "createdAt"> & { createdAt: ReturnType<typeof serverTimestamp> });
+  await batch.commit();
+
+  return stockNuevo;
 }
 
 export async function deleteProducto(id: string): Promise<void> {
@@ -425,6 +943,420 @@ export async function uploadInventarioImagen(id: string, file: File, tipo: "prod
 }
 
 // ─── IMÁGENES DE VISTAS DE VEHÍCULOS ───────────────────────────────────────
+export async function getCompras(): Promise<Compra[]> {
+  const snap = await getDocs(query(collection(db, "compras"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Compra));
+}
+
+export async function getCompraByClaveAcceso(claveAcceso: string): Promise<Compra | null> {
+  const value = claveAcceso.trim();
+  if (!value) return null;
+  const snap = await getDocs(query(collection(db, "compras"), where("claveAcceso", "==", value)));
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() } as Compra;
+}
+
+export async function createCompra(data: Omit<Compra, "id">): Promise<string> {
+  const ref = await addDoc(collection(db, "compras"), {
+    ...sanitizeCompraPayload(data),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+function calcularEstadoPagoCompra(total: number, pagado: number, devuelto = 0): Compra["estadoPagoProveedor"] {
+  const saldo = Math.max(total - pagado - devuelto, 0);
+  if (saldo <= 0.01) return "pagado";
+  if (pagado > 0.01) return "parcial";
+  return "pendiente";
+}
+
+function sanitizeCompraPago(pago: CompraPago): CompraPago {
+  const data: CompraPago = {
+    monto: Number(pago.monto || 0),
+    metodoPago: pago.metodoPago,
+  };
+  const banco = pago.banco?.trim();
+  const referencia = pago.referencia?.trim();
+  const notas = pago.notas?.trim();
+  if (banco) data.banco = banco;
+  if (referencia) data.referencia = referencia;
+  if (notas) data.notas = notas;
+  if (pago.fecha) data.fecha = pago.fecha;
+  if (pago.createdAt) data.createdAt = pago.createdAt;
+  return data;
+}
+
+function sanitizeCompraPayload<T extends Omit<Compra, "id">>(data: T): T {
+  return {
+    ...data,
+    pagosProveedor: data.pagosProveedor?.map(sanitizeCompraPago),
+  };
+}
+
+function sanitizeGmailXmlDraftPayload(
+  data: Omit<GmailXmlDraft, "id" | "createdAt" | "updatedAt">
+): Omit<GmailXmlDraft, "id" | "createdAt" | "updatedAt"> {
+  const payload: Omit<GmailXmlDraft, "id" | "createdAt" | "updatedAt"> = {
+    compra: sanitizeCompraPayload(data.compra),
+    pagos: data.pagos.map(sanitizeCompraPago),
+    estado: data.estado,
+  };
+  if (data.gmailMessageId) payload.gmailMessageId = data.gmailMessageId;
+  if (data.compraId) payload.compraId = data.compraId;
+  return payload;
+}
+
+export async function getGmailXmlDrafts(): Promise<GmailXmlDraft[]> {
+  const snap = await getDocs(query(collection(db, "gmailXmlDrafts"), orderBy("updatedAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as GmailXmlDraft));
+}
+
+export async function upsertGmailXmlDraft(
+  data: Omit<GmailXmlDraft, "id" | "createdAt" | "updatedAt">
+): Promise<string> {
+  const id = data.compra.claveAcceso.trim();
+  if (!id) throw new Error("GMAIL_XML_SIN_CLAVE_ACCESO");
+
+  const ref = doc(db, "gmailXmlDrafts", id);
+  const snap = await getDoc(ref);
+  const payload: Record<string, unknown> = {
+    ...sanitizeGmailXmlDraftPayload(data),
+    updatedAt: serverTimestamp(),
+  };
+  if (!snap.exists()) payload.createdAt = serverTimestamp();
+  await setDoc(ref, payload, { merge: true });
+  return id;
+}
+
+export async function updateGmailXmlDraftStatus(
+  id: string,
+  estado: GmailXmlDraftStatus,
+  compraId?: string
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    estado,
+    updatedAt: serverTimestamp(),
+  };
+  if (compraId) payload.compraId = compraId;
+  await updateDoc(doc(db, "gmailXmlDrafts", id), payload);
+}
+
+export async function updateCompraPagos(
+  compraId: string,
+  pagosProveedor: CompraPago[],
+  importeTotal: number,
+  totalDevueltoProveedor = 0
+): Promise<void> {
+  const pagosLimpios = pagosProveedor.map(sanitizeCompraPago);
+  const totalPagadoProveedor = Number(
+    pagosLimpios.reduce((sum, pago) => sum + Number(pago.monto || 0), 0).toFixed(2)
+  );
+  const saldoProveedor = Number(Math.max(importeTotal - totalPagadoProveedor - totalDevueltoProveedor, 0).toFixed(2));
+  await updateDoc(doc(db, "compras", compraId), {
+    pagosProveedor: pagosLimpios,
+    totalPagadoProveedor,
+    totalDevueltoProveedor,
+    saldoProveedor,
+    estadoPagoProveedor: calcularEstadoPagoCompra(importeTotal, totalPagadoProveedor, totalDevueltoProveedor),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function getDevolucionesProveedor(): Promise<DevolucionProveedor[]> {
+  const snap = await getDocs(query(collection(db, "devolucionesProveedor"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as DevolucionProveedor));
+}
+
+export async function getDevolucionesProveedorByCompra(compraId: string): Promise<DevolucionProveedor[]> {
+  const snap = await getDocs(
+    query(collection(db, "devolucionesProveedor"), where("compraId", "==", compraId))
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as DevolucionProveedor))
+    .sort((a, b) => {
+      const aTime = a.createdAt?.toDate?.().getTime() ?? 0;
+      const bTime = b.createdAt?.toDate?.().getTime() ?? 0;
+      return bTime - aTime;
+    });
+}
+
+export async function createDevolucionProveedor(data: {
+  compraId: string;
+  itemIndex: number;
+  cantidad: number;
+  motivo: string;
+  metodoDevolucion: DevolucionProveedor["metodoDevolucion"];
+  banco?: string;
+  referencia?: string;
+  notas?: string;
+}): Promise<string> {
+  const cantidad = Number(data.cantidad || 0);
+  if (!data.compraId) throw new Error("COMPRA_SIN_ID");
+  if (!Number.isFinite(cantidad) || cantidad <= 0) throw new Error("CANTIDAD_INVALIDA");
+  if (!data.motivo.trim()) throw new Error("MOTIVO_REQUERIDO");
+  if (data.metodoDevolucion === "transferencia" && !data.banco?.trim()) throw new Error("BANCO_REQUERIDO");
+
+  const compraRef = doc(db, "compras", data.compraId);
+  const compraSnap = await getDoc(compraRef);
+  if (!compraSnap.exists()) throw new Error("COMPRA_NO_ENCONTRADA");
+
+  const compra = { id: compraSnap.id, ...compraSnap.data() } as Compra;
+  if (!compra.inventarioSincronizado) throw new Error("COMPRA_NO_SINCRONIZADA");
+
+  const item = compra.items[data.itemIndex];
+  if (!item) throw new Error("ITEM_NO_ENCONTRADO");
+  const sku = item.codigo.trim().toUpperCase();
+  if (!sku) throw new Error("ITEM_SIN_CODIGO");
+
+  const devolucionesExistentes = await getDevolucionesProveedorByCompra(data.compraId);
+  const cantidadDevuelta = devolucionesExistentes
+    .filter((devolucion) => devolucion.itemIndex === data.itemIndex)
+    .reduce((sum, devolucion) => sum + Number(devolucion.cantidad || 0), 0);
+  if (cantidadDevuelta + cantidad > Number(item.cantidad || 0) + 0.0001) {
+    throw new Error("DEVOLUCION_EXCEDE_CANTIDAD");
+  }
+
+  const producto = await getProductoBySku(sku);
+  if (!producto?.id) throw new Error("PRODUCTO_NO_ENCONTRADO");
+
+  const productoRef = doc(db, "productos", producto.id);
+  const devolucionRef = doc(collection(db, "devolucionesProveedor"));
+  const impuestoUnitario = Number(item.impuesto || 0) / Math.max(Number(item.cantidad || 0), 1);
+  const subtotalDevuelto = Number(((Number(item.precioUnitario || 0) + impuestoUnitario) * cantidad).toFixed(2));
+
+  await runTransaction(db, async (transaction) => {
+    const [freshCompraSnap, freshProductoSnap] = await Promise.all([
+      transaction.get(compraRef),
+      transaction.get(productoRef),
+    ]);
+    if (!freshCompraSnap.exists()) throw new Error("COMPRA_NO_ENCONTRADA");
+    if (!freshProductoSnap.exists()) throw new Error("PRODUCTO_NO_ENCONTRADO");
+
+    const freshCompra = { id: freshCompraSnap.id, ...freshCompraSnap.data() } as Compra;
+    const freshProducto = { id: freshProductoSnap.id, ...freshProductoSnap.data() } as Producto;
+    const stockAnterior = Number(freshProducto.stockActual ?? 0);
+    const stockNuevo = stockAnterior - cantidad;
+    if (stockNuevo < -0.0001) throw new Error("STOCK_INSUFICIENTE");
+
+    const payload: Omit<DevolucionProveedor, "id" | "createdAt"> & { createdAt: ReturnType<typeof serverTimestamp> } = {
+      compraId: data.compraId,
+      numeroFactura: freshCompra.numeroFactura,
+      proveedorRazonSocial: freshCompra.proveedorRazonSocial,
+      proveedorRuc: freshCompra.proveedorRuc,
+      itemIndex: data.itemIndex,
+      productoSku: sku,
+      productoNombre: item.descripcion,
+      cantidad,
+      precioUnitario: Number(item.precioUnitario || 0),
+      impuestoUnitario: Number(impuestoUnitario.toFixed(4)),
+      subtotalDevuelto,
+      motivo: data.motivo.trim(),
+      metodoDevolucion: data.metodoDevolucion,
+      banco: data.banco?.trim() || undefined,
+      referencia: data.referencia?.trim() || undefined,
+      notas: data.notas?.trim() || undefined,
+      ajustoInventario: true,
+      createdAt: serverTimestamp(),
+    };
+
+    const totalPagadoProveedor = Number(freshCompra.totalPagadoProveedor ?? 0);
+    const totalDevueltoProveedor = Number(((freshCompra.totalDevueltoProveedor ?? 0) + subtotalDevuelto).toFixed(2));
+    const saldoProveedor = Number(
+      Math.max(Number(freshCompra.importeTotal || 0) - totalPagadoProveedor - totalDevueltoProveedor, 0).toFixed(2)
+    );
+
+    transaction.update(productoRef, {
+      stockActual: stockNuevo,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(doc(collection(db, "movimientosStock")), {
+      productoId: freshProducto.id,
+      productoNombre: freshProducto.nombre,
+      sku,
+      tipo: "salida",
+      cantidad,
+      stockAnterior,
+      stockNuevo,
+      nota: `Devolucion a proveedor - factura ${freshCompra.numeroFactura}: ${data.motivo.trim()}`,
+      unidadMedida: freshProducto.unidadMedida ?? "",
+      createdAt: serverTimestamp(),
+    });
+    transaction.update(compraRef, {
+      totalDevueltoProveedor,
+      saldoProveedor,
+      estadoPagoProveedor: calcularEstadoPagoCompra(freshCompra.importeTotal, totalPagadoProveedor, totalDevueltoProveedor),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(devolucionRef, removeUndefinedFields(payload));
+  });
+
+  return devolucionRef.id;
+}
+
+function nombreProductoDesdeDescripcion(descripcion: string, codigo: string): string {
+  const withoutCode = descripcion.replace(new RegExp(`^\\[${codigo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]\\s*`, "i"), "");
+  return (withoutCode || descripcion || codigo).trim();
+}
+
+async function agregarInventarioCompraABatch(
+  batch: ReturnType<typeof writeBatch>,
+  compraId: string,
+  data: Omit<Compra, "id">
+): Promise<Omit<CompraInventarioSyncResult, "compraId">> {
+  let productosCreados = 0;
+  let productosActualizados = 0;
+  const itemsBySku = new Map<string, Compra["items"][number]>();
+
+  for (const item of data.items) {
+    const sku = item.codigo.trim().toUpperCase();
+    if (!sku) continue;
+    const current = itemsBySku.get(sku);
+    if (current) {
+      itemsBySku.set(sku, {
+        ...item,
+        codigo: sku,
+        cantidad: current.cantidad + item.cantidad,
+        descuento: current.descuento + item.descuento,
+        subtotalSinImpuesto: current.subtotalSinImpuesto + item.subtotalSinImpuesto,
+        impuesto: current.impuesto + item.impuesto,
+        total: current.total + item.total,
+      });
+    } else {
+      itemsBySku.set(sku, { ...item, codigo: sku });
+    }
+  }
+
+  for (const item of itemsBySku.values()) {
+    const sku = item.codigo;
+    const existing = await getProductoBySku(sku);
+    const margenGanancia = resolverMargenProducto(existing);
+    const commonUpdate = {
+      costoBase: item.precioUnitario,
+      margenGanancia,
+      aplicaIva: item.impuesto > 0,
+      precioBase: calcularPrecioVenta(item.precioUnitario, margenGanancia, item.impuesto > 0),
+      ultimaCompraId: compraId,
+      ultimaCompraFactura: data.numeroFactura,
+      ultimaCompraFecha: data.fechaEmision,
+      ultimoProveedorRuc: data.proveedorRuc,
+      ultimoProveedorNombre: data.proveedorRazonSocial,
+      updatedAt: serverTimestamp(),
+    };
+
+    if (existing?.id) {
+      batch.update(doc(db, "productos", existing.id), {
+        ...commonUpdate,
+        stockActual: increment(item.cantidad),
+      });
+      productosActualizados += 1;
+    } else {
+      batch.set(doc(collection(db, "productos")), {
+        nombre: nombreProductoDesdeDescripcion(item.descripcion, sku),
+        descripcion: item.descripcion,
+        precioBase: calcularPrecioVenta(item.precioUnitario, margenGanancia, item.impuesto > 0),
+        costoBase: item.precioUnitario,
+        margenGanancia,
+        aplicaIva: item.impuesto > 0,
+        sku,
+        stockActual: item.cantidad,
+        ultimaCompraId: compraId,
+        ultimaCompraFactura: data.numeroFactura,
+        ultimaCompraFecha: data.fechaEmision,
+        ultimoProveedorRuc: data.proveedorRuc,
+        ultimoProveedorNombre: data.proveedorRazonSocial,
+        imagenUrl: "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      productosCreados += 1;
+    }
+  }
+
+  return { productosCreados, productosActualizados };
+}
+
+export async function createCompraConInventario(data: Omit<Compra, "id">): Promise<CompraInventarioSyncResult> {
+  const compraData = sanitizeCompraPayload(data);
+  const compraRef = doc(collection(db, "compras"));
+  const batch = writeBatch(db);
+  const result = await agregarInventarioCompraABatch(batch, compraRef.id, compraData);
+
+  batch.set(compraRef, {
+    ...compraData,
+    inventarioSincronizado: true,
+    productosCreados: result.productosCreados,
+    productosActualizados: result.productosActualizados,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  await batch.commit();
+  return { compraId: compraRef.id, ...result };
+}
+
+export async function syncCompraInventario(compra: Compra): Promise<CompraInventarioSyncResult> {
+  if (!compra.id) throw new Error("COMPRA_SIN_ID");
+  if (compra.inventarioSincronizado) {
+    return {
+      compraId: compra.id,
+      productosCreados: compra.productosCreados ?? 0,
+      productosActualizados: compra.productosActualizados ?? 0,
+    };
+  }
+
+  const batch = writeBatch(db);
+  const result = await agregarInventarioCompraABatch(batch, compra.id, compra);
+  batch.update(doc(db, "compras", compra.id), {
+    inventarioSincronizado: true,
+    productosCreados: result.productosCreados,
+    productosActualizados: result.productosActualizados,
+    updatedAt: serverTimestamp(),
+  });
+  await batch.commit();
+  return { compraId: compra.id, ...result };
+}
+
+export async function deleteCompra(compra: Compra): Promise<void> {
+  if (!compra.id) throw new Error("COMPRA_SIN_ID");
+
+  const batch = writeBatch(db);
+  if (compra.inventarioSincronizado) {
+    const devoluciones = await getDevolucionesProveedorByCompra(compra.id);
+    const devueltoByItemIndex = new Map<number, number>();
+    for (const devolucion of devoluciones) {
+      devueltoByItemIndex.set(
+        devolucion.itemIndex,
+        (devueltoByItemIndex.get(devolucion.itemIndex) ?? 0) + Number(devolucion.cantidad || 0)
+      );
+    }
+
+    const itemsBySku = new Map<string, number>();
+    compra.items.forEach((item, itemIndex) => {
+      const sku = item.codigo.trim().toUpperCase();
+      if (!sku) return;
+      const cantidadDevuelta = devueltoByItemIndex.get(itemIndex) ?? 0;
+      const cantidadNeta = Math.max(Number(item.cantidad || 0) - cantidadDevuelta, 0);
+      itemsBySku.set(sku, (itemsBySku.get(sku) ?? 0) + cantidadNeta);
+    });
+
+    for (const [sku, cantidad] of itemsBySku.entries()) {
+      const existing = await getProductoBySku(sku);
+      if (existing?.id) {
+        batch.update(doc(db, "productos", existing.id), {
+          stockActual: increment(-cantidad),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+  }
+
+  batch.delete(doc(db, "compras", compra.id));
+  await batch.commit();
+}
+
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 

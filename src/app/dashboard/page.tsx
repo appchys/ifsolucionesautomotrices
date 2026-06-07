@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import {
-  ClipboardList, Users, Car, CreditCard,
-  TrendingUp, Clock, CheckCircle2, Truck, Wrench, AlertCircle, Plus
+  ClipboardList, Users, Car,
+  Clock, CheckCircle2, Truck, Wrench, AlertCircle, Plus
 } from "lucide-react";
 import { subscribeOrdenes, getClientes, getVehiculos } from "@/lib/services";
 import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
@@ -20,6 +20,13 @@ const ESTADO_CONFIG: Record<EstadoOrden, { label: string; badge: string; icon: R
   Finalizado: { label: "Finalizado", badge: "status-finalizado", icon: CheckCircle2 },
   Entregado: { label: "Entregado", badge: "status-entregado", icon: Truck },
 };
+
+function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  const maybeTimestamp = value as { toDate?: () => Date };
+  return typeof maybeTimestamp.toDate === "function" ? maybeTimestamp.toDate() : null;
+}
 
 export default function DashboardPage() {
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
@@ -205,8 +212,8 @@ export default function DashboardPage() {
                         )}
                       </td>
                       <td className="text-xs hidden sm:table-cell">
-                        {o.createdAt
-                          ? format((o.createdAt as any).toDate(), "dd/MM/yyyy", { locale: es })
+                        {toDate(o.createdAt)
+                          ? format(toDate(o.createdAt)!, "dd/MM/yyyy", { locale: es })
                           : "—"}
                       </td>
                     </tr>

@@ -1,23 +1,29 @@
 "use client";
 import { useEffect } from "react";
-import { useUIStore } from "@/store";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { useAuthStore, useUIStore } from "@/store";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 
-const DESKTOP_SIDEBAR_QUERY = "(min-width: 1024px)";
-
 export default function AppShell({ children }: { children: React.ReactNode }) {
-  const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const { user, loading } = useAuthStore();
+  const { sidebarOpen } = useUIStore();
+  const router = useRouter();
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia(DESKTOP_SIDEBAR_QUERY);
-    const syncSidebar = () => setSidebarOpen(mediaQuery.matches);
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
 
-    syncSidebar();
-    mediaQuery.addEventListener("change", syncSidebar);
-
-    return () => mediaQuery.removeEventListener("change", syncSidebar);
-  }, [setSidebarOpen]);
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-primary)" }}>
+        <Loader2 className="animate-spin" size={40} style={{ color: "var(--accent)" }} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex" style={{ background: "var(--bg-primary)" }}>
