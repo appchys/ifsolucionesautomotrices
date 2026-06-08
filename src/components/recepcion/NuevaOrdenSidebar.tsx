@@ -7,6 +7,8 @@ import {
   Camera,
   Car,
   Check,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   Loader2,
   Pencil,
@@ -186,6 +188,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [fotosDiagnostico, setFotosDiagnostico] = useState<{ id: string; file: File; previewUrl: string; descripcion: string }[]>([]);
   const [fotoEditandoId, setFotoEditandoId] = useState<string | null>(null);
   const [descripcionFotoDraft, setDescripcionFotoDraft] = useState("");
+  const [fotoModalId, setFotoModalId] = useState<string | null>(null);
   const [items, setItems] = useState<Omit<ItemOrden, "id" | "ordenId">[]>([]);
   const [activeModal, setActiveModal] = useState<"producto" | "servicio" | null>(null);
 
@@ -205,6 +208,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const placaValue = formValues.placa || "";
   const clienteNombre = [formValues.nombre, formValues.apellido].filter(Boolean).join(" ") || "Cliente sin nombre";
   const total = useMemo(() => items.reduce((sum, item) => sum + item.subtotal, 0), [items]);
+  const fotoModalIndex = fotoModalId ? fotosDiagnostico.findIndex((foto) => foto.id === fotoModalId) : -1;
+  const fotoModal = fotoModalIndex >= 0 ? fotosDiagnostico[fotoModalIndex] : null;
 
   const getClienteDraft = (cliente: Cliente): ClienteDraft => ({
     nombre: cliente.nombre ?? "",
@@ -462,6 +467,9 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       setFotoEditandoId(null);
       setDescripcionFotoDraft("");
     }
+    if (fotoModalId === id) {
+      setFotoModalId(null);
+    }
   };
 
   const editarDescripcionFoto = (id: string) => {
@@ -484,6 +492,12 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       setFotoEditandoId(null);
       setDescripcionFotoDraft("");
     }
+  };
+
+  const cambiarFotoModal = (direccion: -1 | 1) => {
+    if (fotosDiagnostico.length === 0 || fotoModalIndex < 0) return;
+    const siguienteIndex = (fotoModalIndex + direccion + fotosDiagnostico.length) % fotosDiagnostico.length;
+    setFotoModalId(fotosDiagnostico[siguienteIndex].id);
   };
 
   const updateFlujo = <T extends keyof FlujoTrabajo>(
@@ -726,6 +740,79 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       </button>
     </div>
   );
+
+  const renderFotoModal = () => {
+    if (!fotoModal) return null;
+
+    const puedeNavegar = fotosDiagnostico.length > 1;
+
+    return (
+      <div
+        className="modal-overlay nueva-orden-photo-modal-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Fotografia del diagnostico"
+        tabIndex={-1}
+        autoFocus
+        onClick={() => setFotoModalId(null)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setFotoModalId(null);
+          if (event.key === "ArrowLeft") cambiarFotoModal(-1);
+          if (event.key === "ArrowRight") cambiarFotoModal(1);
+        }}
+      >
+        <div className="nueva-orden-photo-modal" onClick={(event) => event.stopPropagation()}>
+          <div className="nueva-orden-photo-modal-header">
+            <span>
+              Foto {fotoModalIndex + 1} de {fotosDiagnostico.length}
+            </span>
+            <button
+              type="button"
+              className="btn-ghost btn-icon"
+              aria-label="Cerrar foto"
+              onClick={() => setFotoModalId(null)}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="nueva-orden-photo-modal-stage">
+            {puedeNavegar ? (
+              <button
+                type="button"
+                className="nueva-orden-photo-modal-nav nueva-orden-photo-modal-nav-left"
+                aria-label="Foto anterior"
+                onClick={() => cambiarFotoModal(-1)}
+              >
+                <ChevronLeft size={24} />
+              </button>
+            ) : (
+              <span className="nueva-orden-photo-modal-nav-spacer" />
+            )}
+
+            <img src={fotoModal.previewUrl} alt={fotoModal.file.name} className="nueva-orden-photo-modal-image" />
+
+            {puedeNavegar ? (
+              <button
+                type="button"
+                className="nueva-orden-photo-modal-nav nueva-orden-photo-modal-nav-right"
+                aria-label="Foto siguiente"
+                onClick={() => cambiarFotoModal(1)}
+              >
+                <ChevronRight size={24} />
+              </button>
+            ) : (
+              <span className="nueva-orden-photo-modal-nav-spacer" />
+            )}
+          </div>
+
+          <div className="nueva-orden-photo-modal-description">
+            {fotoModal.descripcion ? fotoModal.descripcion : "Sin descripcion."}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderClienteDetalleModal = () => {
     if (!mostrarClienteModal || !clienteData) return null;
@@ -1159,14 +1246,22 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                               <button
                                 type="button"
                                 className="nueva-orden-photo-thumb"
-                                onClick={() => editarDescripcionFoto(foto.id)}
+                                onClick={() => setFotoModalId(foto.id)}
                               >
                                 <img src={foto.previewUrl} alt={foto.file.name} className="h-full w-full object-cover" />
                                 {foto.descripcion ? (
                                   <span className="nueva-orden-photo-has-description" title={foto.descripcion}>
-                                    i
+                                    {foto.descripcion}
                                   </span>
                                 ) : null}
+                              </button>
+                              <button
+                                type="button"
+                                className="nueva-orden-photo-edit"
+                                title="Editar descripcion"
+                                onClick={() => editarDescripcionFoto(foto.id)}
+                              >
+                                <Pencil size={13} />
                               </button>
                               <button
                                 type="button"
@@ -1182,7 +1277,14 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                                     className="input text-xs"
                                     value={descripcionFotoDraft}
                                     onChange={(event) => setDescripcionFotoDraft(event.target.value)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") {
+                                        event.preventDefault();
+                                        guardarDescripcionFoto(foto.id);
+                                      }
+                                    }}
                                     onBlur={cancelarDescripcionVacia}
+                                    enterKeyHint="done"
                                     placeholder="Descripcion"
                                     autoFocus
                                   />
@@ -1546,6 +1648,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       {activeModal && (
         <AgregarItemModal tipo={activeModal} onClose={() => setActiveModal(null)} onAdd={addItem} />
       )}
+      {renderFotoModal()}
       {renderClienteDetalleModal()}
     </div>
   );

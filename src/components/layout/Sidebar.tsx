@@ -49,15 +49,16 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Overlay for narrow layouts where the sidebar floats over the app */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/60 z-30 md:hidden"
+          className="fixed inset-0 bg-black/60 z-30 lg:hidden"
           onClick={toggleSidebar}
         />
       )}
 
       <aside
+        id="app-sidebar"
         className="app-sidebar fixed top-0 left-0 h-full z-40 flex flex-col transition-all duration-300"
         style={{
           width: sidebarOpen ? "260px" : "0px",
@@ -115,7 +116,7 @@ export default function Sidebar() {
                   href={item.href}
                   className={`sidebar-link ${active ? "active" : ""}`}
                   onClick={() => {
-                    if (window.innerWidth < 768) toggleSidebar();
+                    if (window.innerWidth < 1024) toggleSidebar();
                   }}
                 >
                   <item.icon size={18} className="flex-shrink-0" />
