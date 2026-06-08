@@ -9,6 +9,7 @@ import {
   Check,
   FileText,
   Loader2,
+  Pencil,
   Plus,
   Save,
   Search,
@@ -30,6 +31,7 @@ import {
   getProximoNumeroOrden,
   getUsuarios,
   getVehiculoByPlaca,
+  getVehiculosByCliente,
   searchVehiculosByPlacaPrefix,
   updateCliente,
   updateOrden,
@@ -110,6 +112,8 @@ type FormData = {
   tipoVehiculo: TipoVehiculo;
 };
 
+type ClienteDraft = Pick<Cliente, "nombre" | "apellido" | "identificacion" | "telefono" | "email" | "direccion">;
+
 interface Props {
   onClose: () => void;
   onSuccess?: (orderId: string) => void;
@@ -146,8 +150,20 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
   const [clienteData, setClienteData] = useState<Cliente | null>(null);
   const [vehiculoData, setVehiculoData] = useState<Vehiculo | null>(null);
-  const [editandoCliente, setEditandoCliente] = useState(true);
   const [editandoVehiculo, setEditandoVehiculo] = useState(true);
+  const [mostrarClienteModal, setMostrarClienteModal] = useState(false);
+  const [editandoClienteModal, setEditandoClienteModal] = useState(false);
+  const [guardandoClienteModal, setGuardandoClienteModal] = useState(false);
+  const [vehiculosCliente, setVehiculosCliente] = useState<Vehiculo[]>([]);
+  const [cargandoVehiculosCliente, setCargandoVehiculosCliente] = useState(false);
+  const [clienteDraft, setClienteDraft] = useState<ClienteDraft>({
+    nombre: "",
+    apellido: "",
+    identificacion: "",
+    telefono: "",
+    email: "",
+    direccion: "",
+  });
   const [numeroOrden, setNumeroOrden] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PasoOrden>("inspeccion");
   const [sugerencias, setSugerencias] = useState<Vehiculo[]>([]);
@@ -187,7 +203,94 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
 
   const formValues = useWatch({ control });
   const placaValue = formValues.placa || "";
+  const clienteNombre = [formValues.nombre, formValues.apellido].filter(Boolean).join(" ") || "Cliente sin nombre";
   const total = useMemo(() => items.reduce((sum, item) => sum + item.subtotal, 0), [items]);
+
+  const getClienteDraft = (cliente: Cliente): ClienteDraft => ({
+    nombre: cliente.nombre ?? "",
+    apellido: cliente.apellido ?? "",
+    identificacion: cliente.identificacion ?? "",
+    telefono: cliente.telefono ?? "",
+    email: cliente.email ?? "",
+    direccion: cliente.direccion ?? "",
+  });
+
+  const cargarVehiculosCliente = async (clienteId: string) => {
+    setCargandoVehiculosCliente(true);
+    try {
+      const vehiculos = await getVehiculosByCliente(clienteId);
+      setVehiculosCliente(vehiculos.sort((a, b) => a.placa.localeCompare(b.placa)));
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudieron cargar los vehiculos del cliente");
+      setVehiculosCliente([]);
+    } finally {
+      setCargandoVehiculosCliente(false);
+    }
+  };
+
+  const abrirClienteModal = () => {
+    if (!clienteData) return;
+    setClienteDraft(getClienteDraft(clienteData));
+    setEditandoClienteModal(false);
+    setMostrarClienteModal(true);
+    if (clienteData.id) {
+      setVehiculosCliente([]);
+      void cargarVehiculosCliente(clienteData.id);
+    }
+  };
+
+  const cerrarClienteModal = () => {
+    setMostrarClienteModal(false);
+    setEditandoClienteModal(false);
+    setVehiculosCliente([]);
+  };
+
+  const cancelarEdicionClienteModal = () => {
+    if (clienteData) setClienteDraft(getClienteDraft(clienteData));
+    setEditandoClienteModal(false);
+  };
+
+  const guardarClienteModal = async () => {
+    if (!clienteData?.id) {
+      toast.error("No se encontro el cliente");
+      return;
+    }
+
+    const clientePayload = {
+      nombre: clienteDraft.nombre.trim(),
+      apellido: clienteDraft.apellido.trim(),
+      identificacion: clienteDraft.identificacion.trim(),
+      telefono: clienteDraft.telefono.trim(),
+      email: clienteDraft.email.trim(),
+      direccion: clienteDraft.direccion.trim(),
+    };
+
+    if (!clientePayload.nombre || !clientePayload.apellido || !clientePayload.identificacion || !clientePayload.telefono) {
+      toast.error("Completa los datos obligatorios del cliente");
+      return;
+    }
+
+    setGuardandoClienteModal(true);
+    try {
+      await updateCliente(clienteData.id, clientePayload);
+      const clienteActualizado = { ...clienteData, ...clientePayload };
+      setClienteData(clienteActualizado);
+      setValue("nombre", clientePayload.nombre, { shouldDirty: true });
+      setValue("apellido", clientePayload.apellido, { shouldDirty: true });
+      setValue("identificacion", clientePayload.identificacion, { shouldDirty: true });
+      setValue("telefono", clientePayload.telefono, { shouldDirty: true });
+      setValue("email", clientePayload.email, { shouldDirty: true });
+      setValue("direccion", clientePayload.direccion, { shouldDirty: true });
+      setEditandoClienteModal(false);
+      toast.success("Cliente actualizado");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al actualizar el cliente");
+    } finally {
+      setGuardandoClienteModal(false);
+    }
+  };
 
   const ejecutarBusqueda = useCallback(
     async (placa: string) => {
@@ -203,7 +306,6 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         if (!vehiculo) {
           setVehiculoData(null);
           setClienteData(null);
-          setEditandoCliente(true);
           setEditandoVehiculo(true);
           reset(emptyForm(placaLimpia));
           toast("Vehiculo no encontrado. Registra sus datos.", { icon: "i" });
@@ -213,7 +315,6 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         const cliente = await getClienteById(vehiculo.clienteId);
         setVehiculoData(vehiculo);
         setClienteData(cliente);
-        setEditandoCliente(false);
         setEditandoVehiculo(false);
         reset({
           nombre: cliente?.nombre ?? "",
@@ -558,7 +659,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="form-group">
-          <label className="label">VIN</label>
+          <label className="label">Chasis</label>
           <input className="input text-sm" {...register("vin")} />
         </div>
         <div className="form-group">
@@ -607,6 +708,162 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       </div>
     </div>
   );
+
+  const renderClienteVehiculo = () => (
+    <div className="sm:col-span-2">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold text-[var(--text-muted)]">
+        <User size={12} />
+        <span>Cliente</span>
+      </div>
+      <button
+        type="button"
+        className="text-left font-semibold underline-offset-2 hover:underline disabled:no-underline disabled:cursor-default"
+        style={{ color: clienteData ? "var(--accent)" : "var(--text-muted)" }}
+        onClick={abrirClienteModal}
+        disabled={!clienteData}
+      >
+        {clienteNombre}
+      </button>
+    </div>
+  );
+
+  const renderClienteDetalleModal = () => {
+    if (!mostrarClienteModal || !clienteData) return null;
+
+    const detalles = [
+      { name: "nombre", label: "Nombre *", value: clienteData.nombre || "-", required: true },
+      { name: "apellido", label: "Apellido *", value: clienteData.apellido || "-", required: true },
+      { name: "identificacion", label: "Identificacion *", value: clienteData.identificacion || "-", required: true },
+      { name: "telefono", label: "Telefono *", value: clienteData.telefono || "-", required: true },
+      { name: "email", label: "Email", value: clienteData.email || "-", col2: true },
+      { name: "direccion", label: "Direccion", value: clienteData.direccion || "-", col2: true },
+    ];
+
+    return (
+      <div className="modal-overlay z-[120]">
+        <div className="modal-box max-w-lg w-full">
+          <div className="flex items-center justify-between gap-3 mb-5">
+            <div className="flex items-center gap-2 min-w-0">
+              <User size={18} className="text-[var(--success)]" />
+              <h2 className="text-lg font-bold truncate" style={{ color: "var(--text-primary)" }}>
+                Datos del cliente
+              </h2>
+            </div>
+            <button type="button" onClick={cerrarClienteModal} className="btn-ghost btn-icon">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            {detalles.map((detalle) => (
+              <div key={detalle.name} className={detalle.col2 ? "sm:col-span-2" : ""}>
+                <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">{detalle.label}</p>
+                {editandoClienteModal ? (
+                  <input
+                    className="input text-sm mt-1"
+                    value={clienteDraft[detalle.name as keyof ClienteDraft]}
+                    required={detalle.required}
+                    onChange={(event) =>
+                      setClienteDraft((current) => ({
+                        ...current,
+                        [detalle.name]: event.target.value,
+                      }))
+                    }
+                  />
+                ) : (
+                  <p className="break-words" style={{ color: "var(--text-primary)" }}>
+                    {detalle.value}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-6 border-t border-[var(--border)] pt-4">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-2">
+                <Car size={16} className="text-[var(--warning)]" />
+                <h3 className="font-semibold text-sm">Vehiculos del cliente</h3>
+              </div>
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {cargandoVehiculosCliente ? "Cargando..." : vehiculosCliente.length}
+              </span>
+            </div>
+
+            {cargandoVehiculosCliente ? (
+              <div className="flex items-center gap-2 text-sm" style={{ color: "var(--text-muted)" }}>
+                <Loader2 size={14} className="animate-spin" />
+                Cargando vehiculos...
+              </div>
+            ) : vehiculosCliente.length > 0 ? (
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {vehiculosCliente.map((vehiculo) => (
+                  <div
+                    key={vehiculo.id ?? vehiculo.placa}
+                    className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-mono text-sm font-bold">{vehiculo.placa}</p>
+                        <p className="text-xs truncate" style={{ color: "var(--text-primary)" }}>
+                          {vehiculo.marca} {vehiculo.modelo}
+                        </p>
+                        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                          {vehiculo.anio || "-"} - {vehiculo.color || "-"}
+                        </p>
+                      </div>
+                      {vehiculo.id === vehiculoData?.id ? (
+                        <span className="text-[10px] uppercase font-bold px-2 py-1 rounded border border-[var(--border)] text-[var(--accent)]">
+                          Actual
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                No hay vehiculos registrados para este cliente.
+              </p>
+            )}
+          </div>
+
+          <div className="flex gap-3 mt-6">
+            {editandoClienteModal ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-secondary flex-1 justify-center"
+                  onClick={cancelarEdicionClienteModal}
+                  disabled={guardandoClienteModal}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary flex-1 justify-center"
+                  onClick={guardarClienteModal}
+                  disabled={guardandoClienteModal}
+                >
+                  {guardandoClienteModal ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                  {guardandoClienteModal ? "Guardando..." : "Guardar"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn-ghost btn-sm ml-auto"
+                onClick={() => setEditandoClienteModal(true)}
+              >
+                <Pencil size={15} />
+                Editar
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderAsignacionTecnica = () => (
     <section className="card">
@@ -791,6 +1048,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                       </div>
                       {!editandoVehiculo && vehiculoData ? (
                         <div className="grid grid-cols-2 gap-3 bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
+                          {renderClienteVehiculo()}
                           <div>
                             <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Marca / Modelo</p>
                             <p>{formValues.marca} {formValues.modelo}</p>
@@ -804,50 +1062,31 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                             <p className="uppercase">{formValues.tipoVehiculo}</p>
                           </div>
                           <div>
-                            <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">VIN</p>
+                            <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Chasis</p>
                             <p className="truncate">{formValues.vin || "-"}</p>
                           </div>
                         </div>
                       ) : (
-                        renderVehicleFields()
+                        <div className="space-y-3">
+                          {vehiculoData ? (
+                            <div className="bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
+                              {renderClienteVehiculo()}
+                            </div>
+                          ) : null}
+                          {renderVehicleFields()}
+                        </div>
                       )}
                     </section>
 
-                    <section className="card">
-                      <div className="flex items-center justify-between gap-3 mb-4">
-                        <div className="flex items-center gap-2">
+                    {!vehiculoData ? (
+                      <section className="card">
+                        <div className="flex items-center gap-2 mb-4">
                           <User size={18} className="text-[var(--success)]" />
                           <h3 className="font-semibold text-sm">Datos del cliente</h3>
                         </div>
-                        {clienteData && (
-                          <button type="button" className="btn-ghost btn-sm" onClick={() => setEditandoCliente((value) => !value)}>
-                            {editandoCliente ? "Ver" : "Editar"}
-                          </button>
-                        )}
-                      </div>
-                      {!editandoCliente && clienteData ? (
-                        <div className="grid grid-cols-2 gap-3 bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
-                          <div>
-                            <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Nombre</p>
-                            <p>{formValues.nombre} {formValues.apellido}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Identificacion</p>
-                            <p>{formValues.identificacion}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Telefono</p>
-                            <p>{formValues.telefono}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Email</p>
-                            <p className="truncate">{formValues.email || "-"}</p>
-                          </div>
-                        </div>
-                      ) : (
-                        renderCustomerFields()
-                      )}
-                    </section>
+                        {renderCustomerFields()}
+                      </section>
+                    ) : null}
                   </>
                 )}
               </aside>
@@ -1307,6 +1546,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       {activeModal && (
         <AgregarItemModal tipo={activeModal} onClose={() => setActiveModal(null)} onAdd={addItem} />
       )}
+      {renderClienteDetalleModal()}
     </div>
   );
 }
