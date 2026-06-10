@@ -501,6 +501,10 @@ textarea.input { resize: vertical; }
   color: var(--text-muted);
 }
 
+.nueva-orden-sidebar .nueva-orden-step-button-complete {
+  color: var(--success);
+}
+
 .nueva-orden-sidebar .nueva-orden-type-toggle {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -574,6 +578,13 @@ textarea.input { resize: vertical; }
 .nueva-orden-sidebar .nueva-orden-step-button-active .nueva-orden-step-number {
   background: var(--accent);
   border-color: var(--accent);
+  color: #fff;
+}
+
+.nueva-orden-sidebar .nueva-orden-step-button-complete .nueva-orden-step-number,
+.nueva-orden-sidebar .nueva-orden-step-button-active.nueva-orden-step-button-complete .nueva-orden-step-number {
+  background: var(--success);
+  border-color: var(--success);
   color: #fff;
 }
 

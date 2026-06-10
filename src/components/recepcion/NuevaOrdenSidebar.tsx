@@ -226,6 +226,44 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     ],
     [items]
   );
+  const pasosCompletados = useMemo<Record<PasoOrden, boolean>>(
+    () => ({
+      inspeccion:
+        Boolean(placaValue.trim()) &&
+        Boolean(motivo.trim()) &&
+        Boolean(tecnicoId) &&
+        Boolean(km.trim()) &&
+        !Number.isNaN(Number(km)),
+      orden: items.length > 0 && (tipoCreacion === "cotizacion" || presupuestoConfirmado),
+      ejecucion:
+        flujoTrabajo.ejecucionRepuestos.compraProveedorAutorizada ||
+        flujoTrabajo.ejecucionRepuestos.logisticaRetiraRepuestos ||
+        flujoTrabajo.ejecucionRepuestos.tecnicosInicianDespiece ||
+        flujoTrabajo.ejecucionRepuestos.compraRepuestosRegistrada ||
+        Boolean(flujoTrabajo.ejecucionRepuestos.notas?.trim()),
+      reparacion:
+        flujoTrabajo.ordenReparacion.presupuestoConvertidoOrden ||
+        flujoTrabajo.ordenReparacion.tecnicoConfirmaCargado ||
+        flujoTrabajo.ordenReparacion.reparacionFinalizada ||
+        flujoTrabajo.ordenReparacion.pruebaRutaRealizada ||
+        Boolean(flujoTrabajo.ordenReparacion.notas?.trim()),
+      entrega:
+        flujoTrabajo.entregaCierre.controlCalidadCompletado ||
+        flujoTrabajo.entregaCierre.lavadoRealizado ||
+        flujoTrabajo.entregaCierre.lavadoNoAplica ||
+        flujoTrabajo.entregaCierre.clienteNotificado ||
+        flujoTrabajo.entregaCierre.ordenEnviadaWhatsApp ||
+        flujoTrabajo.entregaCierre.pagoEfectivo ||
+        flujoTrabajo.entregaCierre.pagoTransferencia ||
+        flujoTrabajo.entregaCierre.pagoTarjeta ||
+        flujoTrabajo.entregaCierre.vehiculoEntregado ||
+        flujoTrabajo.entregaCierre.pendientesInformados ||
+        flujoTrabajo.entregaCierre.facturaElectronicaEmitida ||
+        flujoTrabajo.entregaCierre.ordenCerradaSistema ||
+        Boolean(flujoTrabajo.entregaCierre.notas?.trim()),
+    }),
+    [flujoTrabajo, items.length, km, motivo, placaValue, presupuestoConfirmado, tecnicoId, tipoCreacion]
+  );
   const fotoModalIndex = fotoModalId ? fotosDiagnostico.findIndex((foto) => foto.id === fotoModalId) : -1;
   const fotoModal = fotoModalIndex >= 0 ? fotosDiagnostico[fotoModalIndex] : null;
 
@@ -1400,27 +1438,33 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
 
               <main className="xl:col-span-8 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1">
                 <div className="nueva-orden-tabs flex gap-3 border-b border-[var(--border)] bg-[var(--bg-primary)] sticky top-0 z-10 py-2">
-                  {[
-                    ["inspeccion", "1", "Inspeccion de ingreso"],
-                    ["orden", "2", "Diagnostico y presupuesto"],
+                  {([
+                    ["inspeccion", "1", "Inspección y diagnóstico"],
+                    ["orden", "2", "Presupuesto"],
                     ["ejecucion", "3", "Ejecucion y repuestos"],
                     ["reparacion", "4", "Orden y reparacion"],
                     ["entrega", "5", "Entrega y cierre"],
-                  ].map(([tab, step, label]) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setActiveTab(tab as PasoOrden)}
-                      className={`nueva-orden-step-button ${
-                        activeTab === tab
-                          ? "nueva-orden-step-button-active"
-                          : "nueva-orden-step-button-idle"
-                      }`}
-                    >
-                      <span className="nueva-orden-step-number">{step}</span>
-                      <span>{label}</span>
-                    </button>
-                  ))}
+                  ] as [PasoOrden, string, string][]).map(([tab, step, label]) => {
+                    const completado = pasosCompletados[tab];
+
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`nueva-orden-step-button ${
+                          activeTab === tab
+                            ? "nueva-orden-step-button-active"
+                            : "nueva-orden-step-button-idle"
+                        } ${completado ? "nueva-orden-step-button-complete" : ""}`}
+                      >
+                        <span className="nueva-orden-step-number">
+                          {completado ? <Check size={14} strokeWidth={3} /> : step}
+                        </span>
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {activeTab === "orden" ? (
