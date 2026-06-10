@@ -548,6 +548,17 @@ textarea.input { resize: vertical; }
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
 }
 
+.nueva-orden-sidebar .nueva-orden-type-toggle-compact {
+  min-width: 0;
+  width: auto;
+}
+
+.nueva-orden-sidebar .nueva-orden-type-toggle-compact .nueva-orden-type-option {
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+
 .nueva-orden-sidebar .nueva-orden-step-number {
   display: inline-flex;
   align-items: center;

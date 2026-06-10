@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   Calculator,
@@ -169,6 +169,10 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   });
   const [numeroOrden, setNumeroOrden] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PasoOrden>("inspeccion");
+  const [seccionesInspeccionAbiertas, setSeccionesInspeccionAbiertas] = useState({
+    ingreso: true,
+    diagnostico: true,
+  });
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>("orden");
   const [sugerencias, setSugerencias] = useState<Vehiculo[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -1029,53 +1033,147 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     </section>
   );
 
-  const renderBusquedaVehiculo = () => {
-    if (vehiculoData) return null;
+  const renderDiagnostico = () => (
+    <section className="card">
+      <h3 className="font-semibold text-sm mb-3">Diagnostico</h3>
+      <div className="form-group">
+        <label className="label">Diagnostico del tecnico</label>
+        <textarea
+          className="input text-sm"
+          rows={4}
+          value={diagnostico}
+          onChange={(event) => setDiagnostico(event.target.value)}
+          placeholder="Describe el diagnostico, hallazgos y trabajo recomendado."
+        />
+      </div>
+    </section>
+  );
+
+  const renderFotosDiagnostico = () => (
+    <section className="card space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-semibold text-sm">Fotografias del diagnostico</h3>
+        <button
+          type="button"
+          className="btn-secondary btn-sm"
+          onClick={() => fotosDiagnosticoRef.current?.click()}
+        >
+          <Camera size={14} />
+          Adjuntar fotos
+        </button>
+      </div>
+      <input
+        ref={fotosDiagnosticoRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={agregarFotosDiagnostico}
+      />
+      {fotosDiagnostico.length > 0 ? (
+        <div className="nueva-orden-photo-carousel">
+          {fotosDiagnostico.map((foto) => (
+            <div key={foto.id} className="nueva-orden-photo-item">
+              <button
+                type="button"
+                className="nueva-orden-photo-thumb"
+                onClick={() => setFotoModalId(foto.id)}
+              >
+                <img src={foto.previewUrl} alt={foto.file.name} className="h-full w-full object-cover" />
+                {foto.descripcion ? (
+                  <span className="nueva-orden-photo-has-description" title={foto.descripcion}>
+                    {foto.descripcion}
+                  </span>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                className="nueva-orden-photo-edit"
+                title="Editar descripcion"
+                onClick={() => editarDescripcionFoto(foto.id)}
+              >
+                <Pencil size={13} />
+              </button>
+              <button
+                type="button"
+                className="nueva-orden-photo-remove"
+                title="Quitar foto"
+                onClick={() => eliminarFotoDiagnostico(foto.id)}
+              >
+                <X size={13} />
+              </button>
+              {fotoEditandoId === foto.id ? (
+                <div className="nueva-orden-photo-description">
+                  <input
+                    className="input text-xs"
+                    value={descripcionFotoDraft}
+                    onChange={(event) => setDescripcionFotoDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        guardarDescripcionFoto(foto.id);
+                      }
+                    }}
+                    onBlur={cancelarDescripcionVacia}
+                    enterKeyHint="done"
+                    placeholder="Descripcion"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    className="btn-primary btn-icon"
+                    title="Guardar descripcion"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => guardarDescripcionFoto(foto.id)}
+                  >
+                    <Save size={13} />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+          Sin fotografias adjuntas.
+        </p>
+      )}
+    </section>
+  );
+
+  const renderSeccionInspeccion = (
+    id: keyof typeof seccionesInspeccionAbiertas,
+    titulo: string,
+    children: ReactNode
+  ) => {
+    const abierta = seccionesInspeccionAbiertas[id];
 
     return (
-      <section className="card">
-        <div className="flex items-center gap-2 mb-4">
-          <Search size={18} className="text-[var(--accent)]" />
-          <h3 className="font-semibold text-sm">Buscar vehiculo</h3>
-        </div>
-        <div className="flex gap-2" ref={wrapperRef}>
-          <div className="relative flex-1">
-            <input
-              type="text"
-              className={`input uppercase font-mono text-lg tracking-widest ${errors.placa ? "border-red-500" : ""}`}
-              placeholder="ABC-1234"
-              {...register("placa", { required: true })}
-              onChange={onPlateChange}
-              onFocus={() => setMostrarSugerencias(true)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  ejecutarBusqueda(placaValue);
-                }
-              }}
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] overflow-hidden">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors"
+          onClick={() =>
+            setSeccionesInspeccionAbiertas((current) => ({
+              ...current,
+              [id]: !current[id],
+            }))
+          }
+          aria-expanded={abierta}
+        >
+          <span className="flex items-center gap-2 min-w-0">
+            <ChevronRight
+              size={16}
+              className={`shrink-0 transition-transform ${abierta ? "rotate-90" : ""}`}
             />
-            {mostrarSugerencias && sugerencias.length > 0 && (
-              <div className="absolute z-20 w-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                {sugerencias.map((vehiculo) => (
-                  <button
-                    key={vehiculo.id}
-                    type="button"
-                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-secondary)] border-b border-[var(--border)] last:border-0"
-                    onClick={() => ejecutarBusqueda(vehiculo.placa)}
-                  >
-                    <span className="block font-mono font-bold text-sm">{vehiculo.placa}</span>
-                    <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
-                      {vehiculo.marca} {vehiculo.modelo}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
+            <span className="font-semibold text-sm">{titulo}</span>
+          </span>
+        </button>
+        {abierta ? (
+          <div className="nueva-orden-section-stack p-3 sm:p-4 border-t border-[var(--border)]">
+            {children}
           </div>
-          <button type="button" onClick={() => ejecutarBusqueda(placaValue)} disabled={buscando} className="btn-primary btn-icon">
-            {buscando ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-          </button>
-        </div>
+        ) : null}
       </section>
     );
   };
@@ -1090,14 +1188,15 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       />
 
       <div className="nueva-orden-sidebar relative h-full w-full bg-[var(--bg-primary)] shadow-2xl flex flex-col overflow-hidden animate-fade-in">
-        <header className="px-4 sm:px-6 py-4 border-b border-[var(--border)] flex items-center justify-between gap-3 bg-[var(--bg-card)]">
+        {false ? (
+        <header>
           <div className="flex items-center gap-3 min-w-0">
             <button type="button" onClick={onClose} className="btn-ghost btn-icon -ml-2" title="Cerrar">
               <X size={20} />
             </button>
             <div className="min-w-0">
               <h2 className="text-lg font-bold truncate" style={{ color: "var(--text-primary)" }}>
-                Orden #{numeroOrden ? String(numeroOrden).padStart(4, "0") : "..."}
+                Nuevo ingreso
               </h2>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                 Registro de ingreso de vehículo
@@ -1105,42 +1204,90 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="nueva-orden-type-toggle" role="radiogroup" aria-label="Tipo de registro">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={tipoCreacion === "cotizacion"}
-                className={`nueva-orden-type-option ${tipoCreacion === "cotizacion" ? "nueva-orden-type-option-active" : ""}`}
-                disabled={guardando}
-                onClick={() => setTipoCreacion("cotizacion")}
-              >
-                <Calculator size={15} />
-                <span>Cotización</span>
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={tipoCreacion === "orden"}
-                className={`nueva-orden-type-option ${tipoCreacion === "orden" ? "nueva-orden-type-option-active" : ""}`}
-                disabled={guardando}
-                onClick={() => setTipoCreacion("orden")}
-              >
-                <FileText size={15} />
-                <span>Orden</span>
-              </button>
-            </div>
             <button form="nueva-orden-form" type="submit" disabled={guardando} className="btn-primary btn-sm">
               {guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
               {tipoCreacion === "cotizacion" ? "Guardar" : "Crear"}
             </button>
           </div>
         </header>
+        ) : null}
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-          <form id="nueva-orden-form" onSubmit={handleSubmit((data) => onSubmit(data, tipoCreacion))}>
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
-              <aside className={`${busquedaRealizada || vehiculoData ? "xl:col-span-4" : "hidden"} space-y-3`}>
-                <section className="hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto xl:overflow-hidden p-4 sm:p-5">
+          <form id="nueva-orden-form" className="h-full" onSubmit={handleSubmit((data) => onSubmit(data, tipoCreacion))}>
+            <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-12 gap-4 items-start">
+              <aside className="xl:col-span-4 space-y-3 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1">
+                <section className="card space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Documento</p>
+                      <h3 className="text-lg font-bold truncate" style={{ color: "var(--text-primary)" }}>
+                        #{numeroOrden ? String(numeroOrden).padStart(4, "0") : "..."}
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="nueva-orden-type-toggle nueva-orden-type-toggle-compact" role="radiogroup" aria-label="Tipo de registro">
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={tipoCreacion === "cotizacion"}
+                          className={`nueva-orden-type-option ${tipoCreacion === "cotizacion" ? "nueva-orden-type-option-active" : ""}`}
+                          disabled={guardando}
+                          onClick={() => setTipoCreacion("cotizacion")}
+                        >
+                          <Calculator size={13} />
+                          <span>Cotización</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={tipoCreacion === "orden"}
+                          className={`nueva-orden-type-option ${tipoCreacion === "orden" ? "nueva-orden-type-option-active" : ""}`}
+                          disabled={guardando}
+                          onClick={() => setTipoCreacion("orden")}
+                        >
+                          <FileText size={13} />
+                          <span>Orden</span>
+                        </button>
+                      </div>
+                      <span className="hidden">
+                      {tipoCreacion === "cotizacion" ? "Cotización" : "Orden"}
+                      </span>
+                      <button type="button" onClick={onClose} className="btn-ghost btn-icon" title="Cerrar">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="hidden" role="radiogroup" aria-label="Tipo de registro">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={tipoCreacion === "cotizacion"}
+                      className={`nueva-orden-type-option ${tipoCreacion === "cotizacion" ? "nueva-orden-type-option-active" : ""}`}
+                      disabled={guardando}
+                      onClick={() => setTipoCreacion("cotizacion")}
+                    >
+                      <Calculator size={15} />
+                      <span>Cotización</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={tipoCreacion === "orden"}
+                      className={`nueva-orden-type-option ${tipoCreacion === "orden" ? "nueva-orden-type-option-active" : ""}`}
+                      disabled={guardando}
+                      onClick={() => setTipoCreacion("orden")}
+                    >
+                      <FileText size={15} />
+                      <span>Orden</span>
+                    </button>
+                  </div>
+                  <button type="submit" disabled={guardando} className="btn-primary btn-sm w-full justify-center">
+                    {guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    {tipoCreacion === "cotizacion" ? "Guardar" : "Crear"}
+                  </button>
+                </section>
+                {!vehiculoData ? (
+                <section className="card">
                   <div className="flex items-center gap-2 mb-4">
                     <Search size={18} className="text-[var(--accent)]" />
                     <h3 className="font-semibold text-sm">Buscar vehículo</h3>
@@ -1184,6 +1331,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                     </button>
                   </div>
                 </section>
+                ) : null}
 
                 {(busquedaRealizada || vehiculoData) && (
                   <>
@@ -1250,8 +1398,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                 )}
               </aside>
 
-              <main className={busquedaRealizada || vehiculoData ? "xl:col-span-8" : "xl:col-span-12"}>
-                <div className="nueva-orden-tabs flex gap-3 border-b border-[var(--border)] bg-[var(--bg-primary)] sticky top-[-24px] z-10 py-2">
+              <main className="xl:col-span-8 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1">
+                <div className="nueva-orden-tabs flex gap-3 border-b border-[var(--border)] bg-[var(--bg-primary)] sticky top-0 z-10 py-2">
                   {[
                     ["inspeccion", "1", "Inspeccion de ingreso"],
                     ["orden", "2", "Diagnostico y presupuesto"],
@@ -1277,110 +1425,6 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
 
                 {activeTab === "orden" ? (
                   <div className="nueva-orden-section-stack">
-                    <section className="card">
-                      <h3 className="font-semibold text-sm mb-3">Diagnostico</h3>
-                      <div className="form-group">
-                        <label className="label">Diagnostico del tecnico</label>
-                        <textarea
-                          className="input text-sm"
-                          rows={4}
-                          value={diagnostico}
-                          onChange={(event) => setDiagnostico(event.target.value)}
-                          placeholder="Describe el diagnostico, hallazgos y trabajo recomendado."
-                        />
-                      </div>
-                    </section>
-
-                    <section className="card space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="font-semibold text-sm">Fotografias del diagnostico</h3>
-                        <button
-                          type="button"
-                          className="btn-secondary btn-sm"
-                          onClick={() => fotosDiagnosticoRef.current?.click()}
-                        >
-                          <Camera size={14} />
-                          Adjuntar fotos
-                        </button>
-                      </div>
-                      <input
-                        ref={fotosDiagnosticoRef}
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        onChange={agregarFotosDiagnostico}
-                      />
-                      {fotosDiagnostico.length > 0 ? (
-                        <div className="nueva-orden-photo-carousel">
-                          {fotosDiagnostico.map((foto) => (
-                            <div key={foto.id} className="nueva-orden-photo-item">
-                              <button
-                                type="button"
-                                className="nueva-orden-photo-thumb"
-                                onClick={() => setFotoModalId(foto.id)}
-                              >
-                                <img src={foto.previewUrl} alt={foto.file.name} className="h-full w-full object-cover" />
-                                {foto.descripcion ? (
-                                  <span className="nueva-orden-photo-has-description" title={foto.descripcion}>
-                                    {foto.descripcion}
-                                  </span>
-                                ) : null}
-                              </button>
-                              <button
-                                type="button"
-                                className="nueva-orden-photo-edit"
-                                title="Editar descripcion"
-                                onClick={() => editarDescripcionFoto(foto.id)}
-                              >
-                                <Pencil size={13} />
-                              </button>
-                              <button
-                                type="button"
-                                className="nueva-orden-photo-remove"
-                                title="Quitar foto"
-                                onClick={() => eliminarFotoDiagnostico(foto.id)}
-                              >
-                                <X size={13} />
-                              </button>
-                              {fotoEditandoId === foto.id ? (
-                                <div className="nueva-orden-photo-description">
-                                  <input
-                                    className="input text-xs"
-                                    value={descripcionFotoDraft}
-                                    onChange={(event) => setDescripcionFotoDraft(event.target.value)}
-                                    onKeyDown={(event) => {
-                                      if (event.key === "Enter") {
-                                        event.preventDefault();
-                                        guardarDescripcionFoto(foto.id);
-                                      }
-                                    }}
-                                    onBlur={cancelarDescripcionVacia}
-                                    enterKeyHint="done"
-                                    placeholder="Descripcion"
-                                    autoFocus
-                                  />
-                                  <button
-                                    type="button"
-                                    className="btn-primary btn-icon"
-                                    title="Guardar descripcion"
-                                    onMouseDown={(event) => event.preventDefault()}
-                                    onClick={() => guardarDescripcionFoto(foto.id)}
-                                  >
-                                    <Save size={13} />
-                                  </button>
-                                </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                          Sin fotografias adjuntas.
-                        </p>
-                      )}
-                    </section>
-
                     <section className="card space-y-4">
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-2 min-w-0">
@@ -1683,79 +1727,90 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                   </div>
                 ) : (
                   <div className="nueva-orden-section-stack">
-                    {renderBusquedaVehiculo()}
-
-                    <section className="card">
-                      <div className="flex items-center gap-2 mb-4">
-                        <FileText size={18} className="text-[#8b5cf6]" />
-                        <h3 className="font-semibold text-sm">Detalles de la orden</h3>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="form-group">
-                          <label className="label">Tipo de servicio</label>
-                          <select className="input text-sm" value={tipoServicio} onChange={(event) => setTipoServicio(event.target.value as TipoServicio)}>
-                            {TIPOS_SERVICIO.map((tipo) => (
-                              <option key={tipo} value={tipo}>{tipo}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="form-group">
-                          <label className="label">Motivo de la visita *</label>
-                          <input className="input text-sm" value={motivo} onChange={(event) => setMotivo(event.target.value)} />
-                        </div>
-                        {mostrarNotasInternas ? (
-                          <div className="form-group md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <label className="label">Notas</label>
+                    {renderSeccionInspeccion(
+                      "ingreso",
+                      "Inspección de ingreso",
+                      <>
+                        <section className="card">
+                          <div className="flex items-center gap-2 mb-4">
+                            <FileText size={18} className="text-[#8b5cf6]" />
+                            <h3 className="font-semibold text-sm">Detalles de la orden</h3>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="form-group">
+                              <label className="label">Tipo de servicio</label>
+                              <select className="input text-sm" value={tipoServicio} onChange={(event) => setTipoServicio(event.target.value as TipoServicio)}>
+                                {TIPOS_SERVICIO.map((tipo) => (
+                                  <option key={tipo} value={tipo}>{tipo}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="form-group">
+                              <label className="label">Motivo de la visita *</label>
+                              <input className="input text-sm" value={motivo} onChange={(event) => setMotivo(event.target.value)} />
+                            </div>
+                            {mostrarNotasInternas ? (
+                              <div className="form-group md:col-span-2">
+                                <div className="flex items-center gap-2">
+                                  <label className="label">Notas</label>
+                                  <button
+                                    type="button"
+                                    className="btn-ghost btn-icon"
+                                    title="Ocultar notas"
+                                    onClick={() => setMostrarNotasInternas(false)}
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                                <textarea className="input text-sm" rows={3} value={notasInternas} onChange={(event) => setNotasInternas(event.target.value)} />
+                              </div>
+                            ) : (
                               <button
                                 type="button"
-                                className="btn-ghost btn-icon"
-                                title="Ocultar notas"
-                                onClick={() => setMostrarNotasInternas(false)}
+                                className="btn-ghost btn-sm justify-start md:col-span-2 w-fit"
+                                onClick={() => setMostrarNotasInternas(true)}
                               >
-                                <X size={14} />
+                                <Plus size={14} />
+                                Agregar notas
                               </button>
-                            </div>
-                            <textarea className="input text-sm" rows={3} value={notasInternas} onChange={(event) => setNotasInternas(event.target.value)} />
+                            )}
                           </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn-ghost btn-sm justify-start md:col-span-2 w-fit"
-                            onClick={() => setMostrarNotasInternas(true)}
-                          >
-                            <Plus size={14} />
-                            Agregar notas
-                          </button>
-                        )}
-                      </div>
-                    </section>
+                        </section>
 
-                    <section className="card">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                        <div className="form-group">
-                          <label className="label">Kilometraje de ingreso *</label>
-                          <input type="number" min="0" className="input text-sm" value={km} onChange={(event) => setKm(event.target.value)} />
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-sm mb-4">Nivel de combustible</h3>
-                          <FuelSelector value={nivelCombustible} onChange={setNivelCombustible} />
-                        </div>
-                      </div>
-                    </section>
-                    <section className="card">
-                      <h3 className="font-semibold text-sm mb-3">Checklist de inventario</h3>
-                      <ChecklistInventario items={checklist} onChange={setChecklist} />
-                    </section>
-                    <section className="card">
-                      <h3 className="font-semibold text-sm mb-3">Inspeccion visual</h3>
-                      <DamageSelector
-                        danos={danos}
-                        onChange={setDanos}
-                      />
-                    </section>
-
+                        <section className="card">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                            <div className="form-group">
+                              <label className="label">Kilometraje de ingreso *</label>
+                              <input type="number" min="0" className="input text-sm" value={km} onChange={(event) => setKm(event.target.value)} />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-sm mb-4">Nivel de combustible</h3>
+                              <FuelSelector value={nivelCombustible} onChange={setNivelCombustible} />
+                            </div>
+                          </div>
+                        </section>
+                        <section className="card">
+                          <h3 className="font-semibold text-sm mb-3">Checklist de inventario</h3>
+                          <ChecklistInventario items={checklist} onChange={setChecklist} />
+                        </section>
+                        <section className="card">
+                          <h3 className="font-semibold text-sm mb-3">Inspeccion visual</h3>
+                          <DamageSelector
+                            danos={danos}
+                            onChange={setDanos}
+                          />
+                        </section>
+                      </>
+                    )}
                     {renderAsignacionTecnica()}
+                    {renderSeccionInspeccion(
+                      "diagnostico",
+                      "Diagnóstico",
+                      <>
+                        {renderDiagnostico()}
+                        {renderFotosDiagnostico()}
+                      </>
+                    )}
                   </div>
                 )}
               </main>
