@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   getOrdenById,
@@ -32,6 +32,7 @@ import {
   Devolucion,
   AccionInventarioDevolucion,
   MetodoDevolucion,
+  Vehiculo,
 } from "@/types";
 import {
   X,
@@ -56,6 +57,7 @@ import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
 import DamageSelector from "@/components/recepcion/DamageSelector";
 import ChecklistInventario from "@/components/recepcion/ChecklistInventario";
 import FuelSelector from "@/components/recepcion/FuelSelector";
+import VehiculoModal from "@/components/vehiculos/VehiculoModal";
 import { BANCOS_TRANSFERENCIA, BANCO_TRANSFERENCIA_LIST_ID } from "@/lib/paymentBanks";
 import {
   calcularPagoConRecargo,
@@ -90,6 +92,7 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
   const [uploadingFoto, setUploadingFoto] = useState(false);
   const [activeTab, setActiveTab] = useState<"orden" | "inspeccion" | "personal" | "devoluciones">("orden");
   const [activeModal, setActiveModal] = useState<"producto" | "servicio" | null>(null);
+  const [editingVehiculo, setEditingVehiculo] = useState(false);
 
   const [tipoServicio, setTipoServicio] = useState<TipoServicio>("Mantenimiento");
   const [motivo, setMotivo] = useState("");
@@ -120,7 +123,13 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
   const fileRef = useRef<HTMLInputElement>(null);
   const deletingOrdenRef = useRef(false);
 
-  const totalBruto = items.reduce((s, i) => s + i.subtotal, 0);
+  const subtotalItems = items.reduce((s, item) => s + item.cantidad * item.precioUnitario, 0);
+  const ivaItems = items.reduce((s, item) => s + item.cantidad * item.precioUnitario * (item.impuestoAplicable / 100), 0);
+  const totalBruto = subtotalItems + ivaItems;
+  const itemsAgrupados = [
+    { label: "Productos", items: items.filter((item) => item.tipo === "producto") },
+    { label: "Servicios", items: items.filter((item) => item.tipo === "servicio") },
+  ];
   const valorProductosDevueltos = devoluciones.reduce((s, devolucion) => s + devolucion.subtotalDevuelto, 0);
   const totalDevuelto = devoluciones.reduce((s, devolucion) => s + devolucion.montoDevuelto, 0);
   const totalNeto = Math.max(0, totalBruto - valorProductosDevueltos);
@@ -220,6 +229,17 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
     } finally {
       setSavingInforme(false);
     }
+  };
+
+  const handleVehiculoSaved = async (vehiculo: Vehiculo) => {
+    if (!vehiculo.id) return;
+
+    await updateOrden(ordenId, {
+      vehiculoId: vehiculo.id,
+      clienteId: vehiculo.clienteId,
+    });
+    await load();
+    onUpdate?.();
   };
 
   const convertirAOrden = async () => {
@@ -790,9 +810,20 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
                 </div>
 
                 <div className="card bg-[var(--bg-card)]">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Car size={18} className="text-[var(--warning)]" />
-                    <h3 className="font-semibold text-sm">Datos del Vehiculo</h3>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Car size={18} className="text-[var(--warning)]" />
+                      <h3 className="font-semibold text-sm">Datos del Vehiculo</h3>
+                    </div>
+                    {orden.vehiculo && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingVehiculo(true)}
+                        className="btn-ghost btn-sm text-xs"
+                      >
+                        <Edit2 size={13} /> Editar
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-3 bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
                     <div>
@@ -904,13 +935,10 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
                       </div>
 
                       <div className="card bg-[var(--bg-card)] space-y-4">
-                        <h3 className="font-semibold text-sm">Productos y Servicios</h3>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => setActiveModal("producto")} className="btn-secondary btn-sm flex-1 justify-center">
-                            <Plus size={14} /> Producto
-                          </button>
-                          <button type="button" onClick={() => setActiveModal("servicio")} className="btn-secondary btn-sm flex-1 justify-center">
-                            <Plus size={14} /> Servicio
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="font-semibold text-sm">Productos y Servicios</h3>
+                          <button type="button" onClick={() => setActiveModal("producto")} className="btn-secondary btn-sm">
+                            <Plus size={14} /> Agregar
                           </button>
                         </div>
 
@@ -928,49 +956,60 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
                                 </tr>
                               </thead>
                               <tbody>
-                                {items.map((item) => (
-                                  <tr key={item.id ?? item.descripcion} className="text-xs">
-                                    <td>
-                                      <p>{item.descripcion}</p>
-                                      {item.productoSku && (
-                                        <p className="text-[10px] text-[var(--text-muted)] font-mono">{item.productoSku}</p>
-                                      )}
-                                    </td>
-                                    <td className="text-center">
-                                      <div className="flex items-center justify-center gap-1">
-                                        <button
-                                          type="button"
-                                          onClick={() => actualizarCantidad(item, -1)}
-                                          className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded hover:bg-[var(--bg-secondary)] transition-colors"
-                                          style={{ color: "var(--text-muted)" }}
-                                        >
-                                          -
-                                        </button>
-                                        <span className="text-xs font-semibold min-w-[20px] text-center">{item.cantidad}</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => actualizarCantidad(item, 1)}
-                                          className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded hover:bg-[var(--bg-secondary)] transition-colors"
-                                          style={{ color: "var(--text-muted)" }}
-                                        >
-                                          +
-                                        </button>
-                                      </div>
-                                    </td>
-                                    <td className="text-center">${item.precioUnitario.toFixed(2)}</td>
-                                    <td className="text-center">
-                                      <button type="button" onClick={() => toggleIvaItem(item)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${item.impuestoAplicable > 0 ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20" : "bg-gray-500/10 text-gray-400 border border-gray-500/20 hover:bg-gray-500/20"}`}>
-                                        {item.impuestoAplicable > 0 ? "15%" : "0%"}
-                                      </button>
-                                    </td>
-                                    <td className="font-semibold">${item.subtotal.toFixed(2)}</td>
-                                    <td className="text-right">
-                                      <button type="button" onClick={() => item.id && eliminarItem(item.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors">
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </td>
-                                  </tr>
-                                ))}
+                                {itemsAgrupados.map((grupo) =>
+                                  grupo.items.length > 0 ? (
+                                    <Fragment key={grupo.label}>
+                                      <tr className="bg-[var(--bg-secondary)]">
+                                        <td colSpan={6} className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+                                          {grupo.label}
+                                        </td>
+                                      </tr>
+                                      {grupo.items.map((item) => (
+                                        <tr key={item.id ?? item.descripcion} className="text-xs">
+                                          <td>
+                                            <p>{item.descripcion}</p>
+                                            {item.productoSku && (
+                                              <p className="text-[10px] text-[var(--text-muted)] font-mono">{item.productoSku}</p>
+                                            )}
+                                          </td>
+                                          <td className="text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => actualizarCantidad(item, -1)}
+                                                className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                                                style={{ color: "var(--text-muted)" }}
+                                              >
+                                                -
+                                              </button>
+                                              <span className="text-xs font-semibold min-w-[20px] text-center">{item.cantidad}</span>
+                                              <button
+                                                type="button"
+                                                onClick={() => actualizarCantidad(item, 1)}
+                                                className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                                                style={{ color: "var(--text-muted)" }}
+                                              >
+                                                +
+                                              </button>
+                                            </div>
+                                          </td>
+                                          <td className="text-center">${item.precioUnitario.toFixed(2)}</td>
+                                          <td className="text-center">
+                                            <button type="button" onClick={() => toggleIvaItem(item)} className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${item.impuestoAplicable > 0 ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 hover:bg-emerald-500/20" : "bg-gray-500/10 text-gray-400 border border-gray-500/20 hover:bg-gray-500/20"}`}>
+                                              {item.impuestoAplicable > 0 ? "15%" : "0%"}
+                                            </button>
+                                          </td>
+                                          <td className="font-semibold">${item.subtotal.toFixed(2)}</td>
+                                          <td className="text-right">
+                                            <button type="button" onClick={() => item.id && eliminarItem(item.id)} className="text-red-500 hover:bg-red-500/10 p-1 rounded transition-colors">
+                                              <Trash2 size={14} />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </Fragment>
+                                  ) : null
+                                )}
                               </tbody>
                             </table>
                           </div>
@@ -980,9 +1019,19 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
                           </p>
                         )}
 
-                        <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
-                          <span className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>Total bruto productos y servicios:</span>
-                          <span className="font-bold text-base text-[var(--success)]">${totalBruto.toFixed(2)}</span>
+                        <div className="ml-auto w-full max-w-xs space-y-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <span style={{ color: "var(--text-secondary)" }}>Subtotal</span>
+                            <span className="font-semibold">${subtotalItems.toFixed(2)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span style={{ color: "var(--text-secondary)" }}>IVA</span>
+                            <span className="font-semibold">${ivaItems.toFixed(2)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-2">
+                            <span className="font-bold">Total</span>
+                            <span className="font-bold text-base text-[var(--success)]">${totalBruto.toFixed(2)}</span>
+                          </div>
                         </div>
 
                         {false && devoluciones.length > 0 && (
@@ -1445,9 +1494,18 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
 
       {activeModal && (
         <AgregarItemModal
-          tipo={activeModal}
+          tipoInicial={activeModal}
           onClose={() => setActiveModal(null)}
           onAdd={handleAddItem}
+        />
+      )}
+
+      {orden && (
+        <VehiculoModal
+          isOpen={editingVehiculo}
+          onClose={() => setEditingVehiculo(false)}
+          editingVehiculo={orden.vehiculo ?? null}
+          onSuccess={handleVehiculoSaved}
         />
       )}
 

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { subscribeOrdenes, updateEstadoOrden, getClientes, getVehiculos } from "@/lib/services";
 import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
@@ -32,21 +32,24 @@ export default function OrdenesPage() {
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const router = useRouter();
 
+  const loadRelations = useCallback(async () => {
+    try {
+      const [cList, vList] = await Promise.all([getClientes(), getVehiculos()]);
+      const cMap: Record<string, Cliente> = {};
+      const vMap: Record<string, Vehiculo> = {};
+      cList.forEach(c => { if (c.id) cMap[c.id] = c; });
+      vList.forEach(v => { if (v.id) vMap[v.id] = v; });
+      setClientesMap(cMap);
+      setVehiculosMap(vMap);
+    } catch (err) {
+      console.error("Error cargando clientes y vehiculos", err);
+    }
+  }, []);
+
   useEffect(() => {
-    const loadMaps = async () => {
-      try {
-        const [cList, vList] = await Promise.all([getClientes(), getVehiculos()]);
-        const cMap: Record<string, Cliente> = {};
-        const vMap: Record<string, Vehiculo> = {};
-        cList.forEach(c => { if (c.id) cMap[c.id] = c; });
-        vList.forEach(v => { if (v.id) vMap[v.id] = v; });
-        setClientesMap(cMap);
-        setVehiculosMap(vMap);
-      } catch (err) {
-        console.error("Error cargando clientes y vehiculos", err);
-      }
-    };
-    loadMaps();
+    const timer = window.setTimeout(() => {
+      void loadRelations();
+    }, 0);
     const unsub = subscribeOrdenes(
       (data) => {
         setOrdenes(data);
@@ -58,8 +61,11 @@ export default function OrdenesPage() {
         setLoading(false);
       }
     );
-    return () => unsub();
-  }, []);
+    return () => {
+      window.clearTimeout(timer);
+      unsub();
+    };
+  }, [loadRelations]);
 
   const ordenesConDetalle = ordenes.map(o => ({
     ...o,
@@ -208,6 +214,7 @@ export default function OrdenesPage() {
         <OrdenDetalleSidebar 
           ordenId={selectedOrderId} 
           onClose={() => setSelectedOrderId(null)} 
+          onUpdate={loadRelations}
           onEdit={(id) => {
             setSelectedOrderId(null);
             setEditingOrderId(id);

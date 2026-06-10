@@ -220,9 +220,32 @@ export async function getClienteById(id: string): Promise<Cliente | null> {
   return snap.exists() ? ({ id: snap.id, ...snap.data() } as Cliente) : null;
 }
 
+function normalizeIdentificacion(value?: string): string {
+  return (value ?? "").trim().replace(/[\s.-]/g, "").toUpperCase();
+}
+
+async function assertIdentificacionDisponible(identificacion: string, currentClienteId?: string): Promise<void> {
+  const normalized = normalizeIdentificacion(identificacion);
+  if (!normalized) return;
+
+  const snap = await getDocs(collection(db, "clientes"));
+  const exists = snap.docs.some((d) => {
+    if (currentClienteId && d.id === currentClienteId) return false;
+
+    const cliente = d.data() as Cliente & { identificacionNormalizada?: string };
+    return normalizeIdentificacion(cliente.identificacionNormalizada || cliente.identificacion) === normalized;
+  });
+
+  if (exists) throw new Error("CLIENTE_IDENTIFICACION_DUPLICADA");
+}
+
 export async function createCliente(data: Omit<Cliente, "id">): Promise<string> {
+  await assertIdentificacionDisponible(data.identificacion);
+  const identificacion = data.identificacion.trim();
   const ref = await addDoc(collection(db, "clientes"), {
     ...data,
+    identificacion,
+    identificacionNormalizada: normalizeIdentificacion(identificacion),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -230,7 +253,14 @@ export async function createCliente(data: Omit<Cliente, "id">): Promise<string> 
 }
 
 export async function updateCliente(id: string, data: Partial<Cliente>): Promise<void> {
-  await updateDoc(doc(db, "clientes", id), { ...data, updatedAt: serverTimestamp() });
+  const payload = { ...data } as Partial<Cliente> & { identificacionNormalizada?: string };
+  if (payload.identificacion !== undefined) {
+    await assertIdentificacionDisponible(payload.identificacion, id);
+    payload.identificacion = payload.identificacion.trim();
+    payload.identificacionNormalizada = normalizeIdentificacion(payload.identificacion);
+  }
+
+  await updateDoc(doc(db, "clientes", id), { ...payload, updatedAt: serverTimestamp() });
 }
 
 export async function deleteCliente(id: string): Promise<void> {

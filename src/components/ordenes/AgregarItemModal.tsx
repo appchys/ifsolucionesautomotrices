@@ -5,14 +5,16 @@ import { getProductos, getServicios } from "@/lib/services";
 import { Producto, Servicio, ItemOrden } from "@/types";
 
 const SIN_CATEGORIA_VALUE = "__sin_categoria__";
+type TipoItem = "producto" | "servicio";
 
 interface AgregarItemModalProps {
-  tipo: "producto" | "servicio";
+  tipoInicial?: TipoItem;
   onClose: () => void;
   onAdd: (item: Omit<ItemOrden, "id" | "ordenId" | "subtotal"> & { stockDisponible?: number }) => Promise<void>;
 }
 
-export default function AgregarItemModal({ tipo, onClose, onAdd }: AgregarItemModalProps) {
+export default function AgregarItemModal({ tipoInicial = "producto", onClose, onAdd }: AgregarItemModalProps) {
+  const [tipo, setTipo] = useState<TipoItem>(tipoInicial);
   const [items, setItems] = useState<(Producto | Servicio)[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -27,6 +29,7 @@ export default function AgregarItemModal({ tipo, onClose, onAdd }: AgregarItemMo
 
   const [addingItemStr, setAddingItemStr] = useState<string | null>(null);
   const [catalogQty, setCatalogQty] = useState<Record<string, number>>({});
+
   const precioUnitarioParaOrden = (item: Producto | Servicio) => {
     if (tipo !== "producto" || !item.aplicaIva) return item.precioBase;
     return Number((item.precioBase / 1.15).toFixed(2));
@@ -84,6 +87,19 @@ export default function AgregarItemModal({ tipo, onClose, onAdd }: AgregarItemMo
     };
   }, [tipo]);
 
+  const cambiarTipo = (nuevoTipo: TipoItem) => {
+    if (nuevoTipo === tipo) return;
+    setSearch("");
+    setSelectedCategory("");
+    setShowManual(false);
+    setManualName("");
+    setManualPrice("");
+    setManualQty(1);
+    setManualIva(15);
+    setCatalogQty({});
+    setTipo(nuevoTipo);
+  };
+
   const handleAddFromDb = async (item: Producto | Servicio) => {
     setAddingItemStr(item.id || "temp");
     try {
@@ -132,7 +148,7 @@ export default function AgregarItemModal({ tipo, onClose, onAdd }: AgregarItemMo
       <div className="bg-[var(--bg-card)] w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-fade-in">
         <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
           <h2 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
-            Agregar {tipo === "producto" ? "Productos" : "Servicios"}
+            Agregar productos y servicios
           </h2>
           <button onClick={onClose} className="btn-ghost btn-icon">
             <X size={20} />
@@ -140,6 +156,31 @@ export default function AgregarItemModal({ tipo, onClose, onAdd }: AgregarItemMo
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="grid grid-cols-2 gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-1">
+            <button
+              type="button"
+              onClick={() => cambiarTipo("producto")}
+              className={`inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
+                tipo === "producto"
+                  ? "bg-[var(--bg-card)] text-[var(--accent)] shadow-sm"
+                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+              }`}
+            >
+              Productos
+            </button>
+            <button
+              type="button"
+              onClick={() => cambiarTipo("servicio")}
+              className={`inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
+                tipo === "servicio"
+                  ? "bg-[var(--bg-card)] text-[var(--accent)] shadow-sm"
+                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
+              }`}
+            >
+              Servicios
+            </button>
+          </div>
+
           {/* Buscar en base de datos */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>

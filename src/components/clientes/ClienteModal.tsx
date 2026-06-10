@@ -29,14 +29,24 @@ export default function ClienteModal({ cliente, onClose, onSaved }: Props) {
         toast.success("Cliente creado");
       }
       onSaved();
-    } catch {
-      toast.error("Error al guardar");
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message === "CLIENTE_IDENTIFICACION_DUPLICADA"
+          ? "La Cedula/RUC ya esta registrada en otro cliente"
+          : "Error al guardar"
+      );
     } finally {
       setSaving(false);
     }
   };
 
-  const fields = [
+  const fields: {
+    name: keyof Omit<Cliente, "id">;
+    label: string;
+    placeholder: string;
+    required: boolean;
+    col2?: boolean;
+  }[] = [
     { name: "nombre", label: "Nombre *", placeholder: "Juan", required: true },
     { name: "apellido", label: "Apellido *", placeholder: "Pérez", required: true },
     { name: "identificacion", label: "Cédula / RUC *", placeholder: "1234567890", required: true },
@@ -62,7 +72,7 @@ export default function ClienteModal({ cliente, onClose, onSaved }: Props) {
               <input
                 className="input"
                 placeholder={f.placeholder}
-                {...register(f.name as any, { required: f.required ? `${f.label} es requerido` : false })}
+                {...register(f.name, { required: f.required ? `${f.label} es requerido` : false })}
               />
               {errors[f.name as keyof typeof errors] && (
                 <p className="text-xs mt-1" style={{ color: "var(--danger)" }}>

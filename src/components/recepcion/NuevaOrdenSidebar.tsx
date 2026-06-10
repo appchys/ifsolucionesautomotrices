@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   Calculator,
@@ -65,6 +65,7 @@ const CHECKLIST_DEFAULT: ChecklistItem[] = [
 const TIPOS_VEHICULO: TipoVehiculo[] = ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
 const TIPOS_SERVICIO: TipoServicio[] = ["Mantenimiento", "Reparación", "Garantía"];
 type PasoOrden = "inspeccion" | "orden" | "ejecucion" | "reparacion" | "entrega";
+type TipoCreacion = "cotizacion" | "orden";
 
 const FLUJO_DEFAULT: FlujoTrabajo = {
   ejecucionRepuestos: {
@@ -168,6 +169,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   });
   const [numeroOrden, setNumeroOrden] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PasoOrden>("inspeccion");
+  const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>("orden");
   const [sugerencias, setSugerencias] = useState<Vehiculo[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
@@ -207,7 +209,19 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const formValues = useWatch({ control });
   const placaValue = formValues.placa || "";
   const clienteNombre = [formValues.nombre, formValues.apellido].filter(Boolean).join(" ") || "Cliente sin nombre";
-  const total = useMemo(() => items.reduce((sum, item) => sum + item.subtotal, 0), [items]);
+  const subtotalItems = useMemo(() => items.reduce((sum, item) => sum + item.cantidad * item.precioUnitario, 0), [items]);
+  const ivaItems = useMemo(
+    () => items.reduce((sum, item) => sum + item.cantidad * item.precioUnitario * (item.impuestoAplicable / 100), 0),
+    [items]
+  );
+  const total = useMemo(() => subtotalItems + ivaItems, [subtotalItems, ivaItems]);
+  const itemsAgrupados = useMemo(
+    () => [
+      { label: "Productos", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo === "producto") },
+      { label: "Servicios", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo === "servicio") },
+    ],
+    [items]
+  );
   const fotoModalIndex = fotoModalId ? fotosDiagnostico.findIndex((foto) => foto.id === fotoModalId) : -1;
   const fotoModal = fotoModalIndex >= 0 ? fotosDiagnostico[fotoModalIndex] : null;
 
@@ -291,7 +305,11 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       toast.success("Cliente actualizado");
     } catch (error) {
       console.error(error);
-      toast.error("Error al actualizar el cliente");
+      toast.error(
+        error instanceof Error && error.message === "CLIENTE_IDENTIFICACION_DUPLICADA"
+          ? "La Cedula/RUC ya esta registrada en otro cliente"
+          : "Error al actualizar el cliente"
+      );
     } finally {
       setGuardandoClienteModal(false);
     }
@@ -425,6 +443,18 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     setMostrarSugerencias(true);
   };
 
+  const deseleccionarVehiculo = () => {
+    setVehiculoData(null);
+    setClienteData(null);
+    setEditandoVehiculo(true);
+    setBusquedaRealizada(false);
+    setActiveTab("inspeccion");
+    setSugerencias([]);
+    setMostrarSugerencias(false);
+    reset(emptyForm());
+    toast("Vehiculo deseleccionado. Busca otra placa.", { icon: "i" });
+  };
+
   const addItem = async (item: Omit<ItemOrden, "id" | "ordenId" | "subtotal">) => {
     const subtotal = item.cantidad * item.precioUnitario * (1 + item.impuestoAplicable / 100);
     setItems((current) => [...current, { ...item, subtotal }]);
@@ -433,6 +463,18 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
 
   const eliminarItem = (index: number) => {
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const actualizarCantidadItem = (index: number, delta: number) => {
+    setItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+
+        const cantidad = Math.max(1, item.cantidad + delta);
+        const subtotal = cantidad * item.precioUnitario * (1 + item.impuestoAplicable / 100);
+        return { ...item, cantidad, subtotal };
+      })
+    );
   };
 
   const agregarFotosDiagnostico = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -538,7 +580,9 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     </label>
   );
 
-  const onSubmit = async (data: FormData, esCotizacion = false) => {
+  const onSubmit = async (data: FormData, tipoSeleccionado: TipoCreacion = tipoCreacion) => {
+    const esCotizacion = tipoSeleccionado === "cotizacion";
+
     if (!data.placa.trim()) {
       toast.error("La placa es obligatoria");
       return;
@@ -566,7 +610,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
 
     setGuardando(true);
     try {
-      const guardarComoCotizacion = esCotizacion && !presupuestoConfirmado;
+      const guardarComoCotizacion = esCotizacion;
 
       const clientePayload = {
         nombre: data.nombre.trim(),
@@ -643,7 +687,11 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       if (!onSuccess) onClose();
     } catch (error) {
       console.error(error);
-      toast.error("Error al guardar la orden");
+      toast.error(
+        error instanceof Error && error.message === "CLIENTE_IDENTIFICACION_DUPLICADA"
+          ? "La Cedula/RUC ya esta registrada en otro cliente"
+          : "Error al guardar la orden"
+      );
     } finally {
       setGuardando(false);
     }
@@ -981,52 +1029,56 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     </section>
   );
 
-  const renderBusquedaVehiculo = () => (
-    <section className="card">
-      <div className="flex items-center gap-2 mb-4">
-        <Search size={18} className="text-[var(--accent)]" />
-        <h3 className="font-semibold text-sm">Buscar vehiculo</h3>
-      </div>
-      <div className="flex gap-2" ref={wrapperRef}>
-        <div className="relative flex-1">
-          <input
-            type="text"
-            className={`input uppercase font-mono text-lg tracking-widest ${errors.placa ? "border-red-500" : ""}`}
-            placeholder="ABC-1234"
-            {...register("placa", { required: true })}
-            onChange={onPlateChange}
-            onFocus={() => setMostrarSugerencias(true)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                ejecutarBusqueda(placaValue);
-              }
-            }}
-          />
-          {mostrarSugerencias && sugerencias.length > 0 && (
-            <div className="absolute z-20 w-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-lg max-h-56 overflow-y-auto">
-              {sugerencias.map((vehiculo) => (
-                <button
-                  key={vehiculo.id}
-                  type="button"
-                  className="w-full px-3 py-2 text-left hover:bg-[var(--bg-secondary)] border-b border-[var(--border)] last:border-0"
-                  onClick={() => ejecutarBusqueda(vehiculo.placa)}
-                >
-                  <span className="block font-mono font-bold text-sm">{vehiculo.placa}</span>
-                  <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
-                    {vehiculo.marca} {vehiculo.modelo}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
+  const renderBusquedaVehiculo = () => {
+    if (vehiculoData) return null;
+
+    return (
+      <section className="card">
+        <div className="flex items-center gap-2 mb-4">
+          <Search size={18} className="text-[var(--accent)]" />
+          <h3 className="font-semibold text-sm">Buscar vehiculo</h3>
         </div>
-        <button type="button" onClick={() => ejecutarBusqueda(placaValue)} disabled={buscando} className="btn-primary btn-icon">
-          {buscando ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-        </button>
-      </div>
-    </section>
-  );
+        <div className="flex gap-2" ref={wrapperRef}>
+          <div className="relative flex-1">
+            <input
+              type="text"
+              className={`input uppercase font-mono text-lg tracking-widest ${errors.placa ? "border-red-500" : ""}`}
+              placeholder="ABC-1234"
+              {...register("placa", { required: true })}
+              onChange={onPlateChange}
+              onFocus={() => setMostrarSugerencias(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  ejecutarBusqueda(placaValue);
+                }
+              }}
+            />
+            {mostrarSugerencias && sugerencias.length > 0 && (
+              <div className="absolute z-20 w-full mt-1 bg-[var(--bg-card)] border border-[var(--border)] rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                {sugerencias.map((vehiculo) => (
+                  <button
+                    key={vehiculo.id}
+                    type="button"
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-secondary)] border-b border-[var(--border)] last:border-0"
+                    onClick={() => ejecutarBusqueda(vehiculo.placa)}
+                  >
+                    <span className="block font-mono font-bold text-sm">{vehiculo.placa}</span>
+                    <span className="block text-xs" style={{ color: "var(--text-muted)" }}>
+                      {vehiculo.marca} {vehiculo.modelo}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button type="button" onClick={() => ejecutarBusqueda(placaValue)} disabled={buscando} className="btn-primary btn-icon">
+            {buscando ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+          </button>
+        </div>
+      </section>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex justify-end">
@@ -1053,25 +1105,39 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="btn-secondary btn-sm"
-              title="Guardar como cotizacion"
-              disabled={guardando || presupuestoConfirmado}
-              onClick={handleSubmit((data) => onSubmit(data, true))}
-            >
-              <Calculator size={15} />
-              <span className="hidden sm:inline">Cotizacion</span>
-            </button>
+            <div className="nueva-orden-type-toggle" role="radiogroup" aria-label="Tipo de registro">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={tipoCreacion === "cotizacion"}
+                className={`nueva-orden-type-option ${tipoCreacion === "cotizacion" ? "nueva-orden-type-option-active" : ""}`}
+                disabled={guardando}
+                onClick={() => setTipoCreacion("cotizacion")}
+              >
+                <Calculator size={15} />
+                <span>Cotización</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={tipoCreacion === "orden"}
+                className={`nueva-orden-type-option ${tipoCreacion === "orden" ? "nueva-orden-type-option-active" : ""}`}
+                disabled={guardando}
+                onClick={() => setTipoCreacion("orden")}
+              >
+                <FileText size={15} />
+                <span>Orden</span>
+              </button>
+            </div>
             <button form="nueva-orden-form" type="submit" disabled={guardando} className="btn-primary btn-sm">
               {guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              Crear Orden
+              {tipoCreacion === "cotizacion" ? "Guardar" : "Crear"}
             </button>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-          <form id="nueva-orden-form" onSubmit={handleSubmit((data) => onSubmit(data, false))}>
+          <form id="nueva-orden-form" onSubmit={handleSubmit((data) => onSubmit(data, tipoCreacion))}>
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-start">
               <aside className={`${busquedaRealizada || vehiculoData ? "xl:col-span-4" : "hidden"} space-y-3`}>
                 <section className="hidden">
@@ -1122,15 +1188,21 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                 {(busquedaRealizada || vehiculoData) && (
                   <>
                     <section className="card">
-                      <div className="flex items-center justify-between gap-3 mb-4">
+                      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
                         <div className="flex items-center gap-2">
                           <Car size={18} className="text-[var(--warning)]" />
                           <h3 className="font-semibold text-sm">Datos del vehículo</h3>
                         </div>
                         {vehiculoData && (
-                          <button type="button" className="btn-ghost btn-sm" onClick={() => setEditandoVehiculo((value) => !value)}>
-                            {editandoVehiculo ? "Ver" : "Editar"}
-                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button type="button" className="btn-secondary btn-sm" onClick={deseleccionarVehiculo}>
+                              <X size={14} />
+                              Deseleccionar
+                            </button>
+                            <button type="button" className="btn-ghost btn-sm" onClick={() => setEditandoVehiculo((value) => !value)}>
+                              {editandoVehiculo ? "Ver" : "Editar"}
+                            </button>
+                          </div>
                         )}
                       </div>
                       {!editandoVehiculo && vehiculoData ? (
@@ -1311,44 +1383,91 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
 
                     <section className="card space-y-4">
                       <div className="flex items-center justify-between gap-3">
-                        <h3 className="font-semibold text-sm">Productos y servicios</h3>
-                        <span className="font-bold text-sm text-[var(--success)]">{currency(total)}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={() => setActiveModal("producto")} className="btn-secondary btn-sm flex-1 justify-center">
-                          <Plus size={14} /> Producto
-                        </button>
-                        <button type="button" onClick={() => setActiveModal("servicio")} className="btn-secondary btn-sm flex-1 justify-center">
-                          <Plus size={14} /> Servicio
+                        <div className="flex items-center gap-2 min-w-0">
+                          <h3 className="font-semibold text-sm">Productos y servicios</h3>
+                          <span className="font-bold text-sm text-[var(--success)]">{currency(total)}</span>
+                        </div>
+                        <button type="button" onClick={() => setActiveModal("producto")} className="btn-secondary btn-sm">
+                          <Plus size={14} /> Agregar
                         </button>
                       </div>
                       {items.length > 0 ? (
+                        <>
                         <div className="table-container border border-[var(--border)] rounded-lg">
                           <table className="table">
                             <thead>
                               <tr>
                                 <th>Descripcion</th>
                                 <th>Cant.</th>
+                                <th>IVA</th>
                                 <th>Total</th>
                                 <th />
                               </tr>
                             </thead>
                             <tbody>
-                              {items.map((item, index) => (
-                                <tr key={`${item.descripcion}-${index}`} className="text-xs">
-                                  <td>{item.descripcion}</td>
-                                  <td>{item.cantidad}</td>
-                                  <td className="font-semibold">{currency(item.subtotal)}</td>
-                                  <td className="text-right">
-                                    <button type="button" onClick={() => eliminarItem(index)} className="btn-ghost btn-icon" title="Eliminar item">
-                                      <Trash2 size={14} className="text-red-500" />
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
+                              {itemsAgrupados.map((grupo) =>
+                                grupo.items.length > 0 ? (
+                                  <Fragment key={grupo.label}>
+                                    <tr className="bg-[var(--bg-secondary)]">
+                                      <td colSpan={5} className="text-[10px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+                                        {grupo.label}
+                                      </td>
+                                    </tr>
+                                    {grupo.items.map(({ item, index }) => (
+                                      <tr key={`${item.descripcion}-${index}`} className="text-xs">
+                                        <td>{item.descripcion}</td>
+                                        <td>
+                                          <div className="flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => actualizarCantidadItem(index, -1)}
+                                              className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                                              style={{ color: "var(--text-muted)" }}
+                                              disabled={item.cantidad <= 1}
+                                            >
+                                              -
+                                            </button>
+                                            <span className="text-xs font-semibold min-w-[20px] text-center">{item.cantidad}</span>
+                                            <button
+                                              type="button"
+                                              onClick={() => actualizarCantidadItem(index, 1)}
+                                              className="w-6 h-6 flex items-center justify-center text-xs font-bold rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                                              style={{ color: "var(--text-muted)" }}
+                                            >
+                                              +
+                                            </button>
+                                          </div>
+                                        </td>
+                                        <td>{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}</td>
+                                        <td className="font-semibold">{currency(item.subtotal)}</td>
+                                        <td className="text-right">
+                                          <button type="button" onClick={() => eliminarItem(index)} className="btn-ghost btn-icon" title="Eliminar item">
+                                            <Trash2 size={14} className="text-red-500" />
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </Fragment>
+                                ) : null
+                              )}
                             </tbody>
                           </table>
                         </div>
+                        <div className="ml-auto w-full max-w-xs space-y-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm">
+                          <div className="flex items-center justify-between gap-3">
+                            <span style={{ color: "var(--text-secondary)" }}>Subtotal</span>
+                            <span className="font-semibold">{currency(subtotalItems)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span style={{ color: "var(--text-secondary)" }}>IVA</span>
+                            <span className="font-semibold">{currency(ivaItems)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 border-t border-[var(--border)] pt-2">
+                            <span className="font-bold">Total</span>
+                            <span className="font-bold text-[var(--success)]">{currency(total)}</span>
+                          </div>
+                        </div>
+                        </>
                       ) : (
                         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
                           Sin productos ni servicios agregados.
@@ -1646,7 +1765,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       </div>
 
       {activeModal && (
-        <AgregarItemModal tipo={activeModal} onClose={() => setActiveModal(null)} onAdd={addItem} />
+        <AgregarItemModal tipoInicial={activeModal} onClose={() => setActiveModal(null)} onAdd={addItem} />
       )}
       {renderFotoModal()}
       {renderClienteDetalleModal()}
