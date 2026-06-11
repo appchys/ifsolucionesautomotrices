@@ -1324,6 +1324,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                     {tipoCreacion === "cotizacion" ? "Guardar" : "Crear"}
                   </button>
                 </section>
+
                 {!vehiculoData ? (
                 <section className="card">
                   <div className="flex items-center gap-2 mb-4">
@@ -1434,39 +1435,44 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                     ) : null}
                   </>
                 )}
+
+                <section className="card space-y-2">
+                  <h3 className="font-semibold text-xs uppercase tracking-wider text-[var(--text-muted)] mb-2">Proceso de Orden</h3>
+                  <div className="flex flex-col gap-1.5">
+                    {([
+                      ["inspeccion", "1", "Inspección y diagnóstico"],
+                      ["orden", "2", "Presupuesto"],
+                      ["ejecucion", "3", "Ejecución y repuestos"],
+                      ["reparacion", "4", "Orden y reparación"],
+                      ["entrega", "5", "Entrega y cierre"],
+                    ] as [PasoOrden, string, string][]).map(([tab, step, label]) => {
+                      const completado = pasosCompletados[tab];
+                      const activo = activeTab === tab;
+
+                      return (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => setActiveTab(tab)}
+                          className={`nueva-orden-step-button w-full justify-start text-left gap-3 px-3 py-2.5 rounded-lg border transition-all ${
+                            activo
+                              ? "nueva-orden-step-button-active bg-[rgba(37,99,235,0.08)] border-[var(--accent)]"
+                              : "nueva-orden-step-button-idle border-transparent hover:bg-[var(--bg-hover)]"
+                          } ${completado ? "nueva-orden-step-button-complete" : ""}`}
+                        >
+                          <span className="nueva-orden-step-number">
+                            {completado ? <Check size={12} strokeWidth={3} /> : step}
+                          </span>
+                          <span className="truncate text-sm">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+
               </aside>
 
               <main className="xl:col-span-8 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1">
-                <div className="nueva-orden-tabs flex gap-3 border-b border-[var(--border)] bg-[var(--bg-primary)] sticky top-0 z-10 py-2">
-                  {([
-                    ["inspeccion", "1", "Inspección y diagnóstico"],
-                    ["orden", "2", "Presupuesto"],
-                    ["ejecucion", "3", "Ejecucion y repuestos"],
-                    ["reparacion", "4", "Orden y reparacion"],
-                    ["entrega", "5", "Entrega y cierre"],
-                  ] as [PasoOrden, string, string][]).map(([tab, step, label]) => {
-                    const completado = pasosCompletados[tab];
-
-                    return (
-                      <button
-                        key={tab}
-                        type="button"
-                        onClick={() => setActiveTab(tab)}
-                        className={`nueva-orden-step-button ${
-                          activeTab === tab
-                            ? "nueva-orden-step-button-active"
-                            : "nueva-orden-step-button-idle"
-                        } ${completado ? "nueva-orden-step-button-complete" : ""}`}
-                      >
-                        <span className="nueva-orden-step-number">
-                          {completado ? <Check size={14} strokeWidth={3} /> : step}
-                        </span>
-                        <span>{label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
                 {activeTab === "orden" ? (
                   <div className="nueva-orden-section-stack">
                     <section className="card space-y-4">
