@@ -13,6 +13,9 @@ import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
 
 const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
 
+const getNumeroDocumento = (orden: OrdenTrabajo) =>
+  orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero;
+
 function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -81,7 +84,7 @@ export default function OrdenesPage() {
       o.vehiculo?.placa?.toLowerCase().includes(term) ||
       o.cliente?.nombre?.toLowerCase().includes(term) ||
       o.cliente?.apellido?.toLowerCase().includes(term) ||
-      String(o.numero).includes(term);
+      String(getNumeroDocumento(o) ?? "").includes(term);
     return matchEstado && matchSearch;
   });
 
@@ -163,7 +166,7 @@ export default function OrdenesPage() {
                   >
                     <td>
                       <span className="font-mono font-bold text-sm" style={{ color: "var(--accent-light)" }}>
-                        #{String(o.numero ?? 0).padStart(4, "0")}
+                        #{String(getNumeroDocumento(o) ?? 0).padStart(4, "0")}
                       </span>
                     </td>
                     <td style={{ color: "var(--text-primary)" }}>

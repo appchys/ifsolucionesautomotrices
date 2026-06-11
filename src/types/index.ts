@@ -124,6 +124,7 @@ export interface OrdenTrabajo {
   vehiculo?: Vehiculo;
   cliente?: Cliente;
   numero?: number;
+  numeroCotizacion?: number;
   estado: EstadoOrden;
   tipoServicio: TipoServicio;
   motivo: string;

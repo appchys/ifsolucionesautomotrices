@@ -362,13 +362,25 @@ export function subscribeOrdenes(
   );
 }
 
-export async function createOrden(data: Omit<OrdenTrabajo, "id">): Promise<string> {
-  // Generar número de orden
+type TipoNumeroDocumento = "orden" | "cotizacion";
+
+async function getProximoNumeroDocumento(tipo: TipoNumeroDocumento): Promise<number> {
   const countSnap = await getDocs(collection(db, "ordenesTrabajo"));
-  const numero = countSnap.size + 1;
+  const numeros = countSnap.docs
+    .map((ordenDoc) => ordenDoc.data() as OrdenTrabajo)
+    .filter((orden) => (tipo === "cotizacion" ? orden.esCotizacion === true : orden.esCotizacion !== true))
+    .map((orden) => (tipo === "cotizacion" ? orden.numeroCotizacion ?? orden.numero : orden.numero))
+    .filter((numero): numero is number => typeof numero === "number" && Number.isFinite(numero));
+
+  return Math.max(0, ...numeros) + 1;
+}
+
+export async function createOrden(data: Omit<OrdenTrabajo, "id">): Promise<string> {
+  const esCotizacion = data.esCotizacion === true;
+  const numero = await getProximoNumeroDocumento(esCotizacion ? "cotizacion" : "orden");
   const ref = await addDoc(collection(db, "ordenesTrabajo"), {
     ...removeUndefinedFields(data),
-    numero,
+    ...(esCotizacion ? { numeroCotizacion: numero } : { numero }),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -379,12 +391,12 @@ export async function createOrdenConItems(
   data: Omit<OrdenTrabajo, "id">,
   items: Omit<ItemOrden, "id" | "ordenId">[]
 ): Promise<string> {
-  const countSnap = await getDocs(collection(db, "ordenesTrabajo"));
-  const numero = countSnap.size + 1;
+  const esCotizacion = data.esCotizacion === true;
+  const numero = await getProximoNumeroDocumento(esCotizacion ? "cotizacion" : "orden");
   const ordenRef = doc(collection(db, "ordenesTrabajo"));
 
   await runTransaction(db, async (transaction) => {
-    if (!data.esCotizacion) {
+    if (!esCotizacion) {
       await aplicarMovimientosStockOrden(
         transaction,
         items
@@ -399,7 +411,7 @@ export async function createOrdenConItems(
 
     transaction.set(ordenRef, {
       ...removeUndefinedFields(data),
-      numero,
+      ...(esCotizacion ? { numeroCotizacion: numero } : { numero }),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -416,12 +428,16 @@ export async function createOrdenConItems(
   return ordenRef.id;
 }
 
-export async function getProximoNumeroOrden(): Promise<number> {
-  const snap = await getDocs(collection(db, "ordenesTrabajo"));
-  return snap.size + 1;
+export async function getProximoNumeroOrden(tipo: TipoNumeroDocumento = "orden"): Promise<number> {
+  return getProximoNumeroDocumento(tipo);
 }
 
 export async function updateOrden(id: string, data: Partial<OrdenTrabajo>): Promise<void> {
+  const numeroOrdenConversion =
+    data.esCotizacion === false && data.numero === undefined
+      ? await getProximoNumeroDocumento("orden")
+      : undefined;
+
   if (data.esCotizacion === false) {
     const items = await getItemsOrden(id);
     const ordenRef = doc(db, "ordenesTrabajo", id);
@@ -446,6 +462,9 @@ export async function updateOrden(id: string, data: Partial<OrdenTrabajo>): Prom
 
       transaction.update(ordenRef, {
         ...removeUndefinedFields(data),
+        ...(ordenActual.esCotizacion && numeroOrdenConversion !== undefined
+          ? { numero: numeroOrdenConversion }
+          : {}),
         updatedAt: serverTimestamp(),
       });
     });

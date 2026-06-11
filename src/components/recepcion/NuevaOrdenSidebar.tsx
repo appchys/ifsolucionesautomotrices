@@ -17,6 +17,7 @@ import {
   Search,
   Trash2,
   User,
+  UserRoundCheck,
   X,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
@@ -190,6 +191,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     direccion: "",
   });
   const [numeroOrden, setNumeroOrden] = useState<number | null>(null);
+  const [numeroCotizacion, setNumeroCotizacion] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<PasoOrden>("inspeccion");
   const [seccionesInspeccionAbiertas, setSeccionesInspeccionAbiertas] = useState({
     ingreso: true,
@@ -200,12 +202,13 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
   const [cargandoTecnicos, setCargandoTecnicos] = useState(false);
+  const [mostrandoSelectorTecnico, setMostrandoSelectorTecnico] = useState(false);
 
   const [tipoServicio, setTipoServicio] = useState<TipoServicio>("Mantenimiento");
   const [motivo, setMotivo] = useState("");
   const [notasInternas, setNotasInternas] = useState("");
   const [mostrarNotasInternas, setMostrarNotasInternas] = useState(false);
-  const [tecnicoId, setTecnicoId] = useState("");
+  const [tecnicoIds, setTecnicoIds] = useState<string[]>([]);
   const [diagnostico, setDiagnostico] = useState("");
   const [presupuestoConfirmado, setPresupuestoConfirmado] = useState(false);
   const [km, setKm] = useState("");
@@ -226,6 +229,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [referenciaPago, setReferenciaPago] = useState("");
 
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const tecnicoPopoverRef = useRef<HTMLDivElement>(null);
   const fotosDiagnosticoRef = useRef<HTMLInputElement>(null);
   const fotosDiagnosticoActualesRef = useRef<typeof fotosDiagnostico>([]);
   const {
@@ -256,6 +260,18 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       ? "parcial"
       : "pendiente";
   const pagoPreview = calcularPagoConRecargo(Number(montoPago || 0), metodoPago);
+  const numeroDocumentoActual = tipoCreacion === "cotizacion" ? numeroCotizacion : numeroOrden;
+  const tecnicosAsignados = useMemo(
+    () => tecnicoIds
+      .map((uid) => tecnicos.find((tecnico) => tecnico.uid === uid))
+      .filter((tecnico): tecnico is AppUser => Boolean(tecnico)),
+    [tecnicoIds, tecnicos]
+  );
+  const tecnicoId = tecnicoIds[0] ?? "";
+  const tecnicoAsignadoResumen =
+    tecnicosAsignados.length > 0
+      ? tecnicosAsignados.map((tecnico) => tecnico.displayName || tecnico.email).join(", ")
+      : "Sin tecnico asignado";
   const itemsAgrupados = useMemo(
     () => [
       { label: "Productos", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo === "producto") },
@@ -268,7 +284,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       inspeccion:
         Boolean(placaValue.trim()) &&
         Boolean(motivo.trim()) &&
-        Boolean(tecnicoId) &&
+        tecnicoIds.length > 0 &&
         Boolean(km.trim()) &&
         !Number.isNaN(Number(km)),
       orden: items.length > 0 && (tipoCreacion === "cotizacion" || presupuestoConfirmado),
@@ -300,7 +316,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         flujoTrabajo.entregaCierre.ordenCerradaSistema ||
         Boolean(flujoTrabajo.entregaCierre.notas?.trim()),
     }),
-    [flujoTrabajo, items.length, km, motivo, pagosDraft.length, placaValue, presupuestoConfirmado, tecnicoId, tipoCreacion]
+    [flujoTrabajo, items.length, km, motivo, pagosDraft.length, placaValue, presupuestoConfirmado, tecnicoIds.length, tipoCreacion]
   );
   const presupuestoEstado = useMemo(() => {
     if (presupuestoConfirmado) return { label: "Aprobado", className: "badge-green" };
@@ -459,7 +475,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    getProximoNumeroOrden().then(setNumeroOrden).catch(console.error);
+    getProximoNumeroOrden("orden").then(setNumeroOrden).catch(console.error);
+    getProximoNumeroOrden("cotizacion").then(setNumeroCotizacion).catch(console.error);
     return () => {
       document.body.style.overflow = previousOverflow;
     };
@@ -488,6 +505,16 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     const handleClickOutside = (event: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setMostrarSugerencias(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tecnicoPopoverRef.current && !tecnicoPopoverRef.current.contains(event.target as Node)) {
+        setMostrandoSelectorTecnico(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -712,6 +739,18 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     setPagosDraft((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const quitarTecnicoAsignado = (uid: string) => {
+    setTecnicoIds((current) => current.filter((tecnicoUid) => tecnicoUid !== uid));
+  };
+
+  const toggleTecnicoAsignado = (uid: string) => {
+    setTecnicoIds((current) =>
+      current.includes(uid)
+        ? current.filter((tecnicoUid) => tecnicoUid !== uid)
+        : [...current, uid]
+    );
+  };
+
   const onSubmit = async (data: FormData, tipoSeleccionado: TipoCreacion = tipoCreacion) => {
     const esCotizacion = tipoSeleccionado === "cotizacion";
 
@@ -719,8 +758,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       toast.error("La placa es obligatoria");
       return;
     }
-    if (!tecnicoId) {
-      toast.error("Selecciona un tecnico");
+    if (tecnicoIds.length === 0) {
+      toast.error("Selecciona al menos un tecnico");
       setActiveTab("inspeccion");
       return;
     }
@@ -805,6 +844,12 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         notasInternas: notasInternas.trim(),
         informeTecnico: diagnostico.trim(),
         tecnicoId,
+        personalAsignado: tecnicosAsignados.map((tecnico) => ({
+          uid: tecnico.uid,
+          email: tecnico.email,
+          displayName: tecnico.displayName,
+          role: tecnico.role,
+        })),
         presupuestoConfirmadoPorCliente: presupuestoConfirmado,
         flujoTrabajo: flujoTrabajoParaGuardar,
         fotoUrls: [],
@@ -1157,34 +1202,128 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     );
   };
 
-  const renderAsignacionTecnica = () => (
-    <section className="card">
-      <h3 className="font-semibold text-sm mb-3">Asignacion tecnica</h3>
-      <div className="form-group">
-        <label className="label">Tecnico asignado *</label>
-        <select
-          className="input text-sm"
-          value={tecnicoId}
-          onChange={(event) => setTecnicoId(event.target.value)}
-          disabled={cargandoTecnicos}
-        >
-          <option value="">
-            {cargandoTecnicos ? "Cargando tecnicos..." : "Seleccionar tecnico"}
-          </option>
-          {tecnicos.map((tecnico) => (
-            <option key={tecnico.uid} value={tecnico.uid}>
-              {tecnico.displayName || tecnico.email}
-            </option>
-          ))}
-        </select>
-        {!cargandoTecnicos && tecnicos.length === 0 ? (
-          <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            No hay usuarios activos con rol tecnico.
-          </p>
+  const renderAsignacionTecnicaCompacta = () => {
+    const tecnicosDisponibles = tecnicos.filter((tecnico) => !tecnicoIds.includes(tecnico.uid));
+    const puedeAgregarTecnico = !cargandoTecnicos && !guardando && tecnicosDisponibles.length > 0;
+
+    return (
+      <div ref={tecnicoPopoverRef} className="relative flex items-center justify-end gap-1.5 min-w-0 shrink-0">
+        <div className="flex items-center justify-end gap-1.5 min-w-0">
+          {tecnicosAsignados.length === 0 ? (
+            <button
+              type="button"
+              className="badge badge-gray max-w-[145px] gap-1.5 text-[10px]"
+              onClick={() => setMostrandoSelectorTecnico(true)}
+              disabled={cargandoTecnicos || guardando}
+            >
+              <UserRoundCheck size={11} />
+              <span className="truncate">{cargandoTecnicos ? "Cargando..." : tecnicoAsignadoResumen}</span>
+            </button>
+          ) : (
+            tecnicosAsignados.slice(0, 1).map((tecnico) => (
+              <span key={tecnico.uid} className="badge badge-green max-w-[120px] gap-1 pr-1 text-[10px]">
+                <span className="truncate">{tecnico.displayName || tecnico.email}</span>
+                <button
+                  type="button"
+                  className="flex h-4 w-4 min-w-4 items-center justify-center rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--danger)]"
+                  title="Quitar tecnico"
+                  onClick={() => quitarTecnicoAsignado(tecnico.uid)}
+                  disabled={guardando}
+                >
+                  <X size={10} />
+                </button>
+              </span>
+            ))
+          )}
+          {tecnicosAsignados.length > 1 ? (
+            <button
+              type="button"
+              className="badge badge-green text-[10px]"
+              onClick={() => setMostrandoSelectorTecnico(true)}
+              disabled={guardando}
+            >
+              +{tecnicosAsignados.length - 1}
+            </button>
+          ) : null}
+          {tecnicoIds.length > 0 && puedeAgregarTecnico ? (
+            <button
+              type="button"
+              className="btn-ghost btn-icon h-6 w-6 min-w-6"
+              title="Agregar tecnico"
+              onClick={() => setMostrandoSelectorTecnico(true)}
+            >
+              <Plus size={13} />
+            </button>
+          ) : null}
+        </div>
+        {mostrandoSelectorTecnico ? (
+          <div className="absolute right-0 top-full z-50 mt-1 w-60 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-2 shadow-xl">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                {tecnicosAsignados.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {tecnicosAsignados.map((tecnico) => (
+                      <span key={tecnico.uid} className="badge badge-gray max-w-full gap-1 pr-1 text-[10px]">
+                        <span className="truncate">{tecnico.displayName || tecnico.email}</span>
+                        <button
+                          type="button"
+                          className="flex h-4 w-4 min-w-4 items-center justify-center rounded-full bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--danger)]"
+                          title="Quitar tecnico"
+                          onClick={() => quitarTecnicoAsignado(tecnico.uid)}
+                          disabled={guardando}
+                        >
+                          <X size={10} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="badge badge-gray text-[10px]">{tecnicoAsignadoResumen}</span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="btn-ghost btn-icon h-5 w-5 min-w-5"
+                title="Cerrar"
+                onClick={() => setMostrandoSelectorTecnico(false)}
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <div className="mt-2 max-h-48 overflow-y-auto rounded-md border border-[var(--border)]">
+              {cargandoTecnicos ? (
+                <div className="px-2 py-2 text-xs text-[var(--text-muted)]">Cargando...</div>
+              ) : tecnicos.length === 0 ? (
+                <div className="px-2 py-2 text-xs text-[var(--text-muted)]">Sin tecnicos activos</div>
+              ) : (
+                tecnicos.map((tecnico) => {
+                  const asignado = tecnicoIds.includes(tecnico.uid);
+                  return (
+                    <button
+                      key={tecnico.uid}
+                      type="button"
+                      className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-hover)] ${
+                        asignado ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+                      }`}
+                      onClick={() => toggleTecnicoAsignado(tecnico.uid)}
+                      disabled={guardando}
+                    >
+                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                        asignado ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--border)]"
+                      }`}>
+                        {asignado ? <Check size={11} strokeWidth={3} /> : null}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{tecnico.displayName || tecnico.email}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
         ) : null}
       </div>
-    </section>
-  );
+    );
+  };
 
   const renderDiagnostico = () => (
     <section className="card">
@@ -1374,7 +1513,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                     <div className="min-w-0">
                       <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Documento</p>
                       <h3 className="text-lg font-bold truncate" style={{ color: "var(--text-primary)" }}>
-                        #{numeroOrden ? String(numeroOrden).padStart(4, "0") : "..."}
+                        #{numeroDocumentoActual ? String(numeroDocumentoActual).padStart(4, "0") : "..."}
                       </h3>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -1564,34 +1703,61 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                       const completado = pasosCompletados[tab];
                       const activo = activeTab === tab;
 
+                      if (tab === "inspeccion") {
+                        return (
+                          <Fragment key={tab}>
+                            <div
+                              className={`nueva-orden-step-button w-full justify-between text-left gap-3 px-3 py-2.5 rounded-lg border transition-all ${
+                                activo
+                                  ? "nueva-orden-step-button-active bg-[rgba(37,99,235,0.08)] border-[var(--accent)]"
+                                  : "nueva-orden-step-button-idle border-transparent hover:bg-[var(--bg-hover)]"
+                              } ${completado ? "nueva-orden-step-button-complete" : ""}`}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => setActiveTab(tab)}
+                                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                              >
+                                <span className="nueva-orden-step-number">
+                                  {completado ? <Check size={12} strokeWidth={3} /> : step}
+                                </span>
+                                <span className="truncate text-sm">{label}</span>
+                              </button>
+                              {renderAsignacionTecnicaCompacta()}
+                            </div>
+                          </Fragment>
+                        );
+                      }
+
                       return (
-                        <button
-                          key={tab}
-                          type="button"
-                          onClick={() => setActiveTab(tab)}
-                          className={`nueva-orden-step-button w-full justify-start text-left gap-3 px-3 py-2.5 rounded-lg border transition-all ${
-                            activo
-                              ? "nueva-orden-step-button-active bg-[rgba(37,99,235,0.08)] border-[var(--accent)]"
-                              : "nueva-orden-step-button-idle border-transparent hover:bg-[var(--bg-hover)]"
-                          } ${completado ? "nueva-orden-step-button-complete" : ""}`}
-                        >
-                          <span className="nueva-orden-step-number">
-                            {completado ? <Check size={12} strokeWidth={3} /> : step}
-                          </span>
-                          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                            <span className="truncate text-sm">{label}</span>
-                            {tab === "orden" ? (
-                              <span className={`badge shrink-0 text-[10px] ${presupuestoEstado.className}`}>
-                                {presupuestoEstado.label}
-                              </span>
-                            ) : null}
-                            {tab === "entrega" ? (
-                              <span className={`badge shrink-0 text-[10px] ${pagoEstadoBadge.className}`}>
-                                {pagoEstadoBadge.label}
-                              </span>
-                            ) : null}
-                          </span>
-                        </button>
+                        <Fragment key={tab}>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab(tab)}
+                            className={`nueva-orden-step-button w-full justify-start text-left gap-3 px-3 py-2.5 rounded-lg border transition-all ${
+                              activo
+                                ? "nueva-orden-step-button-active bg-[rgba(37,99,235,0.08)] border-[var(--accent)]"
+                                : "nueva-orden-step-button-idle border-transparent hover:bg-[var(--bg-hover)]"
+                            } ${completado ? "nueva-orden-step-button-complete" : ""}`}
+                          >
+                            <span className="nueva-orden-step-number">
+                              {completado ? <Check size={12} strokeWidth={3} /> : step}
+                            </span>
+                            <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                              <span className="truncate text-sm">{label}</span>
+                              {tab === "orden" ? (
+                                <span className={`badge shrink-0 text-[10px] ${presupuestoEstado.className}`}>
+                                  {presupuestoEstado.label}
+                                </span>
+                              ) : null}
+                              {tab === "entrega" ? (
+                                <span className={`badge shrink-0 text-[10px] ${pagoEstadoBadge.className}`}>
+                                  {pagoEstadoBadge.label}
+                                </span>
+                              ) : null}
+                            </span>
+                          </button>
+                        </Fragment>
                       );
                     })}
                   </div>
@@ -2127,7 +2293,6 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                         </section>
                       </>
                     )}
-                    {renderAsignacionTecnica()}
                     {renderSeccionInspeccion(
                       "diagnostico",
                       "Diagnóstico",

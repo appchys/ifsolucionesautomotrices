@@ -21,6 +21,9 @@ const ESTADO_CONFIG: Record<EstadoOrden, { label: string; badge: string; icon: R
   Entregado: { label: "Entregado", badge: "status-entregado", icon: Truck },
 };
 
+const getNumeroDocumento = (orden: OrdenTrabajo) =>
+  orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero;
+
 function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -188,7 +191,7 @@ export default function DashboardPage() {
                       className="cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                     >
                       <td className="font-mono font-semibold" style={{ color: "var(--accent-light)" }}>
-                        #{String(o.numero ?? 0).padStart(4, "0")}
+                        #{String(getNumeroDocumento(o) ?? 0).padStart(4, "0")}
                       </td>
                       <td style={{ color: "var(--text-primary)" }}>
                         {o.cliente ? `${o.cliente.nombre} ${o.cliente.apellido}` : "—"}

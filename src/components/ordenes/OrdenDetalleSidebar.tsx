@@ -75,6 +75,9 @@ const ESTADO_BADGES: Record<EstadoOrden, string> = {
   Entregado: "status-entregado",
 };
 
+const getNumeroDocumento = (orden: OrdenTrabajo) =>
+  orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero;
+
 interface Props {
   ordenId: string;
   onClose: () => void;
@@ -482,11 +485,12 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
       return;
     }
     const tel = orden.cliente.telefono.replace(/\D/g, "");
+    const numeroDocumento = getNumeroDocumento(orden);
     const msg = encodeURIComponent(
       `Hola ${orden.cliente.nombre}, le informamos que su vehiculo *${orden.vehiculo?.placa ?? ""}* ` +
         `(${orden.vehiculo?.marca} ${orden.vehiculo?.modelo}) se encuentra en estado: *${orden.estado}*.\n\n` +
         `Motivo: ${orden.motivo}\n` +
-        `Orden #${String(orden.numero ?? 0).padStart(4, "0")}\n\n` +
+        `${orden.esCotizacion ? "Cotizacion" : "Orden"} #${String(numeroDocumento ?? 0).padStart(4, "0")}\n\n` +
         "Gracias por confiar en I.F. Soluciones Automotrices."
     );
     window.open(`https://wa.me/${tel}?text=${msg}`, "_blank");
@@ -506,7 +510,7 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
             </button>
             <div>
               <h2 className="text-base sm:text-lg font-bold" style={{ color: "var(--text-primary)" }}>
-                {orden?.esCotizacion ? "Cotizacion" : "Orden"} #{orden ? String(orden.numero ?? 0).padStart(4, "0") : "..."}
+                {orden?.esCotizacion ? "Cotizacion" : "Orden"} #{orden ? String(getNumeroDocumento(orden) ?? 0).padStart(4, "0") : "..."}
               </h2>
               {orden && (
                 <p className="text-[10px] sm:text-xs" style={{ color: "var(--text-muted)" }}>
