@@ -28,6 +28,7 @@ import {
   addItemOrden,
   createCliente,
   createOrden,
+  createPago,
   createVehiculo,
   getClienteById,
   getProximoNumeroOrden,
@@ -51,7 +52,16 @@ import {
   TipoServicio,
   TipoVehiculo,
   Vehiculo,
+  MetodoPago,
 } from "@/types";
+import { BANCOS_TRANSFERENCIA, BANCO_TRANSFERENCIA_LIST_ID } from "@/lib/paymentBanks";
+import {
+  calcularPagoConRecargo,
+  getPagoMetodoLabel,
+  getPagoMontoBase,
+  getPagoRecargo,
+  METODOS_PAGO_ORDEN,
+} from "@/lib/orderPayments";
 
 const CHECKLIST_DEFAULT: ChecklistItem[] = [
   { label: "Gata", checked: false },
@@ -66,6 +76,18 @@ const TIPOS_VEHICULO: TipoVehiculo[] = ["sedan", "suv", "pickup", "camioneta", "
 const TIPOS_SERVICIO: TipoServicio[] = ["Mantenimiento", "Reparación", "Garantía"];
 type PasoOrden = "inspeccion" | "orden" | "ejecucion" | "reparacion" | "entrega";
 type TipoCreacion = "cotizacion" | "orden";
+type PagoDraft = {
+  monto: number;
+  montoBase: number;
+  recargo: number;
+  porcentajeRecargo: number;
+  metodoPago: MetodoPago;
+  banco?: string;
+  referencia?: string;
+};
+const METODOS_PAGO_NUEVA_ORDEN = METODOS_PAGO_ORDEN.filter(
+  (metodo) => metodo !== "tarjeta" && metodo !== "otro"
+);
 
 const FLUJO_DEFAULT: FlujoTrabajo = {
   ejecucionRepuestos: {
@@ -197,6 +219,11 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [fotoModalId, setFotoModalId] = useState<string | null>(null);
   const [items, setItems] = useState<Omit<ItemOrden, "id" | "ordenId">[]>([]);
   const [activeModal, setActiveModal] = useState<"producto" | "servicio" | null>(null);
+  const [pagosDraft, setPagosDraft] = useState<PagoDraft[]>([]);
+  const [montoPago, setMontoPago] = useState("");
+  const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
+  const [bancoPago, setBancoPago] = useState("");
+  const [referenciaPago, setReferenciaPago] = useState("");
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const fotosDiagnosticoRef = useRef<HTMLInputElement>(null);
@@ -219,6 +246,16 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     [items]
   );
   const total = useMemo(() => subtotalItems + ivaItems, [subtotalItems, ivaItems]);
+  const totalAbonado = useMemo(() => pagosDraft.reduce((sum, pago) => sum + getPagoMontoBase(pago), 0), [pagosDraft]);
+  const totalRecargos = useMemo(() => pagosDraft.reduce((sum, pago) => sum + getPagoRecargo(pago), 0), [pagosDraft]);
+  const saldoPendiente = Math.max(0, total - totalAbonado);
+  const estadoPago =
+    saldoPendiente <= 0.01 && total > 0
+      ? "pagado"
+      : totalAbonado > 0
+      ? "parcial"
+      : "pendiente";
+  const pagoPreview = calcularPagoConRecargo(Number(montoPago || 0), metodoPago);
   const itemsAgrupados = useMemo(
     () => [
       { label: "Productos", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo === "producto") },
@@ -256,14 +293,25 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         flujoTrabajo.entregaCierre.pagoEfectivo ||
         flujoTrabajo.entregaCierre.pagoTransferencia ||
         flujoTrabajo.entregaCierre.pagoTarjeta ||
+        pagosDraft.length > 0 ||
         flujoTrabajo.entregaCierre.vehiculoEntregado ||
         flujoTrabajo.entregaCierre.pendientesInformados ||
         flujoTrabajo.entregaCierre.facturaElectronicaEmitida ||
         flujoTrabajo.entregaCierre.ordenCerradaSistema ||
         Boolean(flujoTrabajo.entregaCierre.notas?.trim()),
     }),
-    [flujoTrabajo, items.length, km, motivo, placaValue, presupuestoConfirmado, tecnicoId, tipoCreacion]
+    [flujoTrabajo, items.length, km, motivo, pagosDraft.length, placaValue, presupuestoConfirmado, tecnicoId, tipoCreacion]
   );
+  const presupuestoEstado = useMemo(() => {
+    if (presupuestoConfirmado) return { label: "Aprobado", className: "badge-green" };
+    if (items.length > 0) return { label: "Pendiente", className: "badge-yellow" };
+    return { label: "Sin items", className: "badge-gray" };
+  }, [items.length, presupuestoConfirmado]);
+  const pagoEstadoBadge = useMemo(() => {
+    if (estadoPago === "pagado") return { label: "Pagado", className: "badge-green" };
+    if (estadoPago === "parcial") return { label: "Parcial", className: "badge-yellow" };
+    return { label: "Pendiente", className: "badge-gray" };
+  }, [estadoPago]);
   const fotoModalIndex = fotoModalId ? fotosDiagnostico.findIndex((foto) => foto.id === fotoModalId) : -1;
   const fotoModal = fotoModalIndex >= 0 ? fotosDiagnostico[fotoModalIndex] : null;
 
@@ -622,6 +670,48 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     </label>
   );
 
+  const resetPagoForm = (nextMonto = "") => {
+    setMontoPago(nextMonto);
+    setMetodoPago("efectivo");
+    setBancoPago("");
+    setReferenciaPago("");
+  };
+
+  const registrarPagoDraft = () => {
+    const monto = Number(montoPago);
+    if (!montoPago || Number.isNaN(monto) || monto <= 0) {
+      toast.error("Ingrese un monto valido");
+      return;
+    }
+    if (monto > saldoPendiente + 0.01) {
+      toast.error(`El abono no puede superar el saldo pendiente (${currency(saldoPendiente)})`);
+      return;
+    }
+    if (metodoPago === "transferencia" && !bancoPago.trim()) {
+      toast.error("Seleccione el banco de la transferencia");
+      return;
+    }
+
+    const pagoCalculado = calcularPagoConRecargo(monto, metodoPago);
+    setPagosDraft((current) => [
+      ...current,
+      {
+        monto: pagoCalculado.montoCobrado,
+        montoBase: pagoCalculado.montoBase,
+        recargo: pagoCalculado.recargo,
+        porcentajeRecargo: pagoCalculado.porcentajeRecargo,
+        metodoPago,
+        banco: metodoPago === "transferencia" ? bancoPago.trim() : undefined,
+        referencia: referenciaPago.trim() || undefined,
+      },
+    ]);
+    resetPagoForm("");
+  };
+
+  const eliminarPagoDraft = (index: number) => {
+    setPagosDraft((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
   const onSubmit = async (data: FormData, tipoSeleccionado: TipoCreacion = tipoCreacion) => {
     const esCotizacion = tipoSeleccionado === "cotizacion";
 
@@ -649,10 +739,24 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       setActiveTab("orden");
       return;
     }
+    if (totalAbonado > total + 0.01) {
+      toast.error("Los abonos superan el total de la orden");
+      setActiveTab("entrega");
+      return;
+    }
 
     setGuardando(true);
     try {
       const guardarComoCotizacion = esCotizacion;
+      const flujoTrabajoParaGuardar: FlujoTrabajo = {
+        ...flujoTrabajo,
+        entregaCierre: {
+          ...flujoTrabajo.entregaCierre,
+          pagoEfectivo: pagosDraft.some((pago) => pago.metodoPago === "efectivo"),
+          pagoTransferencia: pagosDraft.some((pago) => pago.metodoPago === "transferencia"),
+          pagoTarjeta: pagosDraft.some((pago) => pago.metodoPago === "tarjeta_credito" || pago.metodoPago === "tarjeta_debito" || pago.metodoPago === "tarjeta"),
+        },
+      };
 
       const clientePayload = {
         nombre: data.nombre.trim(),
@@ -702,13 +806,24 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         informeTecnico: diagnostico.trim(),
         tecnicoId,
         presupuestoConfirmadoPorCliente: presupuestoConfirmado,
-        flujoTrabajo,
+        flujoTrabajo: flujoTrabajoParaGuardar,
         fotoUrls: [],
         esCotizacion: guardarComoCotizacion,
       });
 
       if (items.length > 0) {
         await Promise.all(items.map((item) => addItemOrden(orderId, { ...item, ordenId: orderId })));
+      }
+
+      if (pagosDraft.length > 0) {
+        await Promise.all(
+          pagosDraft.map((pago) =>
+            createPago({
+              ...pago,
+              ordenId: orderId,
+            })
+          )
+        );
       }
 
       if (fotosDiagnostico.length > 0) {
@@ -1463,7 +1578,19 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                           <span className="nueva-orden-step-number">
                             {completado ? <Check size={12} strokeWidth={3} /> : step}
                           </span>
-                          <span className="truncate text-sm">{label}</span>
+                          <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                            <span className="truncate text-sm">{label}</span>
+                            {tab === "orden" ? (
+                              <span className={`badge shrink-0 text-[10px] ${presupuestoEstado.className}`}>
+                                {presupuestoEstado.label}
+                              </span>
+                            ) : null}
+                            {tab === "entrega" ? (
+                              <span className={`badge shrink-0 text-[10px] ${pagoEstadoBadge.className}`}>
+                                {pagoEstadoBadge.label}
+                              </span>
+                            ) : null}
+                          </span>
                         </button>
                       );
                     })}
@@ -1746,24 +1873,172 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                     </section>
 
                     <section className="card space-y-4">
-                      <h3 className="font-semibold text-sm">Metodos de pago</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {renderProcesoCheck(
-                          flujoTrabajo.entregaCierre.pagoEfectivo,
-                          (checked) => updateFlujo("entregaCierre", "pagoEfectivo", checked),
-                          "Efectivo"
-                        )}
-                        {renderProcesoCheck(
-                          flujoTrabajo.entregaCierre.pagoTransferencia,
-                          (checked) => updateFlujo("entregaCierre", "pagoTransferencia", checked),
-                          "Transferencia"
-                        )}
-                        {renderProcesoCheck(
-                          flujoTrabajo.entregaCierre.pagoTarjeta,
-                          (checked) => updateFlujo("entregaCierre", "pagoTarjeta", checked),
-                          "Tarjeta"
+                      <div className="flex items-start justify-between gap-3 flex-wrap">
+                        <div>
+                          <h3 className="font-semibold text-sm">Metodos de pago</h3>
+                          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                            Registra pagos parciales o el pago completo antes de crear la orden.
+                          </p>
+                        </div>
+                        <span className={`badge ${estadoPago === "pagado" ? "badge-green" : estadoPago === "parcial" ? "badge-yellow" : "badge-gray"}`}>
+                          {estadoPago === "pagado" ? "Pagado" : estadoPago === "parcial" ? "Pago parcial" : "Pendiente"}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        {[
+                          ["Total", currency(total)],
+                          ["Abonado", currency(totalAbonado)],
+                          ["Recargos", currency(totalRecargos)],
+                          ["Saldo", currency(saldoPendiente)],
+                        ].map(([label, value]) => (
+                          <div key={label} className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
+                            <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">{label}</p>
+                            <p className="font-mono font-bold text-sm">{value}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] p-3 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="form-group">
+                            <label className="label">Monto del abono</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="number"
+                                className="input text-sm"
+                                placeholder="0.00"
+                                value={montoPago}
+                                onChange={(event) => setMontoPago(event.target.value)}
+                                min="0"
+                                step="0.01"
+                              />
+                              <button
+                                type="button"
+                                className="btn-secondary btn-sm"
+                                onClick={() => setMontoPago(saldoPendiente > 0 ? saldoPendiente.toFixed(2) : "")}
+                                disabled={saldoPendiente <= 0}
+                              >
+                                Saldo
+                              </button>
+                            </div>
+                          </div>
+                          <div className="form-group">
+                            <label className="label">Metodo</label>
+                            <select
+                              className="input text-sm"
+                              value={metodoPago}
+                              onChange={(event) => {
+                                const nextMetodo = event.target.value as MetodoPago;
+                                setMetodoPago(nextMetodo);
+                                if (nextMetodo !== "transferencia") setBancoPago("");
+                              }}
+                            >
+                              {METODOS_PAGO_NUEVA_ORDEN.map((metodo) => (
+                                <option key={metodo} value={metodo}>
+                                  {getPagoMetodoLabel(metodo)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {metodoPago === "transferencia" ? (
+                          <div className="form-group">
+                            <label className="label">Banco</label>
+                            <input
+                              type="text"
+                              className="input text-sm"
+                              list={`${BANCO_TRANSFERENCIA_LIST_ID}-nueva-orden`}
+                              placeholder="Selecciona o escribe el banco"
+                              value={bancoPago}
+                              onChange={(event) => setBancoPago(event.target.value)}
+                            />
+                            <datalist id={`${BANCO_TRANSFERENCIA_LIST_ID}-nueva-orden`}>
+                              {BANCOS_TRANSFERENCIA.map((banco) => (
+                                <option key={banco} value={banco} />
+                              ))}
+                            </datalist>
+                          </div>
+                        ) : null}
+
+                        <div className="form-group">
+                          <label className="label">Referencia / comprobante</label>
+                          <input
+                            type="text"
+                            className="input text-sm"
+                            placeholder="Nro. transferencia, voucher..."
+                            value={referenciaPago}
+                            onChange={(event) => setReferenciaPago(event.target.value)}
+                          />
+                        </div>
+
+                        {pagoPreview.recargo > 0 ? (
+                          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-xs">
+                            <div className="flex items-center justify-between gap-3">
+                              <span style={{ color: "var(--text-muted)" }}>Recargo tarjeta ({pagoPreview.porcentajeRecargo}%)</span>
+                              <strong>{currency(pagoPreview.recargo)}</strong>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 mt-1">
+                              <span style={{ color: "var(--text-muted)" }}>Total a cobrar</span>
+                              <strong className="text-[var(--success)]">{currency(pagoPreview.montoCobrado)}</strong>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm w-full justify-center"
+                          onClick={registrarPagoDraft}
+                          disabled={saldoPendiente <= 0}
+                        >
+                          <Plus size={14} />
+                          Registrar abono
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="font-semibold text-xs uppercase tracking-wider text-[var(--text-muted)]">
+                          Abonos registrados
+                        </h4>
+                        {pagosDraft.length === 0 ? (
+                          <p className="text-sm rounded-lg border border-dashed border-[var(--border)] p-3" style={{ color: "var(--text-muted)" }}>
+                            Sin abonos registrados.
+                          </p>
+                        ) : (
+                          <div className="space-y-2">
+                            {pagosDraft.map((pago, index) => (
+                              <div
+                                key={`${pago.metodoPago}-${index}`}
+                                className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-3 text-sm"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-mono font-bold text-[var(--success)]">{currency(getPagoMontoBase(pago))}</p>
+                                  <p className="text-xs truncate" style={{ color: "var(--text-muted)" }}>
+                                    {getPagoMetodoLabel(pago.metodoPago)}
+                                    {pago.banco ? ` - ${pago.banco}` : ""}
+                                    {pago.referencia ? ` - ${pago.referencia}` : ""}
+                                  </p>
+                                  {getPagoRecargo(pago) > 0 ? (
+                                    <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                                      Recargo: {currency(getPagoRecargo(pago))} - Cobrado: {currency(pago.monto)}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn-ghost btn-icon"
+                                  title="Eliminar abono"
+                                  onClick={() => eliminarPagoDraft(index)}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
                         )}
                       </div>
+
                       <div className="form-group">
                         <label className="label">Notas de entrega y cierre</label>
                         <textarea
