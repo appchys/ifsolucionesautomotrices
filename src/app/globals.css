@@ -3,8 +3,8 @@
 
 /* ─── CSS Custom Properties (tema claro — páginas) ─────────────── */
 :root {
-  --bg-primary: #f8fafc;
-  --bg-secondary: #f1f5f9;
+  --bg-primary: #f1f5f9;
+  --bg-secondary: #e2e8f0;
   --bg-card: #ffffff;
   --bg-hover: #e2e8f0;
   --border: #cbd5e1;

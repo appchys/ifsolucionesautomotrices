@@ -328,6 +328,18 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     if (estadoPago === "parcial") return { label: "Parcial", className: "badge-yellow" };
     return { label: "Pendiente", className: "badge-gray" };
   }, [estadoPago]);
+  const ejecucionCompletados = [
+    flujoTrabajo.ejecucionRepuestos.compraProveedorAutorizada,
+    flujoTrabajo.ejecucionRepuestos.logisticaRetiraRepuestos,
+    flujoTrabajo.ejecucionRepuestos.tecnicosInicianDespiece,
+    flujoTrabajo.ejecucionRepuestos.compraRepuestosRegistrada,
+  ].filter(Boolean).length;
+  const reparacionCompletados = [
+    flujoTrabajo.ordenReparacion.presupuestoConvertidoOrden,
+    flujoTrabajo.ordenReparacion.tecnicoConfirmaCargado,
+    flujoTrabajo.ordenReparacion.reparacionFinalizada,
+    flujoTrabajo.ordenReparacion.pruebaRutaRealizada,
+  ].filter(Boolean).length;
   const fotoModalIndex = fotoModalId ? fotosDiagnostico.findIndex((foto) => foto.id === fotoModalId) : -1;
   const fotoModal = fotoModalIndex >= 0 ? fotosDiagnostico[fotoModalIndex] : null;
 
@@ -695,6 +707,14 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         ) : null}
       </span>
     </label>
+  );
+
+  const renderProcesoProgress = (checkedCount: number, total: number) => (
+    <div className="flex shrink-0 items-center">
+      <div className="progress-bar w-24">
+        <div className="progress-fill" style={{ width: `${(checkedCount / total) * 100}%` }} />
+      </div>
+    </div>
   );
 
   const resetPagoForm = (nextMonto = "") => {
@@ -1882,11 +1902,14 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                 ) : activeTab === "ejecucion" ? (
                   <div className="nueva-orden-section-stack">
                     <section className="card space-y-4">
-                      <div>
-                        <h3 className="font-semibold text-sm">Ejecucion y repuestos</h3>
-                        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                          Controla aprobacion, compra, logistica y registro de repuestos.
-                        </p>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-sm">Ejecucion y repuestos</h3>
+                          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                            Controla aprobacion, compra, logistica y registro de repuestos.
+                          </p>
+                        </div>
+                        {renderProcesoProgress(ejecucionCompletados, 4)}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {renderProcesoCheck(
@@ -1928,11 +1951,14 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                 ) : activeTab === "reparacion" ? (
                   <div className="nueva-orden-section-stack">
                     <section className="card space-y-4">
-                      <div>
-                        <h3 className="font-semibold text-sm">Orden de trabajo y reparacion</h3>
-                        <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
-                          Seguimiento de conversion, control tecnico, reparacion y prueba de ruta.
-                        </p>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-sm">Orden de trabajo y reparacion</h3>
+                          <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+                            Seguimiento de conversion, control tecnico, reparacion y prueba de ruta.
+                          </p>
+                        </div>
+                        {renderProcesoProgress(reparacionCompletados, 4)}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {renderProcesoCheck(
@@ -2272,7 +2298,14 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                             <div className="form-group">
                               <label className="label">Kilometraje de ingreso *</label>
-                              <input type="number" min="0" className="input text-sm" value={km} onChange={(event) => setKm(event.target.value)} />
+                              <input
+                                type="number"
+                                min="0"
+                                className="input text-sm"
+                                value={km}
+                                onChange={(event) => setKm(event.target.value)}
+                                onWheel={(event) => event.currentTarget.blur()}
+                              />
                             </div>
                             <div>
                               <h3 className="font-semibold text-sm mb-4">Nivel de combustible</h3>
