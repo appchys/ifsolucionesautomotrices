@@ -10,7 +10,6 @@ import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
-import OrdenDetalleSidebar from "@/components/ordenes/OrdenDetalleSidebar";
 import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
 import { useRouter } from "next/navigation";
 
@@ -38,8 +37,8 @@ export default function DashboardPage() {
   const [clientesCount, setClientesCount] = useState(0);
   const [vehiculosCount, setVehiculosCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [showNuevaOrden, setShowNuevaOrden] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -187,7 +186,7 @@ export default function DashboardPage() {
                   return (
                     <tr 
                       key={o.id} 
-                      onClick={() => setSelectedOrderId(o.id!)}
+                      onClick={() => setEditingOrderId(o.id!)}
                       className="cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                     >
                       <td className="font-mono font-semibold" style={{ color: "var(--accent-light)" }}>
@@ -228,19 +227,17 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {selectedOrderId && (
-        <OrdenDetalleSidebar 
-          ordenId={selectedOrderId} 
-          onClose={() => setSelectedOrderId(null)} 
-        />
-      )}
-
-      {showNuevaOrden && (
+      {(showNuevaOrden || editingOrderId) && (
         <NuevaOrdenSidebar 
-          onClose={() => setShowNuevaOrden(false)} 
+          ordenId={editingOrderId ?? undefined}
+          onClose={() => {
+            setShowNuevaOrden(false);
+            setEditingOrderId(null);
+          }}
           onSuccess={(id) => {
             setShowNuevaOrden(false);
-            router.push(`/ordenes/detalle?id=${id}`);
+            setEditingOrderId(null);
+            if (!editingOrderId) router.push(`/ordenes/detalle?id=${id}`);
           }}
         />
       )}

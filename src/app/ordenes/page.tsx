@@ -1,17 +1,17 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { subscribeOrdenes, updateEstadoOrden, getClientes, getVehiculos } from "@/lib/services";
+import { deleteOrden, subscribeOrdenes, updateEstadoOrden, getClientes, getVehiculos } from "@/lib/services";
 import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useRouter } from "next/navigation";
-import { Search, Plus, Wrench } from "lucide-react";
+import { Loader2, MoreVertical, Plus, Search, Trash2, Wrench } from "lucide-react";
 import { toast } from "react-hot-toast";
-import OrdenDetalleSidebar from "@/components/ordenes/OrdenDetalleSidebar";
 import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
 
 const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
+type MenuPosition = { id: string; top: number; left: number };
 
 const getNumeroDocumento = (orden: OrdenTrabajo) =>
   orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero;
@@ -30,9 +30,10 @@ export default function OrdenesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoOrden | "Todos">("Todos");
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [showNuevaOrden, setShowNuevaOrden] = useState(false);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<MenuPosition | null>(null);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const router = useRouter();
 
   const loadRelations = useCallback(async () => {
@@ -70,6 +71,14 @@ export default function OrdenesPage() {
     };
   }, [loadRelations]);
 
+  useEffect(() => {
+    if (!openMenu) return;
+
+    const closeMenu = () => setOpenMenu(null);
+    document.addEventListener("click", closeMenu);
+    return () => document.removeEventListener("click", closeMenu);
+  }, [openMenu]);
+
   const ordenesConDetalle = ordenes.map(o => ({
     ...o,
     cliente: clientesMap[o.clienteId] || o.cliente,
@@ -91,6 +100,28 @@ export default function OrdenesPage() {
   const cambiarEstado = async (id: string, estado: EstadoOrden) => {
     await updateEstadoOrden(id, estado);
     toast.success(`Estado actualizado: ${estado}`);
+  };
+
+  const eliminarOrden = async (orden: OrdenTrabajo) => {
+    const id = orden.id;
+    if (!id || deletingOrderId) return;
+
+    const numero = String(getNumeroDocumento(orden) ?? 0).padStart(4, "0");
+    const confirmed = window.confirm(`Eliminar la orden #${numero}?`);
+    if (!confirmed) return;
+
+    setDeletingOrderId(id);
+    setOpenMenu(null);
+    try {
+      await deleteOrden(id);
+      toast.success("Orden eliminada");
+      void loadRelations();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo eliminar la orden");
+    } finally {
+      setDeletingOrderId(null);
+    }
   };
 
   return (
@@ -155,13 +186,14 @@ export default function OrdenesPage() {
                   <th>Tipo</th>
                   <th>Estado</th>
                   <th>Fecha</th>
+                  <th className="w-12 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((o) => (
                   <tr 
                     key={o.id} 
-                    onClick={() => setSelectedOrderId(o.id!)}
+                    onClick={() => setEditingOrderId(o.id!)}
                     className="cursor-pointer hover:bg-[var(--bg-hover)]"
                   >
                     <td>
@@ -205,6 +237,38 @@ export default function OrdenesPage() {
                         ? format(toDate(o.createdAt)!, "dd/MM/yy", { locale: es })
                         : "—"}
                     </td>
+                    <td className="text-right">
+                      <div className="relative inline-flex">
+                        <button
+                          type="button"
+                          className="btn-ghost btn-icon h-8 w-8"
+                          title="Acciones"
+                          aria-label="Acciones de la orden"
+                          aria-expanded={openMenu?.id === o.id}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            const orderId = o.id;
+                            if (!orderId) return;
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            setOpenMenu((current) =>
+                              current?.id === orderId
+                                ? null
+                                : {
+                                    id: orderId,
+                                    top: rect.bottom + 4,
+                                    left: Math.min(window.innerWidth - 152, Math.max(8, rect.right - 144)),
+                                  }
+                            );
+                          }}
+                        >
+                          {deletingOrderId === o.id ? (
+                            <Loader2 size={15} className="animate-spin" />
+                          ) : (
+                            <MoreVertical size={16} />
+                          )}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -213,17 +277,26 @@ export default function OrdenesPage() {
         )}
       </div>
 
-      {selectedOrderId && (
-        <OrdenDetalleSidebar 
-          ordenId={selectedOrderId} 
-          onClose={() => setSelectedOrderId(null)} 
-          onUpdate={loadRelations}
-          onEdit={(id) => {
-            setSelectedOrderId(null);
-            setEditingOrderId(id);
-          }}
-        />
-      )}
+      {openMenu ? (
+        <div
+          className="fixed z-[1200] w-36 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-1 shadow-xl"
+          style={{ top: openMenu.top, left: openMenu.left }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 disabled:opacity-60"
+            disabled={deletingOrderId === openMenu.id}
+            onClick={() => {
+              const orden = filtered.find((item) => item.id === openMenu.id);
+              if (orden) void eliminarOrden(orden);
+            }}
+          >
+            <Trash2 size={14} />
+            Eliminar
+          </button>
+        </div>
+      ) : null}
 
       {(showNuevaOrden || editingOrderId) && (
         <NuevaOrdenSidebar 
@@ -235,6 +308,7 @@ export default function OrdenesPage() {
           onSuccess={(id) => {
             setShowNuevaOrden(false);
             setEditingOrderId(null);
+            void loadRelations();
             if (!editingOrderId) router.push(`/ordenes/detalle?id=${id}`);
           }}
         />

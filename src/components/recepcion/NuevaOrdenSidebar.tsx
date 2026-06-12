@@ -2,6 +2,7 @@
 
 import { Fragment, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { useUIStore } from "@/store";
 import {
   Calculator,
   Camera,
@@ -28,15 +29,23 @@ import FuelSelector from "@/components/recepcion/FuelSelector";
 import {
   addItemOrden,
   createCliente,
-  createOrden,
+  createOrdenConItems,
   createPago,
   createVehiculo,
+  deleteItemOrden,
+  deleteOrdenFoto,
+  deletePago,
   getClienteById,
+  getItemsOrden,
+  getOrdenById,
+  getPagos,
   getProximoNumeroOrden,
   getUsuarios,
+  getVehiculoById,
   getVehiculoByPlaca,
   getVehiculosByCliente,
   searchVehiculosByPlacaPrefix,
+  updateItemOrden,
   updateCliente,
   updateOrden,
   updateVehiculo,
@@ -50,6 +59,8 @@ import {
   FlujoTrabajo,
   ItemOrden,
   NivelCombustible,
+  OrdenTrabajo,
+  Pago,
   TipoServicio,
   TipoVehiculo,
   Vehiculo,
@@ -78,6 +89,7 @@ const TIPOS_SERVICIO: TipoServicio[] = ["Mantenimiento", "Reparaci√≥n", "Garant√
 type PasoOrden = "inspeccion" | "orden" | "ejecucion" | "reparacion" | "entrega";
 type TipoCreacion = "cotizacion" | "orden";
 type PagoDraft = {
+  id?: string;
   monto: number;
   montoBase: number;
   recargo: number;
@@ -86,6 +98,14 @@ type PagoDraft = {
   banco?: string;
   referencia?: string;
 };
+type FotoDiagnosticoDraft = {
+  id: string;
+  file?: File;
+  previewUrl: string;
+  descripcion: string;
+  url?: string;
+};
+type ItemOrdenDraft = Omit<ItemOrden, "id" | "ordenId"> & { id?: string };
 const METODOS_PAGO_NUEVA_ORDEN = METODOS_PAGO_ORDEN.filter(
   (metodo) => metodo !== "tarjeta" && metodo !== "otro"
 );
@@ -170,7 +190,68 @@ function currency(value: number) {
   }).format(value);
 }
 
-export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
+function mergeFlujoTrabajo(flujo?: OrdenTrabajo["flujoTrabajo"]): FlujoTrabajo {
+  return {
+    ejecucionRepuestos: {
+      ...FLUJO_DEFAULT.ejecucionRepuestos,
+      ...flujo?.ejecucionRepuestos,
+    },
+    ordenReparacion: {
+      ...FLUJO_DEFAULT.ordenReparacion,
+      ...flujo?.ordenReparacion,
+    },
+    entregaCierre: {
+      ...FLUJO_DEFAULT.entregaCierre,
+      ...flujo?.entregaCierre,
+    },
+  };
+}
+
+function pagoToDraft(pago: Pago): PagoDraft {
+  return {
+    id: pago.id,
+    monto: pago.monto,
+    montoBase: pago.montoBase ?? pago.monto,
+    recargo: pago.recargo ?? 0,
+    porcentajeRecargo: pago.porcentajeRecargo ?? 0,
+    metodoPago: pago.metodoPago,
+    banco: pago.banco,
+    referencia: pago.referencia,
+  };
+}
+
+function getItemFirma(item: Partial<ItemOrden>) {
+  return JSON.stringify({
+    tipo: item.tipo,
+    productoId: item.productoId ?? "",
+    productoSku: item.productoSku ?? "",
+    productoNombre: item.productoNombre ?? "",
+    descripcion: item.descripcion ?? "",
+    cantidad: item.cantidad ?? 0,
+    precioUnitario: item.precioUnitario ?? 0,
+    impuestoAplicable: item.impuestoAplicable ?? 0,
+    subtotal: item.subtotal ?? 0,
+  });
+}
+
+function getItemPayload(item: ItemOrdenDraft): Omit<ItemOrden, "id" | "ordenId"> {
+  return {
+    tipo: item.tipo,
+    productoId: item.productoId,
+    productoSku: item.productoSku,
+    productoNombre: item.productoNombre,
+    descripcion: item.descripcion,
+    cantidad: item.cantidad,
+    precioUnitario: item.precioUnitario,
+    impuestoAplicable: item.impuestoAplicable,
+    subtotal: item.subtotal,
+  };
+}
+
+export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props) {
+  const { sidebarOpen } = useUIStore();
+  const modoEdicion = Boolean(ordenId);
+  const [cargandoOrden, setCargandoOrden] = useState(Boolean(ordenId));
   const [buscando, setBuscando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
@@ -198,6 +279,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     diagnostico: true,
   });
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>("orden");
+  const submitLabel = modoEdicion ? "Guardar paso" : tipoCreacion === "cotizacion" ? "Guardar" : "Crear";
   const [sugerencias, setSugerencias] = useState<Vehiculo[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
@@ -216,11 +298,15 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const [checklist, setChecklist] = useState<ChecklistItem[]>(CHECKLIST_DEFAULT);
   const [danos, setDanos] = useState<DanoVehiculo[]>([]);
   const [flujoTrabajo, setFlujoTrabajo] = useState<FlujoTrabajo>(FLUJO_DEFAULT);
-  const [fotosDiagnostico, setFotosDiagnostico] = useState<{ id: string; file: File; previewUrl: string; descripcion: string }[]>([]);
+  const [fotosDiagnostico, setFotosDiagnostico] = useState<FotoDiagnosticoDraft[]>([]);
   const [fotoEditandoId, setFotoEditandoId] = useState<string | null>(null);
   const [descripcionFotoDraft, setDescripcionFotoDraft] = useState("");
   const [fotoModalId, setFotoModalId] = useState<string | null>(null);
-  const [items, setItems] = useState<Omit<ItemOrden, "id" | "ordenId">[]>([]);
+  const [items, setItems] = useState<ItemOrdenDraft[]>([]);
+  const [itemIdsIniciales, setItemIdsIniciales] = useState<string[]>([]);
+  const [itemFirmasIniciales, setItemFirmasIniciales] = useState<Record<string, string>>({});
+  const [pagoIdsIniciales, setPagoIdsIniciales] = useState<string[]>([]);
+  const [fotoUrlsIniciales, setFotoUrlsIniciales] = useState<string[]>([]);
   const [activeModal, setActiveModal] = useState<"producto" | "servicio" | null>(null);
   const [pagosDraft, setPagosDraft] = useState<PagoDraft[]>([]);
   const [montoPago, setMontoPago] = useState("");
@@ -284,10 +370,9 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
       inspeccion:
         Boolean(placaValue.trim()) &&
         Boolean(motivo.trim()) &&
-        tecnicoIds.length > 0 &&
         Boolean(km.trim()) &&
         !Number.isNaN(Number(km)),
-      orden: items.length > 0 && (tipoCreacion === "cotizacion" || presupuestoConfirmado),
+      orden: items.length > 0,
       ejecucion:
         flujoTrabajo.ejecucionRepuestos.compraProveedorAutorizada ||
         flujoTrabajo.ejecucionRepuestos.logisticaRetiraRepuestos ||
@@ -316,7 +401,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         flujoTrabajo.entregaCierre.ordenCerradaSistema ||
         Boolean(flujoTrabajo.entregaCierre.notas?.trim()),
     }),
-    [flujoTrabajo, items.length, km, motivo, pagosDraft.length, placaValue, presupuestoConfirmado, tecnicoIds.length, tipoCreacion]
+    [flujoTrabajo, items.length, km, motivo, pagosDraft.length, placaValue]
   );
   const presupuestoEstado = useMemo(() => {
     if (presupuestoConfirmado) return { label: "Aprobado", className: "badge-green" };
@@ -487,12 +572,136 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    getProximoNumeroOrden("orden").then(setNumeroOrden).catch(console.error);
-    getProximoNumeroOrden("cotizacion").then(setNumeroCotizacion).catch(console.error);
+    if (!ordenId) {
+      getProximoNumeroOrden("orden").then(setNumeroOrden).catch(console.error);
+      getProximoNumeroOrden("cotizacion").then(setNumeroCotizacion).catch(console.error);
+    }
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, []);
+  }, [ordenId]);
+
+  useEffect(() => {
+    if (!ordenId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const cargarOrdenExistente = async () => {
+      setCargandoOrden(true);
+      try {
+        const [orden, ordenItems, pagos] = await Promise.all([
+          getOrdenById(ordenId),
+          getItemsOrden(ordenId),
+          getPagos(ordenId),
+        ]);
+        if (cancelled) return;
+        if (!orden) {
+          toast.error("Orden no encontrada");
+          onClose();
+          return;
+        }
+
+        const [cliente, vehiculo] = await Promise.all([
+          orden.cliente ?? getClienteById(orden.clienteId),
+          orden.vehiculo ?? getVehiculoById(orden.vehiculoId),
+        ]);
+        const vehiculoFinal = orden.vehiculo ?? vehiculo;
+        if (cancelled) return;
+
+        setClienteData(cliente);
+        setVehiculoData(vehiculoFinal);
+        setEditandoVehiculo(false);
+        setBusquedaRealizada(true);
+        setTipoCreacion(orden.esCotizacion ? "cotizacion" : "orden");
+        setNumeroOrden(orden.numero ?? null);
+        setNumeroCotizacion(orden.numeroCotizacion ?? orden.numero ?? null);
+        setTipoServicio(orden.tipoServicio);
+        setMotivo(orden.motivo ?? "");
+        setNotasInternas(orden.notasInternas ?? "");
+        setMostrarNotasInternas(Boolean(orden.notasInternas));
+        setDiagnostico(orden.informeTecnico ?? "");
+        setPresupuestoConfirmado(Boolean(orden.presupuestoConfirmadoPorCliente));
+        setKm(orden.kilometrajeIngreso !== undefined ? String(orden.kilometrajeIngreso) : "");
+        setNivelCombustible(orden.nivelCombustible);
+        setChecklist(orden.checklistInventario?.length ? orden.checklistInventario : CHECKLIST_DEFAULT);
+        setDanos(orden.inspeccionVisual?.danos ?? []);
+        setFlujoTrabajo(mergeFlujoTrabajo(orden.flujoTrabajo));
+        setTecnicoIds(
+          orden.personalAsignado?.length
+            ? orden.personalAsignado.map((tecnico) => tecnico.uid)
+            : orden.tecnicoId
+            ? [orden.tecnicoId]
+            : []
+        );
+        setItems(
+          ordenItems.map((item) => ({
+            id: item.id,
+            tipo: item.tipo,
+            productoId: item.productoId,
+            productoSku: item.productoSku,
+            productoNombre: item.productoNombre,
+            descripcion: item.descripcion,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+            impuestoAplicable: item.impuestoAplicable,
+            subtotal: item.subtotal,
+          }))
+        );
+        setItemIdsIniciales(ordenItems.map((item) => item.id).filter((id): id is string => Boolean(id)));
+        setItemFirmasIniciales(
+          Object.fromEntries(
+            ordenItems
+              .filter((item): item is ItemOrden & { id: string } => Boolean(item.id))
+              .map((item) => [item.id, getItemFirma(item)])
+          )
+        );
+        setPagosDraft(pagos.map(pagoToDraft));
+        setPagoIdsIniciales(pagos.map((pago) => pago.id).filter((id): id is string => Boolean(id)));
+
+        const fotos = (orden.fotosDiagnostico?.length
+          ? orden.fotosDiagnostico
+          : (orden.fotoUrls ?? []).map((url) => ({ url, descripcion: "" })));
+        setFotosDiagnostico(
+          fotos.map((foto, index) => ({
+            id: foto.url || `foto-${index}`,
+            previewUrl: foto.url,
+            url: foto.url,
+            descripcion: foto.descripcion ?? "",
+          }))
+        );
+        setFotoUrlsIniciales(fotos.map((foto) => foto.url));
+
+        reset({
+          nombre: cliente?.nombre ?? "",
+          apellido: cliente?.apellido ?? "",
+          identificacion: cliente?.identificacion ?? "",
+          telefono: cliente?.telefono ?? "",
+          email: cliente?.email ?? "",
+          direccion: cliente?.direccion ?? "",
+          placa: vehiculoFinal?.placa ?? orden.vehiculo?.placa ?? "",
+          marca: vehiculoFinal?.marca ?? orden.vehiculo?.marca ?? "",
+          modelo: vehiculoFinal?.modelo ?? orden.vehiculo?.modelo ?? "",
+          anio: vehiculoFinal?.anio ?? orden.vehiculo?.anio ?? new Date().getFullYear(),
+          color: vehiculoFinal?.color ?? orden.vehiculo?.color ?? "",
+          vin: vehiculoFinal?.vin ?? orden.vehiculo?.vin ?? "",
+          tipoVehiculo: vehiculoFinal?.tipoVehiculo ?? orden.vehiculo?.tipoVehiculo ?? "sedan",
+        });
+      } catch (error) {
+        console.error(error);
+        if (!cancelled) toast.error("No se pudo cargar la orden");
+      } finally {
+        if (!cancelled) setCargandoOrden(false);
+      }
+    };
+
+    void cargarOrdenExistente();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onClose, ordenId, reset]);
 
   useEffect(() => {
     const placa = placaValue.trim().toUpperCase();
@@ -539,7 +748,9 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
 
   useEffect(() => {
     return () => {
-      fotosDiagnosticoActualesRef.current.forEach((foto) => URL.revokeObjectURL(foto.previewUrl));
+      fotosDiagnosticoActualesRef.current.forEach((foto) => {
+        if (foto.file) URL.revokeObjectURL(foto.previewUrl);
+      });
     };
   }, []);
 
@@ -631,7 +842,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   const eliminarFotoDiagnostico = (id: string) => {
     setFotosDiagnostico((current) => {
       const foto = current.find((item) => item.id === id);
-      if (foto) URL.revokeObjectURL(foto.previewUrl);
+      if (foto?.file) URL.revokeObjectURL(foto.previewUrl);
       return current.filter((item) => item.id !== id);
     });
     if (fotoEditandoId === id) {
@@ -771,96 +982,165 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
     );
   };
 
-  const onSubmit = async (data: FormData, tipoSeleccionado: TipoCreacion = tipoCreacion) => {
-    const esCotizacion = tipoSeleccionado === "cotizacion";
+  const getFlujoTrabajoParaGuardar = (): FlujoTrabajo => ({
+    ...flujoTrabajo,
+    entregaCierre: {
+      ...flujoTrabajo.entregaCierre,
+      pagoEfectivo: pagosDraft.some((pago) => pago.metodoPago === "efectivo"),
+      pagoTransferencia: pagosDraft.some((pago) => pago.metodoPago === "transferencia"),
+      pagoTarjeta: pagosDraft.some((pago) =>
+        pago.metodoPago === "tarjeta_credito" ||
+        pago.metodoPago === "tarjeta_debito" ||
+        pago.metodoPago === "tarjeta"
+      ),
+    },
+  });
 
-    if (!data.placa.trim()) {
-      toast.error("La placa es obligatoria");
-      return;
-    }
-    if (tecnicoIds.length === 0) {
-      toast.error("Selecciona al menos un tecnico");
-      setActiveTab("inspeccion");
-      return;
-    }
-    if (!motivo.trim()) {
-      toast.error("Ingresa el motivo de la visita");
-      setActiveTab("inspeccion");
-      return;
-    }
-    if (!km.trim() || Number.isNaN(Number(km))) {
-      toast.error("Ingresa el kilometraje");
-      setActiveTab("inspeccion");
-      return;
-    }
-    if (!esCotizacion && !presupuestoConfirmado) {
-      toast.error("El cliente debe confirmar el presupuesto");
-      setActiveTab("orden");
-      return;
-    }
-    if (totalAbonado > total + 0.01) {
-      toast.error("Los abonos superan el total de la orden");
-      setActiveTab("entrega");
-      return;
+  const getFotosParaGuardar = async (targetOrdenId: string) => {
+    const nuevasFotos = fotosDiagnostico.filter((foto) => foto.file);
+    const fotoUrlsSubidas = await Promise.all(
+      nuevasFotos.map((foto) => uploadOrdenFoto(targetOrdenId, foto.file!))
+    );
+
+    return [
+      ...fotosDiagnostico
+        .filter((foto) => foto.url)
+        .map((foto) => ({
+          url: foto.url!,
+          descripcion: foto.descripcion.trim(),
+        })),
+      ...fotoUrlsSubidas.map((url, index) => ({
+        url,
+        descripcion: nuevasFotos[index]?.descripcion.trim() || "",
+      })),
+    ];
+  };
+
+  const guardarItemsOrdenExistente = async (targetOrdenId: string) => {
+    const itemIdsActuales = items.map((item) => item.id).filter((id): id is string => Boolean(id));
+    await Promise.all(
+      itemIdsIniciales
+        .filter((id) => !itemIdsActuales.includes(id))
+        .map((id) => deleteItemOrden(targetOrdenId, id))
+    );
+    await Promise.all(
+      items.map((item) => {
+        const itemPayload = getItemPayload(item);
+        const { id } = item;
+        if (id && itemFirmasIniciales[id] === getItemFirma(itemPayload)) {
+          return Promise.resolve();
+        }
+        return id
+          ? updateItemOrden(targetOrdenId, id, itemPayload)
+          : addItemOrden(targetOrdenId, { ...itemPayload, ordenId: targetOrdenId });
+      })
+    );
+  };
+
+  const guardarPagosOrdenExistente = async (targetOrdenId: string) => {
+    const pagoIdsActuales = pagosDraft.map((pago) => pago.id).filter((id): id is string => Boolean(id));
+    await Promise.all(
+      pagoIdsIniciales
+        .filter((id) => !pagoIdsActuales.includes(id))
+        .map((id) => deletePago(id))
+    );
+    await Promise.all(
+      pagosDraft
+        .filter((pago) => !pago.id)
+        .map((pago) =>
+          createPago({
+            monto: pago.monto,
+            montoBase: pago.montoBase,
+            recargo: pago.recargo,
+            porcentajeRecargo: pago.porcentajeRecargo,
+            metodoPago: pago.metodoPago,
+            banco: pago.banco,
+            referencia: pago.referencia,
+            ordenId: targetOrdenId,
+          })
+        )
+    );
+  };
+
+  const guardarClienteVehiculo = async (data: FormData) => {
+    const clientePayload = {
+      nombre: data.nombre.trim(),
+      apellido: data.apellido.trim(),
+      identificacion: data.identificacion.trim(),
+      telefono: data.telefono.trim(),
+      email: data.email.trim(),
+      direccion: data.direccion.trim(),
+    };
+
+    let clienteId = clienteData?.id;
+    if (!clienteId) {
+      clienteId = await createCliente(clientePayload);
     }
 
-    setGuardando(true);
-    try {
-      const guardarComoCotizacion = esCotizacion;
-      const flujoTrabajoParaGuardar: FlujoTrabajo = {
-        ...flujoTrabajo,
-        entregaCierre: {
-          ...flujoTrabajo.entregaCierre,
-          pagoEfectivo: pagosDraft.some((pago) => pago.metodoPago === "efectivo"),
-          pagoTransferencia: pagosDraft.some((pago) => pago.metodoPago === "transferencia"),
-          pagoTarjeta: pagosDraft.some((pago) => pago.metodoPago === "tarjeta_credito" || pago.metodoPago === "tarjeta_debito" || pago.metodoPago === "tarjeta"),
-        },
-      };
+    const vehiculoPayload = {
+      clienteId,
+      placa: data.placa.trim().toUpperCase(),
+      marca: data.marca.trim(),
+      modelo: data.modelo.trim(),
+      anio: Number(data.anio),
+      color: data.color.trim(),
+      vin: data.vin.trim(),
+      tipoVehiculo: data.tipoVehiculo,
+    };
 
-      const clientePayload = {
-        nombre: data.nombre.trim(),
-        apellido: data.apellido.trim(),
-        identificacion: data.identificacion.trim(),
-        telefono: data.telefono.trim(),
-        email: data.email.trim(),
-        direccion: data.direccion.trim(),
-      };
+    let vehiculoId = vehiculoData?.id;
+    if (clienteData?.id && vehiculoId) {
+      await Promise.all([
+        updateCliente(clienteData.id, clientePayload),
+        updateVehiculo(vehiculoId, vehiculoPayload),
+      ]);
+    } else if (clienteData?.id) {
+      const [, nuevoVehiculoId] = await Promise.all([
+        updateCliente(clienteData.id, clientePayload),
+        createVehiculo(vehiculoPayload),
+      ]);
+      vehiculoId = nuevoVehiculoId;
+    } else if (vehiculoId) {
+      await updateVehiculo(vehiculoId, vehiculoPayload);
+    } else {
+      vehiculoId = await createVehiculo(vehiculoPayload);
+    }
 
-      let clienteId = clienteData?.id;
-      if (clienteId) {
-        await updateCliente(clienteId, clientePayload);
-      } else {
-        clienteId = await createCliente(clientePayload);
+    return { clienteId, vehiculoId };
+  };
+
+  const guardarOrdenExistentePorPaso = async (data: FormData, tipoSeleccionado: TipoCreacion) => {
+    if (!ordenId) return false;
+
+    const guardarComoCotizacion = tipoSeleccionado === "cotizacion";
+    const flujoTrabajoParaGuardar = getFlujoTrabajoParaGuardar();
+
+    if (activeTab === "inspeccion") {
+      if (!data.placa.trim()) {
+        toast.error("La placa es obligatoria");
+        return true;
+      }
+      if (!motivo.trim()) {
+        toast.error("Ingresa el motivo de la visita");
+        return true;
+      }
+      if (!km.trim() || Number.isNaN(Number(km))) {
+        toast.error("Ingresa el kilometraje");
+        return true;
       }
 
-      const vehiculoPayload = {
-        clienteId,
-        placa: data.placa.trim().toUpperCase(),
-        marca: data.marca.trim(),
-        modelo: data.modelo.trim(),
-        anio: Number(data.anio),
-        color: data.color.trim(),
-        vin: data.vin.trim(),
-        tipoVehiculo: data.tipoVehiculo,
-      };
+      const { clienteId, vehiculoId } = await guardarClienteVehiculo(data);
 
-      let vehiculoId = vehiculoData?.id;
-      if (vehiculoId) {
-        await updateVehiculo(vehiculoId, vehiculoPayload);
-      } else {
-        vehiculoId = await createVehiculo(vehiculoPayload);
-      }
-
-      const orderId = await createOrden({
+      const fotosParaGuardar = await getFotosParaGuardar(ordenId);
+      await updateOrden(ordenId, {
         vehiculoId,
         clienteId,
-        estado: "Ingreso",
         tipoServicio,
         motivo: motivo.trim(),
         kilometrajeIngreso: Number(km),
         nivelCombustible,
         checklistInventario: checklist,
-        inspeccionVisual: { danos, fotoUrls: [] },
+        inspeccionVisual: { danos, fotoUrls: fotosParaGuardar.map((foto) => foto.url) },
         notasInternas: notasInternas.trim(),
         informeTecnico: diagnostico.trim(),
         tecnicoId,
@@ -870,15 +1150,124 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
           displayName: tecnico.displayName,
           role: tecnico.role,
         })),
-        presupuestoConfirmadoPorCliente: presupuestoConfirmado,
         flujoTrabajo: flujoTrabajoParaGuardar,
-        fotoUrls: [],
-        esCotizacion: guardarComoCotizacion,
+        fotoUrls: fotosParaGuardar.map((foto) => foto.url),
+        fotosDiagnostico: fotosParaGuardar,
       });
-
-      if (items.length > 0) {
-        await Promise.all(items.map((item) => addItemOrden(orderId, { ...item, ordenId: orderId })));
+      await Promise.all(
+        fotoUrlsIniciales
+          .filter((url) => !fotosParaGuardar.some((foto) => foto.url === url))
+          .map((url) => deleteOrdenFoto(url))
+      );
+    } else if (activeTab === "orden") {
+      if (totalAbonado > total + 0.01) {
+        toast.error("Los abonos superan el total de la orden");
+        return true;
       }
+
+      await updateOrden(ordenId, {
+        presupuestoConfirmadoPorCliente: presupuestoConfirmado,
+        esCotizacion: guardarComoCotizacion,
+        flujoTrabajo: flujoTrabajoParaGuardar,
+      });
+      await guardarItemsOrdenExistente(ordenId);
+    } else if (activeTab === "ejecucion") {
+      await updateOrden(ordenId, {
+        flujoTrabajo: {
+          ...flujoTrabajoParaGuardar,
+          ejecucionRepuestos: flujoTrabajo.ejecucionRepuestos,
+        },
+      });
+    } else if (activeTab === "reparacion") {
+      await updateOrden(ordenId, {
+        flujoTrabajo: {
+          ...flujoTrabajoParaGuardar,
+          ordenReparacion: flujoTrabajo.ordenReparacion,
+        },
+      });
+    } else if (activeTab === "entrega") {
+      if (totalAbonado > total + 0.01) {
+        toast.error("Los abonos superan el total de la orden");
+        return true;
+      }
+
+      await updateOrden(ordenId, {
+        flujoTrabajo: {
+          ...flujoTrabajoParaGuardar,
+          entregaCierre: flujoTrabajoParaGuardar.entregaCierre,
+        },
+      });
+      await guardarPagosOrdenExistente(ordenId);
+    }
+
+    toast.success("Paso guardado");
+    onSuccess?.(ordenId);
+    if (!onSuccess) onClose();
+    return true;
+  };
+
+  const onSubmit = async (data: FormData, tipoSeleccionado: TipoCreacion = tipoCreacion) => {
+    const esCotizacion = tipoSeleccionado === "cotizacion";
+
+    setGuardando(true);
+    try {
+      if (ordenId) {
+        const handled = await guardarOrdenExistentePorPaso(data, tipoSeleccionado);
+        if (handled) return;
+      }
+
+      if (!data.placa.trim()) {
+        toast.error("La placa es obligatoria");
+        return;
+      }
+      if (!motivo.trim()) {
+        toast.error("Ingresa el motivo de la visita");
+        setActiveTab("inspeccion");
+        return;
+      }
+      if (!km.trim() || Number.isNaN(Number(km))) {
+        toast.error("Ingresa el kilometraje");
+        setActiveTab("inspeccion");
+        return;
+      }
+      if (totalAbonado > total + 0.01) {
+        toast.error("Los abonos superan el total de la orden");
+        setActiveTab("entrega");
+        return;
+      }
+
+      const guardarComoCotizacion = esCotizacion;
+      const flujoTrabajoParaGuardar = getFlujoTrabajoParaGuardar();
+
+      const { clienteId, vehiculoId } = await guardarClienteVehiculo(data);
+
+      const orderId = await createOrdenConItems(
+        {
+          vehiculoId,
+          clienteId,
+          estado: "Ingreso",
+          tipoServicio,
+          motivo: motivo.trim(),
+          kilometrajeIngreso: Number(km),
+          nivelCombustible,
+          checklistInventario: checklist,
+          inspeccionVisual: { danos, fotoUrls: [] },
+          notasInternas: notasInternas.trim(),
+          informeTecnico: diagnostico.trim(),
+          tecnicoId,
+          personalAsignado: tecnicosAsignados.map((tecnico) => ({
+            uid: tecnico.uid,
+            email: tecnico.email,
+            displayName: tecnico.displayName,
+            role: tecnico.role,
+          })),
+          presupuestoConfirmadoPorCliente: presupuestoConfirmado,
+          flujoTrabajo: flujoTrabajoParaGuardar,
+          fotoUrls: [],
+          esCotizacion: guardarComoCotizacion,
+        },
+        items.map(getItemPayload)
+      );
 
       if (pagosDraft.length > 0) {
         await Promise.all(
@@ -891,15 +1280,16 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
         );
       }
 
-      if (fotosDiagnostico.length > 0) {
+      const fotosNuevas = fotosDiagnostico.filter((foto) => foto.file);
+      if (fotosNuevas.length > 0) {
         const fotoUrls = await Promise.all(
-          fotosDiagnostico.map((foto) => uploadOrdenFoto(orderId, foto.file))
+          fotosNuevas.map((foto) => uploadOrdenFoto(orderId, foto.file!))
         );
         await updateOrden(orderId, {
           fotoUrls,
           fotosDiagnostico: fotoUrls.map((url, index) => ({
             url,
-            descripcion: fotosDiagnostico[index]?.descripcion.trim() || "",
+            descripcion: fotosNuevas[index]?.descripcion.trim() || "",
           })),
         });
       }
@@ -1060,7 +1450,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
               <span className="nueva-orden-photo-modal-nav-spacer" />
             )}
 
-            <img src={fotoModal.previewUrl} alt={fotoModal.file.name} className="nueva-orden-photo-modal-image" />
+            <img src={fotoModal.previewUrl} alt={fotoModal.descripcion || "Foto del diagnostico"} className="nueva-orden-photo-modal-image" />
 
             {puedeNavegar ? (
               <button
@@ -1391,7 +1781,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                 className="nueva-orden-photo-thumb"
                 onClick={() => setFotoModalId(foto.id)}
               >
-                <img src={foto.previewUrl} alt={foto.file.name} className="h-full w-full object-cover" />
+                <img src={foto.previewUrl} alt={foto.descripcion || "Foto del diagnostico"} className="h-full w-full object-cover" />
                 {foto.descripcion ? (
                   <span className="nueva-orden-photo-has-description" title={foto.descripcion}>
                     {foto.descripcion}
@@ -1491,7 +1881,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end">
+    <div className={`nueva-orden-sidebar-container ${sidebarOpen ? 'nueva-orden-sidebar-shifted' : ''}`}>
       <button
         type="button"
         aria-label="Cerrar"
@@ -1516,15 +1906,23 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button form="nueva-orden-form" type="submit" disabled={guardando} className="btn-primary btn-sm">
+            <button form="nueva-orden-form" type="submit" disabled={guardando || cargandoOrden} className="btn-primary btn-sm">
               {guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-              {tipoCreacion === "cotizacion" ? "Guardar" : "Crear"}
+              {submitLabel}
             </button>
           </div>
         </header>
         ) : null}
 
         <div className="flex-1 min-h-0 overflow-y-auto xl:overflow-hidden p-4 sm:p-5">
+          {cargandoOrden ? (
+            <div className="flex h-full min-h-[320px] items-center justify-center">
+              <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                <Loader2 size={16} className="animate-spin" />
+                Cargando orden...
+              </div>
+            </div>
+          ) : (
           <form id="nueva-orden-form" className="h-full" onSubmit={handleSubmit((data) => onSubmit(data, tipoCreacion))}>
             <div className="grid h-full min-h-0 grid-cols-1 xl:grid-cols-12 gap-4 items-start">
               <aside className="xl:col-span-4 space-y-3 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1">
@@ -1593,9 +1991,9 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
                       <span>Orden</span>
                     </button>
                   </div>
-                  <button type="submit" disabled={guardando} className="btn-primary btn-sm w-full justify-center">
+                  <button type="submit" disabled={guardando || cargandoOrden} className="btn-primary btn-sm w-full justify-center">
                     {guardando ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                    {tipoCreacion === "cotizacion" ? "Guardar" : "Crear"}
+                    {submitLabel}
                   </button>
                 </section>
 
@@ -2339,6 +2737,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess }: Props) {
               </main>
             </div>
           </form>
+          )}
         </div>
       </div>
 
