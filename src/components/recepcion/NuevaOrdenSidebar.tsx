@@ -251,6 +251,8 @@ function getItemPayload(item: ItemOrdenDraft): Omit<ItemOrden, "id" | "ordenId">
 export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props) {
   const { sidebarOpen } = useUIStore();
   const modoEdicion = Boolean(ordenId);
+  const [ordenIdLocal, setOrdenIdLocal] = useState<string | null>(null);
+  const targetOrdenId = ordenId ?? ordenIdLocal;
   const [cargandoOrden, setCargandoOrden] = useState(Boolean(ordenId));
   const [buscando, setBuscando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -279,7 +281,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
     diagnostico: true,
   });
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>("orden");
-  const submitLabel = modoEdicion ? "Guardar paso" : tipoCreacion === "cotizacion" ? "Guardar" : "Crear";
+  const submitLabel = (modoEdicion || ordenIdLocal) ? "Guardar paso" : tipoCreacion === "cotizacion" ? "Guardar" : "Crear";
   const [sugerencias, setSugerencias] = useState<Vehiculo[]>([]);
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
@@ -1109,8 +1111,13 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
     return { clienteId, vehiculoId };
   };
 
-  const guardarOrdenExistentePorPaso = async (data: FormData, tipoSeleccionado: TipoCreacion) => {
-    if (!ordenId) return false;
+  const guardarOrdenExistentePorPaso = async (
+    data: FormData,
+    tipoSeleccionado: TipoCreacion,
+    overrideOrdenId?: string
+  ) => {
+    const idToUse = overrideOrdenId ?? targetOrdenId;
+    if (!idToUse) return false;
 
     const guardarComoCotizacion = tipoSeleccionado === "cotizacion";
     const flujoTrabajoParaGuardar = getFlujoTrabajoParaGuardar();
@@ -1131,8 +1138,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
 
       const { clienteId, vehiculoId } = await guardarClienteVehiculo(data);
 
-      const fotosParaGuardar = await getFotosParaGuardar(ordenId);
-      await updateOrden(ordenId, {
+      const fotosParaGuardar = await getFotosParaGuardar(idToUse);
+      await updateOrden(idToUse, {
         vehiculoId,
         clienteId,
         tipoServicio,
@@ -1165,21 +1172,21 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
         return true;
       }
 
-      await updateOrden(ordenId, {
+      await updateOrden(idToUse, {
         presupuestoConfirmadoPorCliente: presupuestoConfirmado,
         esCotizacion: guardarComoCotizacion,
         flujoTrabajo: flujoTrabajoParaGuardar,
       });
-      await guardarItemsOrdenExistente(ordenId);
+      await guardarItemsOrdenExistente(idToUse);
     } else if (activeTab === "ejecucion") {
-      await updateOrden(ordenId, {
+      await updateOrden(idToUse, {
         flujoTrabajo: {
           ...flujoTrabajoParaGuardar,
           ejecucionRepuestos: flujoTrabajo.ejecucionRepuestos,
         },
       });
     } else if (activeTab === "reparacion") {
-      await updateOrden(ordenId, {
+      await updateOrden(idToUse, {
         flujoTrabajo: {
           ...flujoTrabajoParaGuardar,
           ordenReparacion: flujoTrabajo.ordenReparacion,
@@ -1191,112 +1198,97 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
         return true;
       }
 
-      await updateOrden(ordenId, {
+      await updateOrden(idToUse, {
         flujoTrabajo: {
           ...flujoTrabajoParaGuardar,
           entregaCierre: flujoTrabajoParaGuardar.entregaCierre,
         },
       });
-      await guardarPagosOrdenExistente(ordenId);
+      await guardarPagosOrdenExistente(idToUse);
     }
 
     toast.success("Paso guardado");
-    onSuccess?.(ordenId);
+    onSuccess?.(idToUse);
     if (!onSuccess) onClose();
     return true;
   };
 
-  const onSubmit = async (data: FormData, tipoSeleccionado: TipoCreacion = tipoCreacion) => {
+  const crearOrdenMinima = async (data: FormData, tipoSeleccionado: TipoCreacion): Promise<string> => {
     const esCotizacion = tipoSeleccionado === "cotizacion";
+    const { clienteId, vehiculoId } = await guardarClienteVehiculo(data);
+    const flujoTrabajoParaGuardar = getFlujoTrabajoParaGuardar();
 
+    const orderId = await createOrdenConItems(
+      {
+        vehiculoId,
+        clienteId,
+        estado: "Ingreso",
+        tipoServicio,
+        motivo: motivo.trim(),
+        kilometrajeIngreso: km && !Number.isNaN(Number(km)) ? Number(km) : 0,
+        nivelCombustible,
+        checklistInventario: checklist,
+        inspeccionVisual: { danos, fotoUrls: [] },
+        notasInternas: notasInternas.trim(),
+        informeTecnico: diagnostico.trim(),
+        tecnicoId,
+        personalAsignado: tecnicosAsignados.map((tecnico) => ({
+          uid: tecnico.uid,
+          email: tecnico.email,
+          displayName: tecnico.displayName,
+          role: tecnico.role,
+        })),
+        presupuestoConfirmadoPorCliente: presupuestoConfirmado,
+        flujoTrabajo: flujoTrabajoParaGuardar,
+        fotoUrls: [],
+        esCotizacion,
+      },
+      items.map(getItemPayload)
+    );
+
+    if (pagosDraft.length > 0) {
+      await Promise.all(
+        pagosDraft.map((pago) => createPago({ ...pago, ordenId: orderId }))
+      );
+    }
+
+    const fotosNuevas = fotosDiagnostico.filter((foto) => foto.file);
+    if (fotosNuevas.length > 0) {
+      const fotoUrls = await Promise.all(
+        fotosNuevas.map((foto) => uploadOrdenFoto(orderId, foto.file!))
+      );
+      await updateOrden(orderId, {
+        fotoUrls,
+        fotosDiagnostico: fotoUrls.map((url, index) => ({
+          url,
+          descripcion: fotosNuevas[index]?.descripcion.trim() || "",
+        })),
+      });
+    }
+
+    return orderId;
+  };
+
+  const onSubmit = async (data: FormData, tipoSeleccionado: TipoCreacion = tipoCreacion) => {
     setGuardando(true);
     try {
-      if (ordenId) {
-        const handled = await guardarOrdenExistentePorPaso(data, tipoSeleccionado);
-        if (handled) return;
+      // Si ya existe una orden (modo edición real o creada en esta sesión), guardar sólo el paso activo
+      if (targetOrdenId) {
+        await guardarOrdenExistentePorPaso(data, tipoSeleccionado);
+        return;
       }
 
+      // Primera creación: sólo la placa es obligatoria
       if (!data.placa.trim()) {
         toast.error("La placa es obligatoria");
         return;
       }
-      if (!motivo.trim()) {
-        toast.error("Ingresa el motivo de la visita");
-        setActiveTab("inspeccion");
-        return;
-      }
-      if (!km.trim() || Number.isNaN(Number(km))) {
-        toast.error("Ingresa el kilometraje");
-        setActiveTab("inspeccion");
-        return;
-      }
-      if (totalAbonado > total + 0.01) {
-        toast.error("Los abonos superan el total de la orden");
-        setActiveTab("entrega");
-        return;
-      }
 
-      const guardarComoCotizacion = esCotizacion;
-      const flujoTrabajoParaGuardar = getFlujoTrabajoParaGuardar();
+      const orderId = await crearOrdenMinima(data, tipoSeleccionado);
+      setOrdenIdLocal(orderId);
 
-      const { clienteId, vehiculoId } = await guardarClienteVehiculo(data);
-
-      const orderId = await createOrdenConItems(
-        {
-          vehiculoId,
-          clienteId,
-          estado: "Ingreso",
-          tipoServicio,
-          motivo: motivo.trim(),
-          kilometrajeIngreso: Number(km),
-          nivelCombustible,
-          checklistInventario: checklist,
-          inspeccionVisual: { danos, fotoUrls: [] },
-          notasInternas: notasInternas.trim(),
-          informeTecnico: diagnostico.trim(),
-          tecnicoId,
-          personalAsignado: tecnicosAsignados.map((tecnico) => ({
-            uid: tecnico.uid,
-            email: tecnico.email,
-            displayName: tecnico.displayName,
-            role: tecnico.role,
-          })),
-          presupuestoConfirmadoPorCliente: presupuestoConfirmado,
-          flujoTrabajo: flujoTrabajoParaGuardar,
-          fotoUrls: [],
-          esCotizacion: guardarComoCotizacion,
-        },
-        items.map(getItemPayload)
-      );
-
-      if (pagosDraft.length > 0) {
-        await Promise.all(
-          pagosDraft.map((pago) =>
-            createPago({
-              ...pago,
-              ordenId: orderId,
-            })
-          )
-        );
-      }
-
-      const fotosNuevas = fotosDiagnostico.filter((foto) => foto.file);
-      if (fotosNuevas.length > 0) {
-        const fotoUrls = await Promise.all(
-          fotosNuevas.map((foto) => uploadOrdenFoto(orderId, foto.file!))
-        );
-        await updateOrden(orderId, {
-          fotoUrls,
-          fotosDiagnostico: fotoUrls.map((url, index) => ({
-            url,
-            descripcion: fotosNuevas[index]?.descripcion.trim() || "",
-          })),
-        });
-      }
-
-      toast.success(guardarComoCotizacion ? "Cotizacion guardada" : "Orden creada");
-      onSuccess?.(orderId);
-      if (!onSuccess) onClose();
+      // Guardar el paso activo sobre la orden recién creada
+      await guardarOrdenExistentePorPaso(data, tipoSeleccionado, orderId);
     } catch (error) {
       console.error(error);
       toast.error(
