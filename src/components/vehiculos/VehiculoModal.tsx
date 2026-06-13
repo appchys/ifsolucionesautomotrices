@@ -3,10 +3,8 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { X, Loader2, UserPlus } from "lucide-react";
 import { Vehiculo, Cliente, TipoVehiculo } from "@/types";
-import { getClientes, createCliente, createVehiculo, updateVehiculo } from "@/lib/services";
+import { getClientes, createCliente, createVehiculo, updateVehiculo, getTiposVehiculo } from "@/lib/services";
 import { toast } from "react-hot-toast";
-
-const TIPOS: TipoVehiculo[] = ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
 
 interface Props {
   isOpen: boolean;
@@ -41,6 +39,7 @@ const VEHICULO_FIELDS: {
 
 export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSuccess }: Props) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [tiposVehiculo, setTiposVehiculo] = useState<string[]>([]);
   const [ownerMode, setOwnerMode] = useState<"existente" | "nuevo">("existente");
   const [saving, setSaving] = useState(false);
   const { register, handleSubmit, reset, setValue } = useForm<VehiculoFormValues>();
@@ -48,29 +47,24 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
   useEffect(() => {
     if (!isOpen) return;
 
-    getClientes().then(setClientes).catch(console.error);
-    reset();
+    Promise.all([getClientes(), getTiposVehiculo()])
+      .then(([cls, tipos]) => {
+        setClientes(cls);
+        setTiposVehiculo(tipos);
+        
+        if (editingVehiculo) {
+          reset({
+            ...editingVehiculo,
+          });
+          setOwnerMode(editingVehiculo.clienteId ? "existente" : "nuevo");
+        } else {
+          reset({});
+          setOwnerMode("existente");
+        }
+      })
+      .catch(console.error);
 
-    if (editingVehiculo) {
-      const timer = window.setTimeout(() => {
-        setOwnerMode(editingVehiculo.clienteId ? "existente" : "nuevo");
-      }, 0);
-      setValue("clienteId", editingVehiculo.clienteId);
-      setValue("placa", editingVehiculo.placa);
-      setValue("marca", editingVehiculo.marca);
-      setValue("modelo", editingVehiculo.modelo);
-      setValue("anio", editingVehiculo.anio);
-      setValue("color", editingVehiculo.color);
-      setValue("vin", editingVehiculo.vin);
-      setValue("tipoVehiculo", editingVehiculo.tipoVehiculo);
-      return () => window.clearTimeout(timer);
-    } else {
-      const timer = window.setTimeout(() => {
-        setOwnerMode("existente");
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
-  }, [isOpen, editingVehiculo, setValue, reset]);
+  }, [isOpen, editingVehiculo, reset]);
 
   const onSubmit = async (data: VehiculoFormValues) => {
     setSaving(true);
@@ -185,8 +179,8 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
           ))}
           <div className="form-group">
             <label className="label">Tipo *</label>
-            <select className="input" {...register("tipoVehiculo", { required: true })}>
-              {TIPOS.map((t) => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
+            <select className="input capitalize" {...register("tipoVehiculo", { required: true })}>
+              {tiposVehiculo.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div className="sm:col-span-2 flex gap-3 mt-2">

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { getCompras, getDevoluciones, getDevolucionesProveedor, getItemsOrden, getOrdenes, getTodosPagos } from "@/lib/services";
+import { getClienteById, getCompras, getDevoluciones, getDevolucionesProveedor, getItemsOrden, getOrdenes, getTodosPagos, getVehiculoById } from "@/lib/services";
 import type { Compra, CompraMetodoPago, Devolucion, DevolucionProveedor, ItemOrden, MetodoDevolucion, MetodoDevolucionProveedor, MetodoPago, OrdenTrabajo, Pago } from "@/types";
 import { BANCOS_TRANSFERENCIA, normalizeBancoTransferencia } from "@/lib/paymentBanks";
 import {
@@ -341,10 +341,14 @@ export default function ReporteFinancieroPage() {
         getOrdenes(),
       ]);
       const itemsPorOrden = await Promise.all(
-        ordenesRegistradas.map(async (orden) => ({
-          orden,
-          items: orden.id ? await getItemsOrden(orden.id) : [],
-        }))
+        ordenesRegistradas.map(async (orden) => {
+          const [items, cliente, vehiculo] = await Promise.all([
+            orden.id ? getItemsOrden(orden.id) : [],
+            orden.clienteId ? getClienteById(orden.clienteId) : null,
+            orden.vehiculoId ? getVehiculoById(orden.vehiculoId) : null,
+          ]);
+          return { orden: { ...orden, cliente: cliente ?? undefined, vehiculo: vehiculo ?? undefined }, items };
+        })
       );
 
       const tecnicoDetalles = itemsPorOrden.flatMap(({ orden, items }) => calcularPagosTecnicosOrden(orden, items));

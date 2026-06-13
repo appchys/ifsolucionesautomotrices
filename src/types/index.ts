@@ -25,7 +25,7 @@ export interface Cliente {
   updatedAt?: Timestamp;
 }
 
-export type TipoVehiculo = "sedan" | "suv" | "pickup" | "camioneta" | "moto" | "otro";
+export type TipoVehiculo = string;
 export type VehiculoVista = "superior" | "izquierda" | "derecha" | "delantera" | "trasera";
 
 /** Representa una imagen de vista para un tipo de vehículo */

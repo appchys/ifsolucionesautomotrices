@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Users, Car, CreditCard,
-  Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3
+  Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3,
+  FileDown, FileText, Receipt
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -15,7 +16,10 @@ import type { DatosTaller } from "@/types";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin","recepcion","tecnico","contador"] },
-  { href: "/ordenes", label: "Órdenes de Trabajo", icon: ClipboardList, roles: ["admin","recepcion","tecnico","contador"] },
+  { href: "/ingresos", label: "Ingresos", icon: FileDown, roles: ["admin","recepcion"] },
+  { href: "/presupuestos", label: "Presupuestos", icon: FileText, roles: ["admin","recepcion"] },
+  { href: "/ordenes", label: "Órdenes", icon: ClipboardList, roles: ["admin","recepcion","tecnico","contador"] },
+  { href: "/ventas", label: "Ventas", icon: Receipt, roles: ["admin","recepcion","contador"] },
   { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin","recepcion","contador"] },
   { href: "/vehiculos", label: "Vehículos", icon: Car, roles: ["admin","recepcion"] },
   { href: "/inventario", label: "Productos y Servicios", icon: Package, roles: ["admin","recepcion","contador"] },

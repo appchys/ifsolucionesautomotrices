@@ -209,6 +209,19 @@ export async function deleteTallerLogoFile(url: string): Promise<void> {
   }
 }
 
+// ─── CONFIGURACIÓN DE TIPOS DE VEHÍCULO ──────────────────────────────────────────
+export async function getTiposVehiculo(): Promise<string[]> {
+  const snap = await getDoc(doc(db, "configuracion", "tiposVehiculo"));
+  if (!snap.exists()) return ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
+  const data = snap.data();
+  return Array.isArray(data.tipos) ? data.tipos : ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
+}
+
+export async function saveTiposVehiculo(tipos: string[]): Promise<void> {
+  const ref = doc(db, "configuracion", "tiposVehiculo");
+  await setDoc(ref, { tipos, updatedAt: serverTimestamp() }, { merge: true });
+}
+
 // ─── CLIENTES ─────────────────────────────────────────────────────────────────
 export async function getClientes(): Promise<Cliente[]> {
   const snap = await getDocs(query(collection(db, "clientes"), orderBy("apellido")));

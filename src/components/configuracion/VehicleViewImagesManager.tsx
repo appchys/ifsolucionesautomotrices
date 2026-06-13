@@ -9,6 +9,8 @@ import {
   uploadVehicleViewImage,
   deleteVehicleViewImage,
   saveVehicleViewImagesConfig,
+  getTiposVehiculo,
+  saveTiposVehiculo
 } from "@/lib/services";
 
 const VISTAS: { label: string; value: VehiculoVista }[] = [
@@ -19,12 +21,7 @@ const VISTAS: { label: string; value: VehiculoVista }[] = [
   { label: "Trasera", value: "trasera" },
 ];
 
-const TIPOS_VEHICULO: { label: string; value: TipoVehiculo }[] = [
-  { label: "SUV", value: "suv" },
-  { label: "Camioneta", value: "camioneta" },
-  { label: "Sedán", value: "sedan" },
-  { label: "Compacto", value: "pickup" },
-];
+
 
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp";
 
@@ -39,9 +36,11 @@ interface LocalConfig {
 
 export default function VehicleViewImagesManager() {
   const [loading, setLoading] = useState(true);
-  const [selectedVehicleType, setSelectedVehicleType] = useState<TipoVehiculo>("suv");
+  const [tiposVehiculo, setTiposVehiculo] = useState<string[]>([]);
+  const [selectedVehicleType, setSelectedVehicleType] = useState<string>("");
+  const [newType, setNewType] = useState("");
   const [config, setConfig] = useState<LocalConfig>({
-    tipoVehiculo: "suv",
+    tipoVehiculo: "",
     imagenes: [],
   });
   const fileRefs = useRef<Record<VehiculoVista, HTMLInputElement | null>>({
@@ -52,8 +51,21 @@ export default function VehicleViewImagesManager() {
     trasera: null,
   });
 
+  useEffect(() => {
+    (async () => {
+      const tipos = await getTiposVehiculo();
+      setTiposVehiculo(tipos);
+      if (tipos.length > 0) {
+        setSelectedVehicleType(tipos[0]);
+      } else {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
   // Cargar configuración al cambiar el tipo de vehículo
   useEffect(() => {
+    if (!selectedVehicleType) return;
     let cancelled = false;
     (async () => {
       try {
@@ -177,6 +189,37 @@ export default function VehicleViewImagesManager() {
     }
   };
 
+  const handleAddType = async () => {
+    const tipo = newType.trim().toLowerCase();
+    if (!tipo) return;
+    if (tiposVehiculo.includes(tipo)) {
+      toast.error("Este tipo de vehículo ya existe");
+      return;
+    }
+    const nuevosTipos = [...tiposVehiculo, tipo];
+    setTiposVehiculo(nuevosTipos);
+    setSelectedVehicleType(tipo);
+    setNewType("");
+    await saveTiposVehiculo(nuevosTipos);
+    toast.success("Tipo de vehículo agregado");
+  };
+
+  const handleDeleteType = async () => {
+    if (!selectedVehicleType) return;
+    if (tiposVehiculo.length <= 1) {
+      toast.error("Debe existir al menos un tipo de vehículo");
+      return;
+    }
+    const confirmDelete = window.confirm(`¿Estás seguro de que deseas eliminar el tipo "${selectedVehicleType}"?`);
+    if (!confirmDelete) return;
+
+    const nuevosTipos = tiposVehiculo.filter(t => t !== selectedVehicleType);
+    setTiposVehiculo(nuevosTipos);
+    setSelectedVehicleType(nuevosTipos[0]);
+    await saveTiposVehiculo(nuevosTipos);
+    toast.success("Tipo de vehículo eliminado");
+  };
+
   if (loading) {
     return (
       <div className="card">
@@ -216,24 +259,40 @@ export default function VehicleViewImagesManager() {
         </div>
       </div>
 
-      <div className="mb-6">
-        <label className="label" htmlFor="vehicleType">
-          Tipo de vehículo
+      <div className="mb-6 bg-[var(--bg-secondary)] p-4 rounded-xl border border-[var(--border)]">
+        <label className="label mb-2 block" htmlFor="vehicleType">
+          Administrar Tipos de Vehículo
         </label>
-        <select
-          id="vehicleType"
-          className="input"
-          value={selectedVehicleType}
-          onChange={(e) => setSelectedVehicleType(e.target.value as TipoVehiculo)}
-        >
-          {TIPOS_VEHICULO.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-        <p className="text-xs mt-2" style={{ color: "var(--text-muted)" }}>
-          PNG, JPG o WebP. Tamaño máximo 5 MB. Se guardan en Firebase Storage.
+        <div className="flex flex-col sm:flex-row gap-3">
+          <select
+            id="vehicleType"
+            className="input flex-1 max-w-xs capitalize"
+            value={selectedVehicleType}
+            onChange={(e) => setSelectedVehicleType(e.target.value)}
+          >
+            {tiposVehiculo.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <button className="btn border border-[var(--border)] bg-white text-red-600 hover:bg-red-50" onClick={handleDeleteType}>
+            <Trash2 size={16} className="mr-2" /> Eliminar actual
+          </button>
+          <div className="flex-1 max-w-xs flex items-center gap-2">
+            <input 
+              type="text" 
+              className="input flex-1" 
+              placeholder="Nuevo tipo..." 
+              value={newType}
+              onChange={e => setNewType(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAddType()}
+            />
+            <button className="btn-primary" onClick={handleAddType}>Agregar</button>
+          </div>
+        </div>
+        <p className="text-xs mt-3" style={{ color: "var(--text-muted)" }}>
+          Crea o elimina tipos de vehículos. Cada tipo puede tener sus propias 5 vistas. (PNG, JPG o WebP. Tamaño máximo 5 MB)
         </p>
       </div>
 

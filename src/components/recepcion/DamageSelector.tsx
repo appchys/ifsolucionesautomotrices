@@ -8,16 +8,17 @@ import { X, AlertCircle, ImageOff, Loader2, Check } from "lucide-react";
 interface Props {
   danos: DanoVehiculo[];
   onChange: (danos: DanoVehiculo[]) => void;
+  tipoVehiculo?: string;
 }
 
-const TIPO_CONFIG = {
+export const TIPO_CONFIG = {
   abolladura: { label: "Abolladura", color: "#ef4444" },
   rayón: { label: "Rayón", color: "#f59e0b" },
   rotura: { label: "Rotura", color: "#7c3aed" },
   otro: { label: "Otro", color: "#06b6d4" },
 };
 
-const VISTAS: { label: string; value: VehiculoVista }[] = [
+export const VISTAS: { label: string; value: VehiculoVista }[] = [
   { label: "Superior", value: "superior" },
   { label: "Izquierda", value: "izquierda" },
   { label: "Derecha", value: "derecha" },
@@ -25,7 +26,7 @@ const VISTAS: { label: string; value: VehiculoVista }[] = [
   { label: "Trasera", value: "trasera" },
 ];
 
-export default function DamageSelector({ danos, onChange }: Props) {
+export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan" }: Props) {
   const [vistaSeleccionada, setVistaSeleccionada] = useState<VehiculoVista>("superior");
   const [imagenes, setImagenes] = useState<VehicleViewImage[]>([]);
   const [loadingImages, setLoadingImages] = useState(true);
@@ -43,17 +44,17 @@ export default function DamageSelector({ danos, onChange }: Props) {
     (async () => {
       try {
         setLoadingImages(true);
-        const config = await getVehicleViewImages("suv");
+        const config = await getVehicleViewImages(tipoVehiculo.toLowerCase());
         if (!cancelled) setImagenes(config?.imagenes ?? []);
       } catch (error) {
-        console.error("Error cargando imagenes SUV para inspeccion visual", error);
+        console.error(`Error cargando imagenes ${tipoVehiculo} para inspeccion visual`, error);
         if (!cancelled) setImagenes([]);
       } finally {
         if (!cancelled) setLoadingImages(false);
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [tipoVehiculo]);
 
   const imagenActual = useMemo(
     () => imagenes.find((img) => img.vista === vistaSeleccionada && img.imageUrl.trim()),
@@ -87,9 +88,8 @@ export default function DamageSelector({ danos, onChange }: Props) {
 
   const addDano = (tipo: DanoVehiculo["tipo"], descripcion?: string) => {
     if (!menuPos) return;
-    nextIdRef.current += 1;
     const nuevo: DanoVehiculo = {
-      id: `dano-${vistaSeleccionada}-${nextIdRef.current}`,
+      id: `dano-${vistaSeleccionada}-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       x: menuPos.x,
       y: menuPos.y,
       vista: vistaSeleccionada,
@@ -303,65 +303,7 @@ export default function DamageSelector({ danos, onChange }: Props) {
         </>
       )}
 
-      {danos.length > 0 && (
-        <div className="mt-4 space-y-3">
-          <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-            Daños registrados ({danos.length})
-          </p>
-          {(() => {
-            const grouped = new Map<VehiculoVista, DanoVehiculo[]>();
-            for (const d of danos) {
-              const v = d.vista ?? "superior";
-              if (!grouped.has(v)) grouped.set(v, []);
-              grouped.get(v)!.push(d);
-            }
-            return VISTAS.filter((v) => grouped.has(v.value)).map((vista) => {
-              const items = grouped.get(vista.value)!;
-              return (
-                <div key={vista.value}>
-                  <p className="text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
-                    {vista.label}
-                  </p>
-                  <div className="space-y-1">
-                    {items.map((d) => {
-                      const cfg = TIPO_CONFIG[d.tipo];
-                      return (
-                        <div
-                          key={d.id}
-                          className="flex items-center justify-between px-3 py-2 rounded-lg"
-                          style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
-                            <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                              {cfg.label}{d.descripcion ? `: ${d.descripcion}` : ""}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeDano(d.id)}
-                            className="btn-ghost btn-icon p-1"
-                            style={{ color: "var(--danger)" }}
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            });
-          })()}
-        </div>
-      )}
 
-      {danos.length === 0 && (
-        <div className="mt-4 flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
-          <AlertCircle size={14} />
-          Sin daños registrados
-        </div>
-      )}
     </div>
   );
 }

@@ -1,382 +1,227 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { X, Search, Loader2, Plus } from "lucide-react";
+import { X, Search, Box, PenTool, Package, Calendar } from "lucide-react";
 import { getProductos, getServicios } from "@/lib/services";
 import { Producto, Servicio, ItemOrden } from "@/types";
+import { useUIStore } from "@/store";
 
-const SIN_CATEGORIA_VALUE = "__sin_categoria__";
-type TipoItem = "producto" | "servicio";
+type TipoItem = "producto" | "servicio" | "pack" | "plan";
 
 interface AgregarItemModalProps {
-  tipoInicial?: TipoItem;
   onClose: () => void;
   onAdd: (item: Omit<ItemOrden, "id" | "ordenId" | "subtotal"> & { stockDisponible?: number }) => Promise<void>;
 }
 
-export default function AgregarItemModal({ tipoInicial = "producto", onClose, onAdd }: AgregarItemModalProps) {
-  const [tipo, setTipo] = useState<TipoItem>(tipoInicial);
-  const [items, setItems] = useState<(Producto | Servicio)[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function AgregarItemModal({ onClose, onAdd }: AgregarItemModalProps) {
+  const { sidebarOpen } = useUIStore();
+  const [activeTab, setActiveTab] = useState<TipoItem>("producto");
   const [search, setSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("");
+  const [categoria, setCategoria] = useState("");
   
-  // Custom manual entry
-  const [showManual, setShowManual] = useState(false);
-  const [manualName, setManualName] = useState("");
-  const [manualPrice, setManualPrice] = useState<number | "">("");
-  const [manualQty, setManualQty] = useState<number>(1);
-  const [manualIva, setManualIva] = useState<number>(15);
+  const [productos, setProductos] = useState<Producto[]>([]);
+  const [servicios, setServicios] = useState<Servicio[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [addingItemStr, setAddingItemStr] = useState<string | null>(null);
-  const [catalogQty, setCatalogQty] = useState<Record<string, number>>({});
-
-  const precioUnitarioParaOrden = (item: Producto | Servicio) => {
-    if (tipo !== "producto" || !item.aplicaIva) return item.precioBase;
-    return Number((item.precioBase / 1.15).toFixed(2));
-  };
-
-  const categoriasProducto = useMemo(() => {
-    if (tipo !== "producto") return [];
-    return Array.from(
-      new Set(
-        items
-          .map((item) => (item as Producto).categoria?.trim())
-          .filter(Boolean) as string[]
-      )
-    ).sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
-  }, [items, tipo]);
-
-  const hayProductosSinCategoria = useMemo(() => {
-    return tipo === "producto" && items.some((item) => !(item as Producto).categoria?.trim());
-  }, [items, tipo]);
-
-  const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return items.filter((item) => {
-      const matchesSearch = !term || item.nombre.toLowerCase().includes(term);
-      if (tipo !== "producto" || !selectedCategory) return matchesSearch;
-
-      const categoria = (item as Producto).categoria?.trim();
-      const matchesCategory =
-        selectedCategory === SIN_CATEGORIA_VALUE
-          ? !categoria
-          : categoria === selectedCategory;
-
-      return matchesSearch && matchesCategory;
-    });
-  }, [items, search, selectedCategory, tipo]);
-
+  // Load all items once
   useEffect(() => {
     let active = true;
-
     const loadData = async () => {
-      setLoading(true);
       try {
-        const data = tipo === "producto" ? await getProductos() : await getServicios();
-        if (active) setItems(data);
+        const [prodData, servData] = await Promise.all([
+          getProductos(),
+          getServicios()
+        ]);
+        if (active) {
+          setProductos(prodData);
+          setServicios(servData);
+        }
       } catch (e) {
         console.error(e);
       } finally {
         if (active) setLoading(false);
       }
     };
-
     void loadData();
-    return () => {
-      active = false;
-    };
-  }, [tipo]);
+    return () => { active = false; };
+  }, []);
 
-  const cambiarTipo = (nuevoTipo: TipoItem) => {
-    if (nuevoTipo === tipo) return;
-    setSearch("");
-    setSelectedCategory("");
-    setShowManual(false);
-    setManualName("");
-    setManualPrice("");
-    setManualQty(1);
-    setManualIva(15);
-    setCatalogQty({});
-    setTipo(nuevoTipo);
-  };
+  const filteredProductos = useMemo(() => {
+    const term = search.toLowerCase();
+    return productos.filter(p => 
+      (!term || p.nombre.toLowerCase().includes(term) || p.sku?.toLowerCase().includes(term)) &&
+      (!categoria || p.categoria === categoria)
+    );
+  }, [productos, search, categoria]);
 
-  const handleAddFromDb = async (item: Producto | Servicio) => {
-    setAddingItemStr(item.id || "temp");
-    try {
-      const qty = catalogQty[item.id ?? ""] || 1;
-      if (tipo === "producto" && qty > Math.floor(Number((item as Producto).stockActual ?? 0))) return;
-      await onAdd({
-        tipo,
-        productoId: tipo === "producto" ? item.id : undefined,
-        productoSku: tipo === "producto" ? (item as Producto).sku : undefined,
-        productoNombre: tipo === "producto" ? item.nombre : undefined,
-        stockDisponible: tipo === "producto" ? Math.floor(Number((item as Producto).stockActual ?? 0)) : undefined,
-        descripcion: item.nombre,
-        cantidad: qty,
-        precioUnitario: precioUnitarioParaOrden(item),
-        impuestoAplicable: item.aplicaIva ? 15 : 0,
-      });
-      setCatalogQty((prev) => ({ ...prev, [item.id ?? ""]: 1 }));
-      if (tipo === "producto") onClose();
-    } finally {
-      setAddingItemStr(null);
-    }
-  };
+  const filteredServicios = useMemo(() => {
+    const term = search.toLowerCase();
+    return servicios.filter(s => 
+      (!term || s.nombre.toLowerCase().includes(term)) &&
+      (!categoria || (s as any).categoria === categoria)
+    );
+  }, [servicios, search, categoria]);
 
-  const handleAddManual = async () => {
-    if (!manualName.trim() || !manualPrice) return;
-    setAddingItemStr("manual");
-    try {
-      await onAdd({
-        tipo,
-        descripcion: manualName,
-        cantidad: manualQty,
-        precioUnitario: Number(manualPrice),
-        impuestoAplicable: manualIva,
-      });
-      setManualName("");
-      setManualPrice("");
-      setManualQty(1);
-      if (tipo === "producto") onClose();
-    } finally {
-      setAddingItemStr(null);
-    }
+  const categoriasActuales = useMemo(() => {
+    const items = activeTab === "producto" ? productos : activeTab === "servicio" ? servicios : [];
+    return Array.from(new Set(items.map(i => (i as any).categoria).filter(Boolean))) as string[];
+  }, [productos, servicios, activeTab]);
+
+  const tabs = [
+    { id: "producto", label: "Productos", count: filteredProductos.length, icon: Box },
+    { id: "servicio", label: "Servicios", count: filteredServicios.length, icon: PenTool },
+    { id: "pack", label: "Packs", count: 0, icon: Package },
+    { id: "plan", label: "Planes", count: 0, icon: Calendar },
+  ] as const;
+
+  const currentItems = activeTab === "producto" ? filteredProductos : activeTab === "servicio" ? filteredServicios : [];
+
+  const handleSelectItem = async (item: Producto | Servicio) => {
+    const isProd = activeTab === "producto";
+    const stockActual = isProd ? Math.floor(Number((item as Producto).stockActual ?? 0)) : Infinity;
+    
+    if (isProd && stockActual <= 0) return; // Prevent adding if no stock
+
+    const precioUnitario = (!isProd || !item.aplicaIva) ? item.precioBase : Number((item.precioBase / 1.15).toFixed(2));
+
+    await onAdd({
+      tipo: isProd ? "producto" : "servicio",
+      productoId: item.id,
+      productoSku: isProd ? (item as Producto).sku : undefined,
+      productoNombre: item.nombre,
+      stockDisponible: isProd ? stockActual : undefined,
+      descripcion: item.nombre,
+      cantidad: 1, // Always add 1, user can edit in table
+      precioUnitario,
+      impuestoAplicable: item.aplicaIva ? 15 : 0,
+    });
+    
+    // Optionally auto-close after adding, but usually POS systems keep it open.
+    // We'll keep it open to allow rapid adding.
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-[var(--bg-card)] w-full max-w-2xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-fade-in">
-        <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
-          <h2 className="text-xl font-bold" style={{ color: "var(--text-primary)" }}>
-            Agregar productos y servicios
-          </h2>
-          <button onClick={onClose} className="btn-ghost btn-icon">
+    <div 
+      className={`fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4 pt-[calc(var(--header-height)+1rem)] transition-all duration-300 ${
+        sidebarOpen ? "lg:pl-[calc(var(--sidebar-width)+1rem)]" : ""
+      }`}
+    >
+      <div className="bg-white dark:bg-[var(--bg-card)] w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border)] shrink-0">
+          <h2 className="text-xl font-bold">Agregar Producto, Servicio, Pack o Plan</h2>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-secondary)]">
             <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          <div className="grid grid-cols-2 gap-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-1">
-            <button
-              type="button"
-              onClick={() => cambiarTipo("producto")}
-              className={`inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
-                tipo === "producto"
-                  ? "bg-[var(--bg-card)] text-[var(--accent)] shadow-sm"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-              }`}
-            >
-              Productos
-            </button>
-            <button
-              type="button"
-              onClick={() => cambiarTipo("servicio")}
-              className={`inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-semibold transition-colors ${
-                tipo === "servicio"
-                  ? "bg-[var(--bg-card)] text-[var(--accent)] shadow-sm"
-                  : "text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
-              }`}
-            >
-              Servicios
-            </button>
-          </div>
-
-          {/* Buscar en base de datos */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
-              Seleccionar del catálogo
-            </h3>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={18} />
+        <div className="p-5 flex flex-col gap-4 overflow-hidden">
+          
+          {/* Search Input and Category Filter */}
+          <div className="flex gap-3 shrink-0">
+            <div className="relative flex-1">
+              <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input 
                 type="text" 
-                className="input w-full pl-10" 
-                placeholder={`Buscar ${tipo}...`}
+                className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-900 border-2 border-blue-600 rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-600/20 text-base"
+                placeholder="Buscar por nombre, SKU o código de barras..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={e => setSearch(e.target.value)}
+                autoFocus
               />
             </div>
-            {tipo === "producto" && (
-              <div className="form-group">
-                <label className="label">Categoria</label>
-                <select
-                  className="input"
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  disabled={loading || (categoriasProducto.length === 0 && !hayProductosSinCategoria)}
-                >
-                  <option value="">Todas las categorias</option>
-                  {categoriasProducto.map((categoria) => (
-                    <option key={categoria} value={categoria}>
-                      {categoria}
-                    </option>
-                  ))}
-                  {hayProductosSinCategoria && (
-                    <option value={SIN_CATEGORIA_VALUE}>Sin categoria</option>
-                  )}
-                </select>
-              </div>
-            )}
-            
-            {loading ? (
-              <div className="flex justify-center py-8"><Loader2 className="animate-spin text-[var(--text-muted)]" /></div>
-            ) : filtered.length === 0 ? (
-              <p className="text-sm text-center py-4" style={{ color: "var(--text-muted)" }}>
-                No se encontraron {tipo}s.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-2 custom-scrollbar">
-                {filtered.map(item => {
-                  const itemKey = item.id ?? "";
-                  const stockActual = tipo === "producto" ? Math.floor(Number((item as Producto).stockActual ?? 0)) : Infinity;
-                  const cantidadSeleccionada = catalogQty[itemKey] || 1;
-                  const sinStock = tipo === "producto" && stockActual <= 0;
-                  const excedeStock = tipo === "producto" && cantidadSeleccionada > stockActual;
-
-                  return (
-                  <div key={item.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-body)] hover:border-[var(--accent)] transition-colors">
-                    <div>
-                      <p className="font-semibold text-sm" style={{ color: "var(--text-primary)" }}>{item.nombre}</p>
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        ${item.precioBase.toFixed(2)} {tipo === "producto" && item.aplicaIva ? "IVA incluido" : item.aplicaIva ? "+ IVA" : ""}
-                        {tipo === "producto" && (item as Producto).sku && ` • SKU: ${(item as Producto).sku}`}
-                        {tipo === "producto" && (
-                          <span className={`ml-1 font-medium ${stockActual <= 0 ? "text-red-500" : stockActual <= 5 ? "text-amber-500" : ""}`}>
-                            • Stock: {stockActual}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <div className="flex items-center border border-[var(--border)] rounded-lg overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCatalogQty((prev) => ({
-                              ...prev,
-                              [itemKey]: Math.max(1, (prev[itemKey] || 1) - 1),
-                            }))
-                          }
-                          className="px-2 py-1 text-xs font-bold hover:bg-[var(--bg-secondary)] transition-colors"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          -
-                        </button>
-                        <span className="px-2 py-1 text-xs font-semibold min-w-[24px] text-center" style={{ color: "var(--text-primary)" }}>
-                          {cantidadSeleccionada}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setCatalogQty((prev) => ({
-                              ...prev,
-                              [itemKey]: tipo === "producto"
-                                ? Math.min(stockActual, (prev[itemKey] || 1) + 1)
-                                : (prev[itemKey] || 1) + 1,
-                            }))
-                          }
-                          disabled={tipo === "producto" && cantidadSeleccionada >= stockActual}
-                          className="px-2 py-1 text-xs font-bold hover:bg-[var(--bg-secondary)] transition-colors"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <button 
-                        onClick={() => handleAddFromDb(item)} 
-                        disabled={addingItemStr === item.id || sinStock || excedeStock}
-                        className="btn-secondary btn-sm"
-                      >
-                        {addingItemStr === item.id ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                        {sinStock ? "Sin stock" : "Agregar"}
-                      </button>
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="section-divider my-2" />
-
-          {/* Agregar manualmente */}
-          <div className="space-y-3">
-            {!showManual ? (
-              <button
-                type="button"
-                onClick={() => setShowManual(true)}
-                className="btn-secondary w-full justify-center"
+            {categoriasActuales.length > 0 && (
+              <select
+                className="border-2 border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 bg-white dark:bg-slate-900 focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20 text-sm w-48 shrink-0"
+                value={categoria}
+                onChange={e => setCategoria(e.target.value)}
               >
-                <Plus size={16} />
-                Agregar {tipo} manual
-              </button>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
-                    Agregar {tipo} manual
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => setShowManual(false)}
-                    className="btn-ghost btn-icon p-1 text-xs"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="form-group sm:col-span-2">
-                    <label className="label">Descripción</label>
-                    <input 
-                      type="text" 
-                      className="input" 
-                      placeholder={`Ej: ${tipo === "producto" ? "Aceite 10W40" : "Limpieza de inyectores"}`}
-                      value={manualName}
-                      onChange={e => setManualName(e.target.value)}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Precio Unitario ($)</label>
-                    <input 
-                      type="number" 
-                      className="input" 
-                      min="0"
-                      step="0.01"
-                      value={manualPrice}
-                      onChange={e => setManualPrice(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Cantidad</label>
-                    <input 
-                      type="number" 
-                      className="input" 
-                      min="1"
-                      value={manualQty}
-                      onChange={e => setManualQty(Number(e.target.value))}
-                    />
-                  </div>
-                  <div className="form-group sm:col-span-2">
-                    <label className="label">IVA (%)</label>
-                    <select className="input" value={manualIva} onChange={e => setManualIva(Number(e.target.value))}>
-                      <option value={0}>0% (Exento)</option>
-                      <option value={15}>15%</option>
-                    </select>
-                  </div>
-                </div>
-                <button 
-                  onClick={handleAddManual}
-                  disabled={addingItemStr === "manual" || !manualName.trim() || !manualPrice}
-                  className="btn-primary w-full justify-center"
-                >
-                  {addingItemStr === "manual" ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />}
-                  Agregar
-                </button>
-              </>
+                <option value="">Todas las categorías</option>
+                {categoriasActuales.sort().map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
             )}
           </div>
+
+          {/* Tabs */}
+          <div className="flex gap-2 overflow-x-auto custom-scrollbar shrink-0 pb-1">
+            {tabs.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as TipoItem);
+                    setCategoria("");
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm transition-colors whitespace-nowrap ${
+                    isActive 
+                      ? "bg-blue-700 text-white shadow-sm" 
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  <Icon size={16} />
+                  {tab.label}
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                    isActive ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300"
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Results List */}
+          <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2 pb-4">
+            {loading ? (
+              <div className="p-10 text-center text-[var(--text-muted)] animate-pulse">Cargando catálogo...</div>
+            ) : currentItems.length === 0 ? (
+              <div className="p-10 text-center text-[var(--text-muted)]">No se encontraron resultados en esta categoría.</div>
+            ) : (
+              currentItems.map((item) => {
+                const isProd = activeTab === "producto";
+                const stockActual = isProd ? Math.floor(Number((item as Producto).stockActual ?? 0)) : Infinity;
+                const outOfStock = isProd && stockActual <= 0;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSelectItem(item)}
+                    disabled={outOfStock}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors text-left border border-transparent ${
+                      outOfStock ? "opacity-50 cursor-not-allowed bg-slate-50" : "bg-white dark:bg-transparent hover:bg-blue-50/80 hover:border-blue-100 dark:hover:bg-blue-900/20"
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-blue-600 shrink-0">
+                        {isProd ? <Box size={24} /> : <PenTool size={24} />}
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm text-[var(--text-primary)]">{item.nombre}</h4>
+                        <div className="flex items-center gap-1 text-xs text-[var(--text-muted)] mt-0.5">
+                          {isProd && (
+                            <>
+                              <span className="uppercase">{(item as Producto).sku || "S/N"}</span>
+                              <span>·</span>
+                              <span className={outOfStock ? "text-red-500 font-semibold" : ""}>Stock: {stockActual}</span>
+                            </>
+                          )}
+                          {!isProd && <span>Servicio</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="font-bold text-[var(--text-primary)] pl-4 shrink-0">
+                      ${item.precioBase.toFixed(2)}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
         </div>
       </div>
     </div>
