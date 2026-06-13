@@ -11,7 +11,8 @@ import {
   getItemsOrden,
   updateOrden,
   addItemOrden,
-  deleteItemOrden
+  deleteItemOrden,
+  updateItemOrden
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden } from "@/types";
 import { toast } from "react-hot-toast";
@@ -106,6 +107,22 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
     }
   };
 
+  const handleUpdateItem = async (itemId: string, fieldName: keyof ItemOrden, value: any) => {
+    if (!itemId) return;
+    try {
+      const itemToUpdate = items.find(i => i.id === itemId);
+      if (!itemToUpdate) return;
+      const updatedItem = { ...itemToUpdate, [fieldName]: value };
+      updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+      
+      await updateItemOrden(presupuestoId, itemId, { [fieldName]: value, subtotal: updatedItem.subtotal });
+      setItems(items.map(it => it.id === itemId ? updatedItem : it));
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al actualizar");
+    }
+  };
+
   if (loading || !orden || !cliente || !vehiculo) {
     return (
       <AppShell>
@@ -119,7 +136,7 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
   const subtotal = items.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
   const descuento = items.reduce((acc, it) => acc + (it.cantidad * 0 /* asumiendo dcto 0 por ahora */), 0);
   const base = subtotal - descuento;
-  const iva = base * 0.15;
+  const iva = items.reduce((acc, it) => acc + ((it.precioUnitario * it.cantidad) * (it.impuestoAplicable / 100)), 0);
   const total = base + iva;
 
   return (
@@ -201,9 +218,10 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
             {/* Items Table */}
             <div className="flex-1 border border-[var(--border)] rounded-xl bg-white dark:bg-[var(--bg-card)] overflow-hidden flex flex-col">
               <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold text-[var(--text-muted)] uppercase border-b border-[var(--border)]">
-                <div className="col-span-6">Descripción</div>
-                <div className="col-span-1 text-center">Cant</div>
+                <div className="col-span-4">Descripción</div>
+                <div className="col-span-2 text-center">Cant</div>
                 <div className="col-span-2 text-right">Precio</div>
+                <div className="col-span-1 text-center">IVA</div>
                 <div className="col-span-1 text-center">Dcto</div>
                 <div className="col-span-2 text-right">Total</div>
               </div>
@@ -217,10 +235,47 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
                 ) : (
                   items.map((item, idx) => (
                     <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                      <div className="col-span-6 font-semibold uppercase truncate">{item.descripcion}</div>
-                      <div className="col-span-1 text-center"><input type="number" className="w-12 text-center border border-[var(--border)] rounded p-1" value={item.cantidad} readOnly /></div>
-                      <div className="col-span-2 text-right"><input type="text" className="w-16 text-right border border-[var(--border)] rounded p-1" value={item.precioUnitario} readOnly /></div>
-                      <div className="col-span-1 text-center">0</div>
+                      <div className="col-span-4 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
+                      <div className="col-span-2 flex items-center justify-center gap-1">
+                        <button 
+                          className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                          onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                        >
+                          -
+                        </button>
+                        <input 
+                          type="number" 
+                          className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs" 
+                          value={item.cantidad} 
+                          onChange={(e) => {
+                            const newItems = [...items];
+                            newItems[idx].cantidad = Number(e.target.value);
+                            setItems(newItems);
+                          }}
+                          onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Number(e.target.value))}
+                        />
+                        <button 
+                          className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                          onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="col-span-2 text-right">
+                        <input 
+                          type="number" 
+                          className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs" 
+                          value={item.precioUnitario} 
+                          onChange={(e) => {
+                            const newItems = [...items];
+                            newItems[idx].precioUnitario = Number(e.target.value);
+                            setItems(newItems);
+                          }}
+                          onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
+                      <div className="col-span-1 text-center text-xs">0</div>
                       <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2">
                         ${(item.precioUnitario * item.cantidad).toFixed(2)}
                         <button 

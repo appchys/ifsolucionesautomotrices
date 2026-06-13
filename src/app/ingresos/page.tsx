@@ -75,6 +75,11 @@ export default function IngresosPage() {
   }));
 
   const filtered = ordenesConDetalle.filter((o) => {
+    // Filtrar cotizaciones para mostrar solo ingresos
+    if (o.esCotizacion) return false;
+    // Filtrar órdenes derivadas (que fueron presupuestos convertidos)
+    if (o.motivo && String(o.motivo).startsWith("Cotización derivada del ingreso")) return false;
+
     // Lógica básica de filtrado según captura
     const matchEstado = filtroActivo === "Todos" ? true : o.estado === filtroActivo;
     const term = search.toLowerCase();
@@ -85,7 +90,28 @@ export default function IngresosPage() {
       o.cliente?.apellido?.toLowerCase().includes(term) ||
       String(getNumeroDocumento(o) ?? "").includes(term);
     return matchEstado && matchSearch;
+  }).sort((a, b) => {
+    const timeA = toDate(a.createdAt)?.getTime() || 0;
+    const timeB = toDate(b.createdAt)?.getTime() || 0;
+    return timeB - timeA;
   });
+
+  const hasInspeccion = (o: OrdenTrabajo) => {
+    return (
+      (o.inspeccionVisual?.danos?.length || 0) > 0 ||
+      (o.fotosDiagnostico?.length || 0) > 0 ||
+      (o.fotoUrls?.length || 0) > 0 ||
+      (o.notasInternas?.length || 0) > 0 ||
+      (o.informeTecnico?.length || 0) > 0
+    );
+  };
+
+  const checkPresupuestoYOrden = (o: OrdenTrabajo) => {
+    const derivados = ordenes.filter(p => p.vehiculoId === o.vehiculoId && String(p.motivo).includes(String(o.numero)));
+    const tienePresupuesto = derivados.some(p => p.esCotizacion === true || p.esCotizacion === false);
+    const tieneOrden = derivados.some(p => p.esCotizacion === false) || o.flujoTrabajo?.ordenReparacion?.presupuestoConvertidoOrden;
+    return { tienePresupuesto, tieneOrden };
+  };
 
   return (
     <AppShell>
@@ -156,41 +182,45 @@ export default function IngresosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((o) => (
-                    <tr key={o.id} className="hover:bg-[var(--bg-hover)] group cursor-pointer" onClick={() => router.push(`/ingresos/${o.id}`)}>
-                      <td>
-                        <span className="font-semibold text-blue-600 dark:text-blue-400">
-                          #ING-{String(getNumeroDocumento(o) ?? 0).padStart(5, "0")}
-                        </span>
-                      </td>
-                      <td className="text-sm text-[var(--text-secondary)]">
-                        {toDate(o.createdAt) ? format(toDate(o.createdAt)!, "dd-MMM", { locale: es }) : "—"}
-                      </td>
-                      <td className="font-semibold text-[var(--text-primary)]">
-                        {o.cliente?.nombre} {o.cliente?.apellido}
-                      </td>
-                      <td className="text-[var(--text-secondary)]">
-                        {o.vehiculo?.marca} {o.vehiculo?.modelo} {o.vehiculo?.anio}
-                      </td>
-                      <td>
-                        <span className="font-mono text-sm font-medium">{o.vehiculo?.placa ?? "—"}</span>
-                      </td>
-                      <td className="text-center">
-                        <div className="w-4 h-4 rounded-full border-2 mx-auto border-gray-300 dark:border-gray-600"></div>
-                      </td>
-                      <td className="text-center">
-                        <div className="w-4 h-4 rounded-full border-2 mx-auto border-gray-300 dark:border-gray-600"></div>
-                      </td>
-                      <td className="text-center">
-                        <div className="w-4 h-4 rounded-full border-2 mx-auto border-gray-300 dark:border-gray-600"></div>
-                      </td>
-                      <td className="text-right">
-                        <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                          Recibido
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {filtered.map((o) => {
+                    const inspeccionOk = hasInspeccion(o);
+                    const { tienePresupuesto, tieneOrden } = checkPresupuestoYOrden(o);
+                    return (
+                      <tr key={o.id} className="hover:bg-[var(--bg-hover)] group cursor-pointer" onClick={() => router.push(`/ingresos/${o.id}`)}>
+                        <td>
+                          <span className="font-semibold text-blue-600 dark:text-blue-400">
+                            #ING-{String(getNumeroDocumento(o) ?? 0).padStart(5, "0")}
+                          </span>
+                        </td>
+                        <td className="text-sm text-[var(--text-secondary)]">
+                          {toDate(o.createdAt) ? format(toDate(o.createdAt)!, "dd-MMM", { locale: es }) : "—"}
+                        </td>
+                        <td className="font-semibold text-[var(--text-primary)]">
+                          {o.cliente?.nombre} {o.cliente?.apellido}
+                        </td>
+                        <td className="text-[var(--text-secondary)]">
+                          {o.vehiculo?.marca} {o.vehiculo?.modelo} {o.vehiculo?.anio}
+                        </td>
+                        <td>
+                          <span className="font-mono text-sm font-medium">{o.vehiculo?.placa ?? "—"}</span>
+                        </td>
+                        <td className="text-center">
+                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${inspeccionOk ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
+                        </td>
+                        <td className="text-center">
+                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tienePresupuesto ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
+                        </td>
+                        <td className="text-center">
+                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tieneOrden ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
+                        </td>
+                        <td className="text-right">
+                          <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                            Recibido
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {filtered.length === 0 && (
                     <tr>
                       <td colSpan={9} className="text-center py-12 text-[var(--text-muted)]">

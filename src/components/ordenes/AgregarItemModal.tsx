@@ -75,7 +75,7 @@ export default function AgregarItemModal({ onClose, onAdd }: AgregarItemModalPro
 
   const currentItems = activeTab === "producto" ? filteredProductos : activeTab === "servicio" ? filteredServicios : [];
 
-  const handleSelectItem = async (item: Producto | Servicio) => {
+  const handleSelectItem = async (item: Producto | Servicio, cantidad: number) => {
     const isProd = activeTab === "producto";
     const stockActual = isProd ? Math.floor(Number((item as Producto).stockActual ?? 0)) : Infinity;
     
@@ -90,13 +90,92 @@ export default function AgregarItemModal({ onClose, onAdd }: AgregarItemModalPro
       productoNombre: item.nombre,
       stockDisponible: isProd ? stockActual : undefined,
       descripcion: item.nombre,
-      cantidad: 1, // Always add 1, user can edit in table
+      cantidad: cantidad,
       precioUnitario,
       impuestoAplicable: item.aplicaIva ? 15 : 0,
     });
+  };
+
+  const CatalogItemRow = ({ item, isProd, outOfStock, stockActual }: { item: Producto | Servicio, isProd: boolean, outOfStock: boolean, stockActual: number }) => {
+    const [cantidad, setCantidad] = useState(1);
     
-    // Optionally auto-close after adding, but usually POS systems keep it open.
-    // We'll keep it open to allow rapid adding.
+    return (
+      <div
+        className={`w-full flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl transition-colors text-left border border-transparent gap-3 ${
+          outOfStock ? "opacity-50 bg-slate-50 dark:bg-slate-900" : "bg-white dark:bg-transparent hover:bg-blue-50/50 hover:border-blue-100 dark:hover:bg-blue-900/20"
+        }`}
+      >
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-blue-600 shrink-0">
+            {isProd ? <Box size={24} /> : <PenTool size={24} />}
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="font-bold text-sm text-[var(--text-primary)]">{item.nombre}</h4>
+              {item.aplicaIva && (
+                <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider border border-blue-200">
+                  IVA
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 text-xs text-[var(--text-muted)] mt-1">
+              {isProd ? (
+                <>
+                  <span className="uppercase font-mono">{(item as Producto).sku || "S/N"}</span>
+                  <span>·</span>
+                  <span className={outOfStock ? "text-red-500 font-semibold" : ""}>Stock: {stockActual}</span>
+                </>
+              ) : (
+                <span>Servicio</span>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0 pl-16 sm:pl-0">
+          <div className="font-bold text-[var(--text-primary)] text-right text-lg">
+            ${item.precioBase.toFixed(2)}
+          </div>
+          
+          {!outOfStock && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center border border-[var(--border)] rounded-lg bg-white dark:bg-slate-800 overflow-hidden shadow-sm">
+                <button 
+                  onClick={() => setCantidad(Math.max(1, cantidad - 1))} 
+                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[var(--text-muted)] font-bold transition-colors"
+                >
+                  -
+                </button>
+                <input 
+                  type="number" 
+                  className="w-12 text-center text-sm py-1.5 focus:outline-none bg-transparent font-semibold" 
+                  value={cantidad} 
+                  onChange={e => setCantidad(Math.max(1, Math.min(stockActual, parseInt(e.target.value) || 1)))} 
+                  onBlur={e => {
+                    if (!e.target.value || parseInt(e.target.value) < 1) setCantidad(1);
+                  }}
+                />
+                <button 
+                  onClick={() => setCantidad(Math.min(stockActual, cantidad + 1))} 
+                  className="px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[var(--text-muted)] font-bold transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              <button 
+                onClick={() => {
+                  handleSelectItem(item, cantidad);
+                  setCantidad(1);
+                }} 
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-1"
+              >
+                Agregar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -187,36 +266,13 @@ export default function AgregarItemModal({ onClose, onAdd }: AgregarItemModalPro
                 const outOfStock = isProd && stockActual <= 0;
 
                 return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleSelectItem(item)}
-                    disabled={outOfStock}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors text-left border border-transparent ${
-                      outOfStock ? "opacity-50 cursor-not-allowed bg-slate-50" : "bg-white dark:bg-transparent hover:bg-blue-50/80 hover:border-blue-100 dark:hover:bg-blue-900/20"
-                    }`}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-blue-600 shrink-0">
-                        {isProd ? <Box size={24} /> : <PenTool size={24} />}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-sm text-[var(--text-primary)]">{item.nombre}</h4>
-                        <div className="flex items-center gap-1 text-xs text-[var(--text-muted)] mt-0.5">
-                          {isProd && (
-                            <>
-                              <span className="uppercase">{(item as Producto).sku || "S/N"}</span>
-                              <span>·</span>
-                              <span className={outOfStock ? "text-red-500 font-semibold" : ""}>Stock: {stockActual}</span>
-                            </>
-                          )}
-                          {!isProd && <span>Servicio</span>}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="font-bold text-[var(--text-primary)] pl-4 shrink-0">
-                      ${item.precioBase.toFixed(2)}
-                    </div>
-                  </button>
+                  <CatalogItemRow 
+                    key={item.id} 
+                    item={item} 
+                    isProd={isProd} 
+                    outOfStock={outOfStock} 
+                    stockActual={stockActual} 
+                  />
                 );
               })
             )}

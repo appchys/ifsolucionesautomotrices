@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { X, Save, Eye, AlertCircle, Camera, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, Save, Eye, AlertCircle, Camera, Pencil, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import DamageSelector, { TIPO_CONFIG, VISTAS } from "./DamageSelector";
 import { DanoVehiculo, Vehiculo, VehiculoVista, FotoDiagnostico } from "@/types";
 import { useUIStore } from "@/store";
@@ -35,9 +35,12 @@ export default function ModalInspeccion({
 }: Props) {
   const { sidebarOpen } = useUIStore();
   const fotosRef = useRef<HTMLInputElement>(null);
+  const danoFotoRef = useRef<HTMLInputElement>(null);
   const [fotoEditandoUrl, setFotoEditandoUrl] = useState<string | null>(null);
   const [descripcionDraft, setDescripcionDraft] = useState("");
   const [fotoModalIndex, setFotoModalIndex] = useState<number>(-1);
+  const [danoSubiendoFoto, setDanoSubiendoFoto] = useState<string | null>(null);
+  const [panelAbierto, setPanelAbierto] = useState(false);
 
   const editarDescripcionFoto = (url: string, descripcionActual: string) => {
     setDescripcionDraft(descripcionActual || "");
@@ -49,6 +52,26 @@ export default function ModalInspeccion({
     setFotoEditandoUrl(null);
   };
 
+  const handleUploadDanoFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!danoSubiendoFoto || !e.target.files?.length) return;
+    const file = e.target.files[0];
+    try {
+      const { toast } = await import("react-hot-toast");
+      toast.loading("Subiendo foto...", { id: "dano-foto" });
+      const { uploadDanoFoto } = await import("@/lib/services");
+      const url = await uploadDanoFoto(file);
+      onChangeDanos(danos.map((d) => d.id === danoSubiendoFoto ? { ...d, fotoUrl: url } : d));
+      toast.success("Foto agregada", { id: "dano-foto" });
+    } catch (error) {
+      console.error(error);
+      const { toast } = await import("react-hot-toast");
+      toast.error("Error al subir foto", { id: "dano-foto" });
+    } finally {
+      setDanoSubiendoFoto(null);
+      if (danoFotoRef.current) danoFotoRef.current.value = "";
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleGuardar = () => {
@@ -58,6 +81,13 @@ export default function ModalInspeccion({
 
   const removeDano = (id: string) => {
     onChangeDanos(danos.filter((d) => d.id !== id));
+  };
+
+  const handleChangeDanos = (nuevosDanos: DanoVehiculo[]) => {
+    if (nuevosDanos.length > danos.length) {
+      setPanelAbierto(true);
+    }
+    onChangeDanos(nuevosDanos);
   };
 
   return (
@@ -93,79 +123,155 @@ export default function ModalInspeccion({
         </div>
 
         {/* Body */}
-        <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
+        <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative">
           
-          {/* Left Column: Damage Selector */}
-          <div className="flex-1 p-4 lg:p-6 overflow-y-auto custom-scrollbar border-b lg:border-b-0 lg:border-r border-[var(--border)] bg-slate-50/50 dark:bg-transparent">
-            <DamageSelector 
-              danos={danos} 
-              onChange={onChangeDanos} 
-              tipoVehiculo={vehiculo.tipoVehiculo} 
-            />
-          </div>
-
-          {/* Right Column: Information */}
-          <div className="w-full lg:w-[320px] p-4 lg:p-6 bg-slate-50 dark:bg-[var(--bg-secondary)] overflow-y-auto custom-scrollbar flex flex-col gap-6 shrink-0">
-            <div>
-              <h3 className="font-bold text-sm flex items-center justify-between mb-3">
-                <span>Daños registrados ({danos.length})</span>
-              </h3>
-              {danos.length === 0 ? (
-                <div className="border border-dashed border-[var(--border)] rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2 bg-white dark:bg-[var(--bg-card)]">
-                  <span className="font-semibold text-sm">Sin marcas aún</span>
-                  <span className="text-xs text-[var(--text-muted)]">Toca el esquema del vehículo para agregar</span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {(() => {
-                    const grouped = new Map<VehiculoVista, DanoVehiculo[]>();
-                    for (const d of danos) {
-                      const v = d.vista ?? "superior";
-                      if (!grouped.has(v)) grouped.set(v, []);
-                      grouped.get(v)!.push(d);
-                    }
-                    return VISTAS.filter((v) => grouped.has(v.value)).map((vista) => {
-                      const items = grouped.get(vista.value)!;
-                      return (
-                        <div key={vista.value}>
-                          <p className="text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
-                            {vista.label}
-                          </p>
-                          <div className="space-y-1">
-                            {items.map((d) => {
-                              const cfg = TIPO_CONFIG[d.tipo as keyof typeof TIPO_CONFIG];
-                              return (
-                                <div
-                                  key={d.id}
-                                  className="flex items-center justify-between px-3 py-2 rounded-lg"
-                                  style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <span className="w-2 h-2 rounded-full" style={{ background: cfg?.color || "#ccc" }} />
-                                    <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                                      {cfg?.label || "Otro"}{d.descripcion ? `: ${d.descripcion}` : ""}
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeDano(d.id)}
-                                    className="btn-ghost btn-icon p-1"
-                                    style={{ color: "var(--danger)" }}
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              )}
+          {/* Top Section: Damage Selector and Side Panel */}
+          <div className="flex flex-col lg:flex-row border-b border-[var(--border)] relative shrink-0 overflow-x-hidden">
+            <div className="flex-1 p-4 lg:p-6 bg-slate-50/50 dark:bg-transparent">
+              <DamageSelector 
+                danos={danos} 
+                onChange={handleChangeDanos} 
+                tipoVehiculo={vehiculo.tipoVehiculo} 
+              />
             </div>
 
+            {/* Right Column: Information (Drawer on mobile) */}
+            {/* Backdrop for mobile */}
+            {panelAbierto && (
+              <div 
+                className="lg:hidden absolute inset-0 bg-black/50 z-10" 
+                onClick={() => setPanelAbierto(false)}
+              />
+            )}
+            <div className={`
+              absolute lg:relative inset-y-0 right-0 z-20 w-[280px] sm:w-[320px] 
+              transform transition-transform duration-300 ease-in-out
+              ${panelAbierto ? "translate-x-0 shadow-2xl lg:shadow-none" : "translate-x-full lg:translate-x-0"}
+              shrink-0 flex
+            `}>
+              
+              {/* Tab handle for mobile */}
+              <button
+                type="button"
+                className="lg:hidden absolute top-1/2 -left-8 -translate-y-1/2 bg-slate-50 dark:bg-[var(--bg-secondary)] border-y border-l border-[var(--border)] w-8 h-16 rounded-l-xl flex items-center justify-center shadow-[-4px_0_8px_rgba(0,0,0,0.05)] text-slate-500 z-30"
+                onClick={() => setPanelAbierto(!panelAbierto)}
+              >
+                {panelAbierto ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+              </button>
+
+              <div className="flex-1 bg-slate-50 dark:bg-[var(--bg-secondary)] flex flex-col gap-6 p-4 lg:p-6 overflow-y-auto custom-scrollbar border-l border-[var(--border)]">
+              {/* Header for panel */}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-sm">
+                  Daños registrados ({danos.length})
+                </h3>
+                <button 
+                  type="button" 
+                  onClick={() => setPanelAbierto(false)} 
+                  className="lg:hidden p-2 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-700"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div>
+                {danos.length === 0 ? (
+                  <div className="border border-dashed border-[var(--border)] rounded-xl p-6 flex flex-col items-center justify-center text-center gap-2 bg-white dark:bg-[var(--bg-card)]">
+                    <span className="font-semibold text-sm">Sin marcas aún</span>
+                    <span className="text-xs text-[var(--text-muted)]">Toca el esquema del vehículo para agregar</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(() => {
+                      const grouped = new Map<VehiculoVista, DanoVehiculo[]>();
+                      for (const d of danos) {
+                        const v = d.vista ?? "superior";
+                        if (!grouped.has(v)) grouped.set(v, []);
+                        grouped.get(v)!.push(d);
+                      }
+                      return VISTAS.filter((v) => grouped.has(v.value)).map((vista) => {
+                        const items = grouped.get(vista.value)!;
+                        return (
+                          <div key={vista.value}>
+                            <p className="text-xs font-medium mb-1.5" style={{ color: "var(--text-muted)" }}>
+                              {vista.label}
+                            </p>
+                            <div className="space-y-1">
+                              {items.map((d) => {
+                                const cfg = TIPO_CONFIG[d.tipo as keyof typeof TIPO_CONFIG];
+                                return (
+                                  <div
+                                    key={d.id}
+                                    className="flex items-center justify-between px-3 py-2 rounded-lg"
+                                    style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      {d.fotoUrl ? (
+                                        <div className="relative w-8 h-8 rounded overflow-hidden shrink-0 group border border-[var(--border)]">
+                                          <img src={d.fotoUrl} alt="Daño" className="w-full h-full object-cover" />
+                                          <button
+                                            type="button"
+                                            onClick={() => onChangeDanos(danos.map(xd => xd.id === d.id ? { ...xd, fotoUrl: undefined } : xd))}
+                                            className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                          >
+                                            <X size={14} />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cfg?.color || "#ccc" }} />
+                                      )}
+                                      <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                                        {cfg?.label || "Otro"}{d.descripcion ? `: ${d.descripcion}` : ""}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {!d.fotoUrl && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setDanoSubiendoFoto(d.id);
+                                            danoFotoRef.current?.click();
+                                          }}
+                                          className="btn-ghost btn-icon p-1"
+                                          title="Agregar foto"
+                                        >
+                                          <Camera size={14} />
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => removeDano(d.id)}
+                                        className="btn-ghost btn-icon p-1"
+                                        style={{ color: "var(--danger)" }}
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                ref={danoFotoRef}
+                onChange={handleUploadDanoFoto}
+              />
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Row: Fotos and Observaciones */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 lg:p-6 shrink-0">
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-sm">Fotos</h3>
@@ -188,7 +294,7 @@ export default function ModalInspeccion({
               {fotos.length > 0 ? (
                 <div className="flex gap-3 overflow-x-auto pb-2 custom-scrollbar">
                   {fotos.map((foto, index) => (
-                    <div key={foto.url} className="relative w-32 h-32 shrink-0 rounded-lg overflow-hidden group border border-[var(--border)] shadow-sm">
+                    <div key={foto.url} className="relative w-24 h-24 sm:w-32 sm:h-32 shrink-0 rounded-lg overflow-hidden group border border-[var(--border)] shadow-sm">
                       <button
                         type="button"
                         className="w-full h-full"

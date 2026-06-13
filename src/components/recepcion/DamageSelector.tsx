@@ -260,6 +260,11 @@ export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan"
                   type="text"
                   value={otroTexto}
                   onChange={(e) => setOtroTexto(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && otroTexto.trim()) {
+                      addDano("otro", otroTexto.trim());
+                    }
+                  }}
                   placeholder="Describe el daño..."
                   className="w-full px-3 py-2 text-sm rounded-lg"
                   style={{

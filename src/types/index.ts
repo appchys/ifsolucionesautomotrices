@@ -72,6 +72,7 @@ export interface DanoVehiculo {
   vista?: VehiculoVista;
   tipo: "abolladura" | "rayón" | "rotura" | "otro";
   descripcion?: string;
+  fotoUrl?: string;
 }
 
 export interface InspeccionVisual {

@@ -883,6 +883,13 @@ export async function uploadOrdenFoto(ordenId: string, file: File): Promise<stri
   return getDownloadURL(storageRef);
 }
 
+export async function uploadDanoFoto(file: File): Promise<string> {
+  const path = `danos_fotos/${Date.now()}_${file.name}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  return getDownloadURL(storageRef);
+}
+
 export async function deleteOrdenFoto(url: string): Promise<void> {
   const storageRef = ref(storage, url);
   await deleteObject(storageRef);
