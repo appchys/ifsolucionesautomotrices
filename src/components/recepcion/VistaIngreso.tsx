@@ -10,7 +10,10 @@ import {
   getVehiculoById, 
   getUsuarios, 
   updateOrden,
-  uploadOrdenFoto
+  uploadOrdenFoto,
+  convertirIngresoAOrden,
+  deleteOrden,
+  getPresupuestoPorIngreso
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, AppUser, NivelCombustible, ChecklistItem, FotoDiagnostico } from "@/types";
 import { useAuthStore } from "@/store";
@@ -46,6 +49,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [orden, setOrden] = useState<OrdenTrabajo | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
+  const [presupuestoId, setPresupuestoId] = useState<string | null>(null);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
   const [tecnicosAsignados, setTecnicosAsignados] = useState<AppUser[]>([]);
   const [isTecnicosPopoverOpen, setIsTecnicosPopoverOpen] = useState(false);
@@ -64,8 +68,10 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
   const [danos, setDanos] = useState<OrdenTrabajo["inspeccionVisual"]["danos"]>([]);
   const [creatingPresupuesto, setCreatingPresupuesto] = useState(false);
+  const [creatingOrden, setCreatingOrden] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
   const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -91,6 +97,10 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       const vData = ordenData.vehiculo || await getVehiculoById(ordenData.vehiculoId);
       setCliente(cData);
       setVehiculo(vData);
+
+      const numeroIngreso = ordenData.numeroIngreso ?? ordenData.numero ?? 0;
+      const pres = await getPresupuestoPorIngreso(numeroIngreso, ordenData.vehiculoId);
+      setPresupuestoId(pres?.id || null);
 
       // Settear estados locales
       setTecnicoId(ordenData.tecnicoId || (ordenData.personalAsignado?.[0]?.uid) || "");
@@ -135,6 +145,8 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
         inspeccionVisual: { danos },
         personalAsignado: tecnicosAsignados,
       });
+      // Actualizar la fecha localmente para que la UI reaccione
+      setOrden(prev => prev ? { ...prev, updatedAt: { toDate: () => new Date() } as any } : null);
       toast.success("Cambios guardados", { id: "save" });
     } catch (err) {
       console.error(err);
@@ -146,6 +158,10 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
 
   const handleCrearPresupuesto = async () => {
     if (!orden || !cliente || !vehiculo) return;
+    if (presupuestoId) {
+      router.push(`/presupuestos/${presupuestoId}`);
+      return;
+    }
     setCreatingPresupuesto(true);
     try {
       const nuevoPresupuestoId = await createOrdenConItems({
@@ -168,6 +184,57 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       toast.error("Error al crear el presupuesto");
     } finally {
       setCreatingPresupuesto(false);
+    }
+  };
+
+  const handleCrearOrden = async () => {
+    if (!orden?.id) return;
+    if (orden.numeroOrden) {
+      // Already converted, navigate to ordenes
+      router.push(`/ordenes/detalle?id=${orden.id}`);
+      return;
+    }
+    setCreatingOrden(true);
+    try {
+      const numOrden = await convertirIngresoAOrden(orden.id);
+      toast.success(`Orden #ORD-${String(numOrden).padStart(5, "0")} creada`);
+      void loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al crear la orden");
+    } finally {
+      setCreatingOrden(false);
+    }
+  };
+
+  const handleEliminarIngreso = async () => {
+    if (!orden) return;
+    const isConfirmed = window.confirm(
+      "¿Seguro de eliminar este ingreso? Esto también eliminará el presupuesto y la inspección asociados."
+    );
+    if (!isConfirmed) return;
+
+    setSaving(true);
+    const toastId = toast.loading("Eliminando ingreso y registros asociados...");
+    try {
+      // 1. Delete associated budget (cotización) if it exists
+      const numeroIngreso = orden.numeroIngreso ?? orden.numero ?? 0;
+      const presupuesto = await getPresupuestoPorIngreso(numeroIngreso, orden.vehiculoId);
+      if (presupuesto?.id) {
+        await deleteOrden(presupuesto.id);
+      }
+
+      // 2. Delete the ingress itself (which includes visual inspection)
+      await deleteOrden(ingresoId);
+
+      toast.success("Ingreso y registros asociados eliminados con éxito", { id: toastId });
+      router.push("/ingresos");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar el ingreso", { id: toastId });
+    } finally {
+      setSaving(false);
+      setIsMenuOpen(false);
     }
   };
 
@@ -240,7 +307,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
 
   return (
     <AppShell>
-      <div className="flex flex-col h-[calc(100vh-2rem)] overflow-hidden">
+      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
         {/* Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-4 mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">
@@ -248,7 +315,8 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               <ChevronLeft size={20} />
             </Link>
             <h1 className="text-xl font-bold flex items-center gap-2">
-              Ingreso <span className="font-mono text-blue-600">#{String(orden.numero ?? 0).padStart(5, "0")}</span>
+              Ingreso <span className="font-mono text-blue-600">#{String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}</span>
+              {orden.numeroOrden && <span className="ml-2 badge bg-green-50 text-green-700 text-xs">ORD-{String(orden.numeroOrden).padStart(5, "0")}</span>}
             </h1>
             {saving && <Loader2 size={16} className="animate-spin text-[var(--text-muted)]" />}
           </div>
@@ -274,15 +342,29 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
             })()}
 
             <div className="w-12 h-px bg-[var(--border)]"></div>
-            <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
-              <div className="w-6 h-6 rounded-full border border-[var(--border)] flex items-center justify-center text-xs">3</div>
-              <span>Presupuesto</span>
-            </div>
+            {(() => {
+              const tienePresupuesto = !!presupuestoId;
+              return (
+                <div className={`flex flex-col items-center gap-1 ${tienePresupuesto ? 'text-green-600 font-semibold' : 'text-[var(--text-muted)]'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${tienePresupuesto ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
+                    {tienePresupuesto ? '✓' : '3'}
+                  </div>
+                  <span>Presupuesto</span>
+                </div>
+              );
+            })()}
             <div className="w-12 h-px bg-[var(--border)]"></div>
-            <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
-              <div className="w-6 h-6 rounded-full border border-[var(--border)] flex items-center justify-center text-xs">4</div>
-              <span>Orden</span>
-            </div>
+            {(() => {
+              const tieneOrden = !!orden?.numeroOrden;
+              return (
+                <div className={`flex flex-col items-center gap-1 ${tieneOrden ? 'text-green-600 font-semibold' : 'text-[var(--text-muted)]'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${tieneOrden ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
+                    {tieneOrden ? '✓' : '4'}
+                  </div>
+                  <span>Orden</span>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="flex items-center gap-3">
@@ -294,14 +376,45 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               onClick={handleCrearPresupuesto}
               disabled={creatingPresupuesto || saving}
             >
-               {creatingPresupuesto ? <Loader2 size={16} className="animate-spin" /> : "Crear presupuesto"}
+               {creatingPresupuesto ? <Loader2 size={16} className="animate-spin" /> : presupuestoId ? "Ver presupuesto" : "Crear presupuesto"}
             </button>
             <button className="btn font-semibold bg-white border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)]" onClick={handleSave}>
                Guardar
             </button>
-            <button className="btn-primary">
-              + Crear orden
+            <button 
+              className="btn-primary"
+              onClick={handleCrearOrden}
+              disabled={creatingOrden || saving}
+            >
+              {creatingOrden ? <Loader2 size={16} className="animate-spin" /> : orden?.numeroOrden ? `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}` : "+ Crear orden"}
             </button>
+
+            {/* 3-dots actions menu */}
+            <div className="relative">
+              <button 
+                type="button"
+                className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                title="Más acciones"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {isMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={handleEliminarIngreso}
+                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                    >
+                      <Trash2 size={14} />
+                      Eliminar ingreso
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -453,12 +566,14 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               <div>
                 <label className="text-xs font-bold text-[var(--text-muted)] flex items-center gap-1 mb-2">Nivel de combustible</label>
                 <div className="flex rounded-lg overflow-hidden border border-[var(--border)] h-[42px] bg-slate-100 dark:bg-slate-800">
-                  {NIVELES_COMBUSTIBLE.map((nivel) => {
-                    const isSelected = nivelCombustible === nivel.value;
+                  {NIVELES_COMBUSTIBLE.map((nivel, index) => {
+                    const selectedIndex = NIVELES_COMBUSTIBLE.findIndex(n => n.value === nivelCombustible);
+                    const selectedColor = selectedIndex !== -1 ? NIVELES_COMBUSTIBLE[selectedIndex].color : "";
+                    const isFilled = index <= selectedIndex;
                     return (
                       <button
                         key={nivel.value}
-                        className={`flex-1 font-bold text-xs transition-colors ${isSelected ? nivel.color : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"}`}
+                        className={`flex-1 font-bold text-xs transition-colors ${isFilled ? selectedColor : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"}`}
                         onClick={() => {
                           setNivelCombustible(nivel.value);
                           setTimeout(handleSave, 100);
@@ -541,10 +656,21 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                 Inspección técnica {danos.length > 0 ? `(${danos.length} daños)` : ''}
               </h3>
               <button 
-                className="btn w-full justify-center bg-white border border-[var(--border)] shadow-sm"
+                className="btn w-full justify-center bg-white border border-[var(--border)] shadow-sm flex-col py-2 h-auto"
                 onClick={() => setIsModalInspeccionOpen(true)}
               >
-                {(danos.length > 0 || fotos.length > 0 || observaciones.length > 0) ? "Ver / Editar inspección" : "Registrar inspección"}
+                {(danos.length > 0 || fotos.length > 0 || observaciones.length > 0) ? (
+                  <>
+                    <span>Ver / Editar inspección</span>
+                    {orden?.updatedAt && typeof orden.updatedAt.toDate === 'function' && (
+                      <span className="text-xs text-[var(--text-muted)] font-normal mt-0.5">
+                        Actualizada el: {orden.updatedAt.toDate().toLocaleDateString()} a las {orden.updatedAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  "Registrar inspección"
+                )}
               </button>
             </div>
 

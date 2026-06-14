@@ -13,7 +13,7 @@ import Link from "next/link";
 const FILTROS = ["Todos", "Recibidos", "Inspeccionados", "Presupuestados", "Con Orden"] as const;
 type FiltroIngreso = typeof FILTROS[number];
 
-const getNumeroDocumento = (orden: OrdenTrabajo) => orden.numero;
+const getNumeroDocumento = (orden: OrdenTrabajo) => orden.numeroIngreso ?? orden.numero;
 
 function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
   if (!value) return null;
@@ -74,14 +74,39 @@ export default function IngresosPage() {
     vehiculo: vehiculosMap[o.vehiculoId] || o.vehiculo
   }));
 
+  const hasInspeccion = (o: OrdenTrabajo) => {
+    return (
+      (o.inspeccionVisual?.danos?.length || 0) > 0 ||
+      (o.fotosDiagnostico?.length || 0) > 0 ||
+      (o.fotoUrls?.length || 0) > 0 ||
+      (o.notasInternas?.length || 0) > 0 ||
+      (o.informeTecnico?.length || 0) > 0
+    );
+  };
+
+  const checkPresupuestoYOrden = (o: OrdenTrabajo) => {
+    const derivados = ordenes.filter(p => p.vehiculoId === o.vehiculoId && String(p.motivo).includes(String(o.numeroIngreso ?? o.numero)));
+    const tienePresupuesto = derivados.some(d => d.esCotizacion);
+    const esOrdenDirecta = o.numeroOrden !== undefined || o.estado !== "Ingreso";
+    const tieneOrden = !!o.numeroOrden;
+    return { tienePresupuesto, esOrdenDirecta, tieneOrden };
+  };
+
+  const hasPresupuesto = (o: OrdenTrabajo) => checkPresupuestoYOrden(o).tienePresupuesto;
+
   const filtered = ordenesConDetalle.filter((o) => {
     // Filtrar cotizaciones para mostrar solo ingresos
     if (o.esCotizacion) return false;
     // Filtrar órdenes derivadas (que fueron presupuestos convertidos)
     if (o.motivo && String(o.motivo).startsWith("Cotización derivada del ingreso")) return false;
 
-    // Lógica básica de filtrado según captura
-    const matchEstado = filtroActivo === "Todos" ? true : o.estado === filtroActivo;
+    // Lógica básica de filtrado
+    let matchEstado = true;
+    if (filtroActivo === "Recibidos") matchEstado = o.estado === "Ingreso" && !hasInspeccion(o);
+    if (filtroActivo === "Inspeccionados") matchEstado = o.estado === "Ingreso" && hasInspeccion(o);
+    if (filtroActivo === "Presupuestados") matchEstado = hasPresupuesto(o);
+    if (filtroActivo === "Con Orden") matchEstado = o.estado !== "Ingreso"; // Convertido a orden (ej. Proceso)
+
     const term = search.toLowerCase();
     const matchSearch =
       !search ||
@@ -96,22 +121,6 @@ export default function IngresosPage() {
     return timeB - timeA;
   });
 
-  const hasInspeccion = (o: OrdenTrabajo) => {
-    return (
-      (o.inspeccionVisual?.danos?.length || 0) > 0 ||
-      (o.fotosDiagnostico?.length || 0) > 0 ||
-      (o.fotoUrls?.length || 0) > 0 ||
-      (o.notasInternas?.length || 0) > 0 ||
-      (o.informeTecnico?.length || 0) > 0
-    );
-  };
-
-  const checkPresupuestoYOrden = (o: OrdenTrabajo) => {
-    const derivados = ordenes.filter(p => p.vehiculoId === o.vehiculoId && String(p.motivo).includes(String(o.numero)));
-    const tienePresupuesto = derivados.some(p => p.esCotizacion === true || p.esCotizacion === false);
-    const tieneOrden = derivados.some(p => p.esCotizacion === false) || o.flujoTrabajo?.ordenReparacion?.presupuestoConvertidoOrden;
-    return { tienePresupuesto, tieneOrden };
-  };
 
   return (
     <AppShell>
@@ -214,9 +223,15 @@ export default function IngresosPage() {
                           <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tieneOrden ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
                         </td>
                         <td className="text-right">
-                          <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                            Recibido
-                          </span>
+                          {o.numeroOrden ? (
+                            <span className="badge bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                              ORD-{String(o.numeroOrden).padStart(5, "0")}
+                            </span>
+                          ) : (
+                            <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                              Recibido
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );

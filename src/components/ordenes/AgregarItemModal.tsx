@@ -10,11 +10,12 @@ type TipoItem = "producto" | "servicio" | "pack" | "plan";
 interface AgregarItemModalProps {
   onClose: () => void;
   onAdd: (item: Omit<ItemOrden, "id" | "ordenId" | "subtotal"> & { stockDisponible?: number }) => Promise<void>;
+  tipoInicial?: "producto" | "servicio" | "pack" | "plan";
 }
 
-export default function AgregarItemModal({ onClose, onAdd }: AgregarItemModalProps) {
+export default function AgregarItemModal({ onClose, onAdd, tipoInicial }: AgregarItemModalProps) {
   const { sidebarOpen } = useUIStore();
-  const [activeTab, setActiveTab] = useState<TipoItem>("producto");
+  const [activeTab, setActiveTab] = useState<TipoItem>(tipoInicial || "producto");
   const [search, setSearch] = useState("");
   const [categoria, setCategoria] = useState("");
   

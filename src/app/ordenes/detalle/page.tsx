@@ -2,7 +2,7 @@
 import { Suspense, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import AppShell from "@/components/layout/AppShell";
-import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
+import VistaOrdenDetalle from "@/components/ordenes/VistaOrdenDetalle";
 
 function OrdenDetalleContent() {
   const searchParams = useSearchParams();
@@ -17,16 +17,7 @@ function OrdenDetalleContent() {
 
   return (
     <AppShell>
-      <div className="flex flex-col items-center justify-center min-h-[60vh] opacity-20">
-        <div className="spinner mb-4" />
-        <p>Cargando orden...</p>
-      </div>
-      
-      <NuevaOrdenSidebar
-        ordenId={id} 
-        onClose={() => router.replace("/ordenes")} 
-        onSuccess={() => router.replace("/ordenes")}
-      />
+      <VistaOrdenDetalle ordenId={id} />
     </AppShell>
   );
 }

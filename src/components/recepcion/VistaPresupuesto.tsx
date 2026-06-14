@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2 } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -12,7 +12,9 @@ import {
   updateOrden,
   addItemOrden,
   deleteItemOrden,
-  updateItemOrden
+  updateItemOrden,
+  getIngresoOrigenDePresupuesto,
+  deleteOrden
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden } from "@/types";
 import { toast } from "react-hot-toast";
@@ -28,6 +30,7 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
   const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
   const [items, setItems] = useState<ItemOrden[]>([]);
   const [activeTab, setActiveTab] = useState("Vehículo");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -48,6 +51,16 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
         ordenData.vehiculo || getVehiculoById(ordenData.vehiculoId),
         getItemsOrden(presupuestoId)
       ]);
+
+      if (ordenData.esCotizacion) {
+        const ingresoOrigen = await getIngresoOrigenDePresupuesto(ordenData);
+        if (ingresoOrigen) {
+          if (!ordenData.informeTecnico) ordenData.informeTecnico = ingresoOrigen.informeTecnico;
+          if (ordenData.motivo?.startsWith("Cotización derivada del ingreso")) {
+             ordenData.motivo = ingresoOrigen.motivo;
+          }
+        }
+      }
 
       setCliente(cData);
       setVehiculo(vData);
@@ -123,6 +136,43 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
     }
   };
 
+  const handleAprobar = async () => {
+    if (!orden) return;
+    if (confirm("¿Estás seguro de aprobar este presupuesto?")) {
+      setSaving(true);
+      try {
+        await updateOrden(presupuestoId, { estado: "Proceso", presupuestoConfirmadoPorCliente: true });
+        setOrden({ ...orden, estado: "Proceso", presupuestoConfirmadoPorCliente: true });
+        toast.success("Presupuesto aprobado");
+      } catch (err) {
+        console.error(err);
+        toast.error("Error al aprobar");
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
+  const handleEliminarPresupuesto = async () => {
+    if (!orden) return;
+    const isConfirmed = window.confirm("¿Seguro de eliminar este presupuesto?");
+    if (!isConfirmed) return;
+
+    setSaving(true);
+    const toastId = toast.loading("Eliminando presupuesto...");
+    try {
+      await deleteOrden(presupuestoId);
+      toast.success("Presupuesto eliminado con éxito", { id: toastId });
+      router.push("/presupuestos");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar el presupuesto", { id: toastId });
+      setSaving(false);
+    } finally {
+      setIsMenuOpen(false);
+    }
+  };
+
   if (loading || !orden || !cliente || !vehiculo) {
     return (
       <AppShell>
@@ -141,7 +191,7 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
 
   return (
     <AppShell>
-      <div className="flex flex-col h-[calc(100vh-2rem)] overflow-hidden">
+      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
         {/* Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-3 mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">
@@ -173,9 +223,38 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
             <button className="btn bg-white border border-[var(--border)] shadow-sm font-semibold">
                ✉ Solicitar aprobación
             </button>
-            <button className="btn-primary bg-green-500 hover:bg-green-600 border-none shadow">
-               ✓ Aprobar
+            <button 
+              className="btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50"
+              onClick={handleAprobar}
+              disabled={saving || orden.presupuestoConfirmadoPorCliente}
+            >
+               {saving ? <Loader2 size={16} className="animate-spin" /> : orden.presupuestoConfirmadoPorCliente ? "✓ Aprobado" : "✓ Aprobar"}
             </button>
+            <div className="relative">
+              <button 
+                type="button"
+                className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                title="Más acciones"
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {isMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={handleEliminarPresupuesto}
+                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                    >
+                      <Trash2 size={14} />
+                      Eliminar presupuesto
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 

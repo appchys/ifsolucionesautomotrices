@@ -125,6 +125,8 @@ export interface OrdenTrabajo {
   vehiculo?: Vehiculo;
   cliente?: Cliente;
   numero?: number;
+  numeroIngreso?: number;
+  numeroOrden?: number;
   numeroCotizacion?: number;
   estado: EstadoOrden;
   tipoServicio: TipoServicio;
@@ -390,3 +392,37 @@ export interface CompraInventarioSyncResult {
   productosCreados: number;
   productosActualizados: number;
 }
+
+export interface VentaItem {
+  productoId: string;
+  sku: string;
+  nombre: string;
+  cantidad: number;
+  precioUnitario: number;
+  costoUnitario: number;
+  aplicaIva: boolean;
+  impuestoAplicable: number;
+  subtotal: number;
+}
+
+export interface Venta {
+  id?: string;
+  numeroVenta: string;
+  clienteId?: string;
+  clienteNombre: string;
+  clienteIdentificacion?: string;
+  vendedorId?: string;
+  vendedorNombre: string;
+  items: VentaItem[];
+  subtotal: number;
+  descuento: number;
+  iva: number;
+  total: number;
+  notas?: string;
+  metodoPago: MetodoPago;
+  estado: "completada" | "anulada";
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+  pagos?: Omit<Pago, "id" | "ordenId">[];
+}
+

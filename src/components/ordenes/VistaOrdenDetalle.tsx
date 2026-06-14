@@ -1,0 +1,1280 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import {
+  getOrdenById,
+  getItemsOrden,
+  addItemOrden,
+  updateItemOrden,
+  deleteItemOrden,
+  updateOrden,
+  updateEstadoOrden,
+  getClienteById,
+  getVehiculoById,
+  getUsuarios,
+  getPagos,
+  createPago,
+  deletePago,
+  uploadOrdenFoto,
+  getPresupuestoPorIngreso,
+} from "@/lib/services";
+import {
+  OrdenTrabajo,
+  ItemOrden,
+  EstadoOrden,
+  Pago,
+  MetodoPago,
+  TipoServicio,
+  NivelCombustible,
+  ChecklistItem,
+  DanoVehiculo,
+  Vehiculo,
+  Cliente,
+  AppUser,
+} from "@/types";
+import {
+  ChevronLeft,
+  Printer,
+  Mail,
+  MessageCircle,
+  Loader2,
+  Camera,
+  Trash2,
+  Car,
+  User,
+  Plus,
+  X,
+  Search,
+  Users,
+  Eye,
+  PenTool,
+  ClipboardSignature,
+  Edit2,
+  DollarSign,
+  HeartPulse,
+  FileText,
+  HelpCircle,
+  Tags,
+  Check,
+  Calendar,
+  Grid,
+} from "lucide-react";
+import { toast } from "react-hot-toast";
+import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
+import ModalInspeccion from "@/components/recepcion/ModalInspeccion";
+import ClienteModal from "@/components/clientes/ClienteModal";
+import VehiculoModal from "@/components/vehiculos/VehiculoModal";
+import { useUIStore } from "@/store";
+
+const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
+const ESTADO_COLORS: Record<EstadoOrden, string> = {
+  Ingreso: "border-blue-200 bg-blue-50 text-blue-700",
+  Proceso: "border-orange-200 bg-orange-50 text-orange-700",
+  Finalizado: "border-purple-200 bg-purple-50 text-purple-700",
+  Entregado: "border-green-200 bg-green-50 text-green-700",
+};
+
+interface VistaOrdenDetalleProps {
+  ordenId: string;
+}
+
+export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
+  const router = useRouter();
+  const { sidebarOpen } = useUIStore();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Core Data
+  const [orden, setOrden] = useState<OrdenTrabajo | null>(null);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
+  const [items, setItems] = useState<ItemOrden[]>([]);
+  const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
+  const [pagos, setPagos] = useState<Pago[]>([]);
+
+  // Linking State
+  const [linkedPresupuesto, setLinkedPresupuesto] = useState<OrdenTrabajo | null>(null);
+
+  // Edit / Form State
+  const [motivo, setMotivo] = useState("");
+  const [tipoServicio, setTipoServicio] = useState<TipoServicio>("Mantenimiento");
+  const [fechaCreacion, setFechaCreacion] = useState("");
+  const [fechaEntrega, setFechaEntrega] = useState("");
+  const [tecnicoId, setTecnicoId] = useState("");
+  const [km, setKm] = useState("");
+  const [nivelCombustible, setNivelCombustible] = useState<NivelCombustible>("1/2");
+  const [estadoGeneral, setEstadoGeneral] = useState("");
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [danos, setDanos] = useState<DanoVehiculo[]>([]);
+  const [informeTecnico, setInformeTecnico] = useState("");
+  const [notasInternas, setNotasInternas] = useState("");
+
+  // Modals & Panels State
+  const [activeTab, setActiveTab] = useState<"Vehículo" | "Fotos" | "Notas" | "Diagnóstico" | "Informe" | "Chat">("Vehículo");
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
+  const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
+  const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
+  const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
+
+  // Local state for Payment Modal
+  const [montoPago, setMontoPago] = useState("");
+  const [metodoPago, setMetodoPago] = useState<MetodoPago>("efectivo");
+  const [bancoPago, setBancoPago] = useState("");
+  const [referenciaPago, setReferenciaPago] = useState("");
+  const [notasPago, setNotasPago] = useState("");
+  const [savingPago, setSavingPago] = useState(false);
+
+  // File Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load Data
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const oData = await getOrdenById(ordenId);
+      if (!oData) {
+        toast.error("Orden de trabajo no encontrada");
+        router.push("/ordenes");
+        return;
+      }
+
+      setOrden(oData);
+
+      const [cData, vData, itemsData, uData, pagosData] = await Promise.all([
+        oData.cliente || getClienteById(oData.clienteId),
+        oData.vehiculo || getVehiculoById(oData.vehiculoId),
+        getItemsOrden(ordenId),
+        getUsuarios(),
+        getPagos(ordenId),
+      ]);
+
+      setCliente(cData);
+      setVehiculo(vData);
+      setItems(itemsData);
+      setTecnicos(uData.filter((u) => u.role === "tecnico" && u.activo));
+      setPagos(pagosData);
+
+      // Populate local states
+      setMotivo(oData.motivo || "");
+      setTipoServicio(oData.tipoServicio || "Mantenimiento");
+      setTecnicoId(oData.tecnicoId || "");
+      setKm(oData.kilometrajeIngreso ? String(oData.kilometrajeIngreso) : "");
+      setNivelCombustible(oData.nivelCombustible || "1/2");
+      setEstadoGeneral(oData.notasInternas || "");
+      setChecklist(oData.checklistInventario || []);
+      setDanos(oData.inspeccionVisual?.danos || []);
+      setInformeTecnico(oData.informeTecnico || "");
+      setNotasInternas(oData.notasInternas || "");
+
+      // Date parsing
+      if (oData.createdAt) {
+        const dateObj = oData.createdAt.toDate ? oData.createdAt.toDate() : new Date(oData.createdAt as any);
+        setFechaCreacion(dateObj.toISOString().split("T")[0]);
+      }
+      if (oData.fechaEntrega) {
+        const dateObj = oData.fechaEntrega.toDate ? oData.fechaEntrega.toDate() : new Date(oData.fechaEntrega as any);
+        setFechaEntrega(dateObj.toISOString().split("T")[0]);
+      }
+
+      // Check linked budget if items are currently empty
+      const numeroIngreso = oData.numeroIngreso ?? oData.numero ?? 0;
+      const presupuesto = await getPresupuestoPorIngreso(numeroIngreso, oData.vehiculoId);
+      setLinkedPresupuesto(presupuesto);
+
+      if (itemsData.length === 0 && presupuesto?.id) {
+        const itemsPresupuesto = await getItemsOrden(presupuesto.id);
+        if (itemsPresupuesto.length > 0) {
+          setSaving(true);
+          const toastId = toast.loading("Vinculando e importando ítems de presupuesto...");
+          
+          for (const item of itemsPresupuesto) {
+            const { id, ...itemData } = item;
+            await addItemOrden(ordenId, { ...itemData, ordenId });
+          }
+          
+          const updatedItems = await getItemsOrden(ordenId);
+          setItems(updatedItems);
+          
+          toast.success("Se importaron automáticamente los ítems del presupuesto vinculado.", { id: toastId });
+          setSaving(false);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al cargar detalles de la orden");
+    } finally {
+      setLoading(false);
+    }
+  }, [ordenId, router]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Save changes
+  const handleSaveField = async (fields: Partial<OrdenTrabajo>) => {
+    if (!orden) return;
+    setSaving(true);
+    try {
+      const parsedFields = { ...fields };
+      if (fields.fechaEntrega && typeof fields.fechaEntrega === "string") {
+        parsedFields.fechaEntrega = new Date(fields.fechaEntrega as any) as any;
+      }
+      await updateOrden(ordenId, parsedFields);
+      setOrden((prev) => (prev ? { ...prev, ...parsedFields } : null));
+      toast.success("Cambio guardado");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al guardar campo");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Add Item to Order
+  const handleAddItem = async (itemData: Omit<ItemOrden, "id" | "ordenId" | "subtotal">) => {
+    try {
+      const subtotal = itemData.cantidad * itemData.precioUnitario;
+      const newItem: Omit<ItemOrden, "id"> = {
+        ...itemData,
+        ordenId,
+        subtotal,
+      };
+      await addItemOrden(ordenId, newItem);
+      setItems(await getItemsOrden(ordenId));
+      toast.success("Item agregado");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al agregar item");
+    }
+  };
+
+  // Update Item in Order
+  const handleUpdateItem = async (itemId: string, fieldName: keyof ItemOrden, value: any) => {
+    try {
+      const itemToUpdate = items.find((i) => i.id === itemId);
+      if (!itemToUpdate) return;
+      const updatedItem = { ...itemToUpdate, [fieldName]: value };
+      updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+
+      await updateItemOrden(ordenId, itemId, {
+        [fieldName]: value,
+        subtotal: updatedItem.subtotal,
+      });
+      setItems(items.map((it) => (it.id === itemId ? updatedItem : it)));
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al actualizar item");
+    }
+  };
+
+  // Delete Item from Order
+  const handleDeleteItem = async (itemId?: string) => {
+    if (!itemId) return;
+    if (!confirm("¿Eliminar este ítem?")) return;
+    try {
+      await deleteItemOrden(ordenId, itemId);
+      setItems(items.filter((i) => i.id !== itemId));
+      toast.success("Ítem eliminado");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar item");
+    }
+  };
+
+  // Change Order State
+  const handleChangeEstado = async (estado: EstadoOrden) => {
+    try {
+      await updateEstadoOrden(ordenId, estado);
+      setOrden((prev) => (prev ? { ...prev, estado } : null));
+      toast.success(`Estado cambiado a: ${estado}`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al actualizar el estado");
+    }
+  };
+
+  // Upload Photo
+  const handleUploadFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setSaving(true);
+    const toastId = toast.loading("Subiendo foto...");
+    try {
+      const urls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const url = await uploadOrdenFoto(ordenId, files[i]);
+        urls.push(url);
+      }
+      const existingUrls = orden?.fotoUrls || [];
+      const updatedUrls = [...existingUrls, ...urls];
+      await updateOrden(ordenId, { fotoUrls: updatedUrls });
+      setOrden((prev) => (prev ? { ...prev, fotoUrls: updatedUrls } : null));
+      toast.success("Foto(s) agregada(s)", { id: toastId });
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al subir foto", { id: toastId });
+    } finally {
+      setSaving(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleRemoveFoto = async (index: number) => {
+    if (!confirm("¿Seguro que deseas eliminar esta foto?")) return;
+    try {
+      const urls = [...(orden?.fotoUrls || [])];
+      urls.splice(index, 1);
+      await updateOrden(ordenId, { fotoUrls: urls });
+      setOrden((prev) => (prev ? { ...prev, fotoUrls: urls } : null));
+      toast.success("Foto eliminada");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar foto");
+    }
+  };
+
+  // Fuel list mapping
+  const NIVELES_COMBUSTIBLE: { label: string; value: NivelCombustible }[] = [
+    { label: "E", value: "Vacío" },
+    { label: "1/4", value: "1/4" },
+    { label: "1/2", value: "1/2" },
+    { label: "3/4", value: "3/4" },
+    { label: "F", value: "Lleno" },
+  ];
+
+  // Checklist updates
+  const handleToggleChecklist = (index: number) => {
+    const nextChecklist = [...checklist];
+    nextChecklist[index].checked = !nextChecklist[index].checked;
+    setChecklist(nextChecklist);
+    handleSaveField({ checklistInventario: nextChecklist });
+  };
+
+  // Payment Calculation
+  const subtotal = items.reduce((acc, it) => acc + it.precioUnitario * it.cantidad, 0);
+  const iva = items.reduce((acc, it) => acc + it.precioUnitario * it.cantidad * (it.impuestoAplicable / 100), 0);
+  const total = subtotal + iva;
+
+  const totalAbonado = pagos.reduce((acc, p) => acc + (p.montoBase ?? p.monto), 0);
+  const saldoPendiente = Math.max(0, total - totalAbonado);
+
+  const handleAddPago = async () => {
+    if (!montoPago || isNaN(Number(montoPago)) || Number(montoPago) <= 0) {
+      toast.error("Monto inválido");
+      return;
+    }
+    const baseMonto = Number(montoPago);
+    if (baseMonto > saldoPendiente + 0.01) {
+      toast.error(`El abono no puede superar el saldo de $${saldoPendiente.toFixed(2)}`);
+      return;
+    }
+
+    let porcentajeRecargo = 0;
+    if (metodoPago === "tarjeta_credito") porcentajeRecargo = 8;
+    else if (metodoPago === "tarjeta_debito") porcentajeRecargo = 2;
+
+    const recargo = baseMonto * (porcentajeRecargo / 100);
+    const montoTotal = baseMonto + recargo;
+
+    setSavingPago(true);
+    try {
+      await createPago({
+        ordenId,
+        monto: montoTotal,
+        montoBase: baseMonto,
+        recargo: recargo > 0 ? recargo : undefined,
+        porcentajeRecargo: porcentajeRecargo > 0 ? porcentajeRecargo : undefined,
+        metodoPago,
+        banco: metodoPago === "transferencia" || metodoPago.includes("tarjeta") ? bancoPago.trim() : undefined,
+        referencia: referenciaPago.trim() || undefined,
+        notas: notasPago.trim() || undefined,
+      });
+      setPagos(await getPagos(ordenId));
+      setMontoPago("");
+      setBancoPago("");
+      setReferenciaPago("");
+      setNotasPago("");
+      setIsPagoModalOpen(false);
+      toast.success("Pago registrado con éxito");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al registrar pago");
+    } finally {
+      setSavingPago(false);
+    }
+  };
+
+  const handleDeletePago = async (id?: string) => {
+    if (!id || !confirm("¿Eliminar este registro de pago?")) return;
+    try {
+      await deletePago(id);
+      setPagos(await getPagos(ordenId));
+      toast.success("Pago eliminado");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar pago");
+    }
+  };
+
+  if (loading || !orden || !cliente || !vehiculo) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 size={40} className="animate-spin text-blue-500 mb-4" />
+        <p className="text-slate-500 text-sm">Cargando orden de trabajo...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
+      {/* Top Header Navigation */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-3 mb-4 shrink-0 bg-[var(--bg-card)] px-4 py-2 rounded-xl shadow-sm">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/ordenes"
+            className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900"
+          >
+            <ChevronLeft size={20} />
+          </Link>
+          <div>
+            <h1 className="text-lg font-extrabold flex items-center gap-2">
+              Orden <span className="text-blue-600 font-mono">#OT-{String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0")}</span>
+            </h1>
+          </div>
+          
+          {/* Creation and Delivery Dates */}
+          <div className="flex items-center gap-3 text-xs border-l border-[var(--border)] pl-4">
+            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-md border border-[var(--border)]">
+              <span className="text-[var(--text-muted)] font-medium">Creación</span>
+              <input
+                type="date"
+                className="bg-transparent border-0 font-semibold p-0 text-xs w-28 text-[var(--text-primary)] focus:ring-0 outline-none"
+                value={fechaCreacion}
+                onChange={(e) => {
+                  setFechaCreacion(e.target.value);
+                  handleSaveField({ createdAt: new Date(e.target.value) as any });
+                }}
+              />
+            </div>
+            
+            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-md border border-[var(--border)]">
+              <span className="text-[var(--text-muted)] font-medium">Entrega</span>
+              <input
+                type="date"
+                className="bg-transparent border-0 font-semibold p-0 text-xs w-28 text-[var(--text-primary)] focus:ring-0 outline-none"
+                value={fechaEntrega}
+                onChange={(e) => {
+                  setFechaEntrega(e.target.value);
+                  handleSaveField({ fechaEntrega: e.target.value as any });
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Technician Select */}
+          <div className="flex items-center gap-2 border-l border-[var(--border)] pl-4">
+            <select
+              value={tecnicoId}
+              onChange={(e) => {
+                setTecnicoId(e.target.value);
+                handleSaveField({ tecnicoId: e.target.value });
+              }}
+              className="bg-slate-100 hover:bg-slate-200 border-0 rounded-lg text-xs font-semibold px-3 py-1.5 pr-8 focus:ring-0 cursor-pointer outline-none"
+            >
+              <option value="">Sin técnico</option>
+              {tecnicos.map((t) => (
+                <option key={t.uid} value={t.uid}>
+                  {t.displayName || t.email}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Top actions & Payment */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 text-[var(--text-secondary)]">
+            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Imprimir"><Printer size={16} /></button>
+            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Enviar Email"><Mail size={16} /></button>
+            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Chat"><MessageCircle size={16} /></button>
+          </div>
+
+          {/* Estado Selector */}
+          <select
+            className={`border rounded-lg text-xs font-bold px-3 py-1.5 cursor-pointer outline-none ${ESTADO_COLORS[orden.estado]}`}
+            value={orden.estado}
+            onChange={(e) => handleChangeEstado(e.target.value as EstadoOrden)}
+          >
+            {ESTADOS.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+
+          {/* Dollar Sign / Pay button */}
+          <button
+            onClick={() => setIsPagoModalOpen(true)}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm"
+          >
+            <DollarSign size={14} /> Pagar
+          </button>
+        </div>
+      </div>
+
+
+      {/* Main 2-Column Grid */}
+      <div className="flex flex-1 gap-6 overflow-hidden min-h-0">
+        
+        {/* Left Column (Items & Form) - Scrollable */}
+        <div className="flex-1 flex flex-col gap-5 overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0">
+          
+          {/* Customer info card */}
+          <div className="card bg-[var(--bg-card)] flex items-center justify-between gap-4 py-3 border border-[var(--border)] shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-bold uppercase">
+                {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
+              </div>
+              <div>
+                <p className="font-extrabold text-sm text-[var(--text-primary)] uppercase">
+                  {cliente.nombre} {cliente.apellido}
+                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <a
+                    href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
+                    target="_blank"
+                    className="text-xs text-[var(--text-muted)] hover:text-green-600 flex items-center gap-1"
+                  >
+                    <span className="text-green-500 font-bold">📲</span> {cliente.telefono}
+                  </a>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsClienteModalOpen(true)}
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
+              title="Cambiar cliente"
+            >
+              <Edit2 size={15} />
+            </button>
+          </div>
+
+          {/* MOTIVO DE INGRESO */}
+          <div className="card bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Motivo de Ingreso</span>
+              <div className="flex items-center gap-4 text-xs font-semibold text-[var(--text-secondary)]">
+                {["Diagnóstico", "Reparación", "Mantenimiento", "Garantía"].map((tipo) => (
+                  <label key={tipo} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="tipoServicio"
+                      className="text-blue-600 focus:ring-0 cursor-pointer"
+                      checked={tipoServicio === tipo || (tipo === "Mantenimiento" && tipoServicio === "Mantenimiento")}
+                      onChange={() => {
+                        const parsedVal = tipo === "Diagnóstico" ? "Mantenimiento" : (tipo as TipoServicio);
+                        setTipoServicio(parsedVal);
+                        handleSaveField({ tipoServicio: parsedVal });
+                      }}
+                    />
+                    {tipo}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <textarea
+              className="input w-full bg-slate-50/50 hover:bg-slate-50 border border-[var(--border)] text-sm rounded-lg"
+              placeholder="Describa el motivo detallado de ingreso"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              onBlur={() => handleSaveField({ motivo })}
+              rows={2}
+            />
+          </div>
+
+          {/* Items search */}
+          <div className="flex gap-3 shrink-0">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              <input
+                type="text"
+                className="input pl-10 w-full border border-[var(--border)] text-sm rounded-lg bg-[var(--bg-card)] focus:border-blue-500"
+                placeholder="Buscar producto, servicio o código de barras... (CTRL+K)"
+                onClick={() => setIsCatalogOpen(true)}
+                readOnly
+              />
+            </div>
+            <button
+              onClick={() => setIsCatalogOpen(true)}
+              className="btn bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 rounded-lg flex items-center gap-1.5 shadow-sm"
+            >
+              <Grid size={14} /> Catálogo
+            </button>
+          </div>
+
+          {/* Table of items */}
+          <div className="border border-[var(--border)] rounded-xl shadow-sm bg-[var(--bg-card)]">
+            {/* Table header */}
+            <table className="table w-full">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-slate-50/50">
+                  <th>Descripción</th>
+                  <th className="text-center w-24">Cant</th>
+                  <th className="text-right w-28">Precio</th>
+                  <th className="text-center w-20">Dcto</th>
+                  <th className="text-right w-28">Total</th>
+                  <th className="w-10"></th>
+                </tr>
+              </thead>
+            </table>
+
+            {/* Scrollable table body */}
+            <div style={{ maxHeight: "220px", overflowY: "auto" }} className="custom-scrollbar">
+              <table className="table w-full">
+                <tbody className="divide-y divide-slate-100">
+                  {items.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-10 text-[var(--text-muted)] text-sm">
+                        No hay repuestos o servicios cargados a esta orden.
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((item, idx) => (
+                      <tr key={item.id || idx} className="hover:bg-slate-50/50">
+                        <td className="py-2.5">
+                          <p className="font-bold text-[var(--text-primary)] text-sm truncate" title={item.descripcion}>
+                            {item.descripcion}
+                          </p>
+                          {item.productoSku && (
+                            <p className="font-mono text-[10px] text-[var(--text-muted)] uppercase mt-0.5">
+                              SKU: {item.productoSku}
+                            </p>
+                          )}
+                        </td>
+                        <td className="text-center py-2.5">
+                          <div className="inline-flex items-center border border-[var(--border)] rounded-lg bg-white overflow-hidden shadow-sm">
+                            <button
+                              type="button"
+                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                              onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              className="w-10 text-center border-0 p-0 text-xs font-semibold focus:ring-0"
+                              value={item.cantidad}
+                              onChange={(e) => {
+                                const newItems = [...items];
+                                newItems[idx].cantidad = Number(e.target.value);
+                                setItems(newItems);
+                              }}
+                              onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
+                            />
+                            <button
+                              type="button"
+                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                              onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </td>
+                        <td className="text-right py-2.5">
+                          <div className="relative inline-block w-24">
+                            <input
+                              type="number"
+                              className="w-full text-right border border-[var(--border)] rounded-lg p-1 text-xs focus:ring-0"
+                              value={item.precioUnitario}
+                              onChange={(e) => {
+                                const newItems = [...items];
+                                newItems[idx].precioUnitario = Number(e.target.value);
+                                setItems(newItems);
+                              }}
+                              onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                            />
+                          </div>
+                        </td>
+                        <td className="text-center text-xs text-slate-500 py-2.5">
+                          0%
+                        </td>
+                        <td className="text-right font-extrabold text-sm text-[var(--text-primary)] py-2.5">
+                          ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                        </td>
+                        <td className="text-center py-2.5">
+                          <button
+                            onClick={() => handleDeleteItem(item.id)}
+                            className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Totals panel — always visible, never clipped */}
+            <div className="bg-slate-50/50 border-t border-[var(--border)] p-4 flex justify-end rounded-b-xl">
+              <div className="w-64 space-y-2 text-xs">
+                <div className="flex justify-between text-slate-500">
+                  <span className="font-semibold uppercase">Subtotal</span>
+                  <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <button className="text-blue-600 hover:underline flex items-center gap-1">
+                    🏷 Aplicar descuento
+                  </button>
+                </div>
+                <div className="flex justify-between text-slate-500">
+                  <span className="font-semibold uppercase">IVA (15%)</span>
+                  <span className="font-bold text-[var(--text-primary)]">${iva.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-base pt-2 border-t border-[var(--border)] text-[var(--text-primary)]">
+                  <span className="font-extrabold uppercase">Total</span>
+                  <span className="font-extrabold text-blue-600">${total.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-start">
+            <button className="btn bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1 shadow-sm">
+              <Tags size={12} className="text-slate-500" /> Agregar tag
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column (Sidebar Tabs) */}
+        <div className="w-[340px] border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0">
+          {/* Tabs bar */}
+          <div className="flex border-b border-[var(--border)] bg-slate-50/50 shrink-0">
+            {(["Vehículo", "Fotos", "Notas", "Diagnóstico", "Informe", "Chat"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 text-center py-2.5 text-[10px] font-bold transition-all border-b-2 uppercase tracking-wide ${
+                  activeTab === tab
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-[var(--text-muted)] hover:text-slate-900"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+            
+            {activeTab === "Vehículo" && (
+              <div className="space-y-4">
+                {/* Vehicle header */}
+                <div className="flex items-center justify-between p-3 border border-[var(--border)] rounded-xl bg-slate-50/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white shrink-0">
+                      <Car size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[var(--text-primary)] leading-tight">
+                        {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
+                      </h4>
+                      <span className="inline-block badge badge-gray font-mono uppercase text-[9px] mt-1">
+                        {vehiculo.placa}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsVehiculoModalOpen(true)}
+                    className="p-1.5 hover:bg-slate-100 rounded-md text-slate-500"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+                </div>
+
+                <a
+                  href="#"
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 pl-1"
+                >
+                  Ver ficha completa del vehículo →
+                </a>
+
+                {/* Kilometraje */}
+                <div className="form-group">
+                  <label className="label">Kilometraje</label>
+                  <input
+                    type="number"
+                    className="input w-full bg-slate-50/50"
+                    placeholder="Ej: 85000"
+                    value={km}
+                    onChange={(e) => setKm(e.target.value)}
+                    onBlur={() => handleSaveField({ kilometrajeIngreso: Number(km) })}
+                  />
+                </div>
+
+                {/* Combustible */}
+                <div className="form-group">
+                  <label className="label">Combustible</label>
+                  <div className="flex rounded-lg overflow-hidden border border-[var(--border)] bg-slate-100 dark:bg-slate-800 p-0.5">
+                    {NIVELES_COMBUSTIBLE.map((nivel) => {
+                      const isSelected = nivelCombustible === nivel.value;
+                      return (
+                        <button
+                          key={nivel.value}
+                          type="button"
+                          className={`flex-1 text-center py-1.5 text-xs font-extrabold rounded-md transition-all ${
+                            isSelected
+                              ? "bg-amber-500 text-white shadow-sm"
+                              : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"
+                          }`}
+                          onClick={() => {
+                            setNivelCombustible(nivel.value);
+                            handleSaveField({ nivelCombustible: nivel.value });
+                          }}
+                        >
+                          {nivel.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Inspeccion visual */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Inspección Visual</label>
+                  <button
+                    onClick={() => setIsModalInspeccionOpen(true)}
+                    className="btn w-full justify-center bg-white hover:bg-slate-50 border border-[var(--border)] text-slate-700 font-bold text-xs py-2 shadow-sm rounded-lg"
+                  >
+                    Registrar inspección
+                  </button>
+
+                  {danos.length > 0 && (
+                    <div className="flex items-center justify-between p-3 border border-blue-200 bg-blue-50/30 rounded-xl mt-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Eye size={15} className="text-blue-600" />
+                        <div>
+                          <p className="font-bold text-blue-900">Inspección de ingreso</p>
+                          <p className="text-[10px] text-blue-700 mt-0.5">
+                            {danos.length} marca{danos.length !== 1 ? "s" : ""} · {fechaCreacion || "Reciente"}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setIsModalInspeccionOpen(true)}
+                        className="text-blue-600 hover:text-blue-800 font-bold"
+                      >
+                        Ver
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Estado General del Vehiculo */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Estado General del Vehículo</label>
+                  <textarea
+                    className="input w-full bg-slate-50/50"
+                    placeholder="Describe el estado general..."
+                    value={estadoGeneral}
+                    onChange={(e) => setEstadoGeneral(e.target.value)}
+                    onBlur={() => handleSaveField({ notasInternas: estadoGeneral })}
+                    rows={3}
+                  />
+                </div>
+
+                {/* Inventario Checklist */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Inventario del Vehículo</label>
+                  <div className="border border-[var(--border)] rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
+                    {checklist.length === 0 ? (
+                      <p className="p-3 text-center text-xs text-[var(--text-muted)] italic">
+                        Sin inventario registrado
+                      </p>
+                    ) : (
+                      checklist.map((item, idx) => (
+                        <label
+                          key={idx}
+                          className="flex items-center justify-between p-2.5 hover:bg-slate-50 cursor-pointer text-xs"
+                        >
+                          <span className="text-slate-700 font-medium">{item.label}</span>
+                          <input
+                            type="checkbox"
+                            checked={item.checked}
+                            onChange={() => handleToggleChecklist(idx)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-0"
+                          />
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "Fotos" && (
+              <div className="space-y-4">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleUploadFoto}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="btn w-full justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 shadow-sm rounded-lg"
+                >
+                  <Camera size={14} className="mr-1.5" /> Agregar Imagen
+                </button>
+
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {(orden.fotoUrls || []).map((url, index) => (
+                    <div
+                      key={index}
+                      className="relative aspect-square rounded-xl overflow-hidden border border-[var(--border)] bg-slate-100 group shadow-sm"
+                    >
+                      <img src={url} alt="Evidencia" className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => handleRemoveFoto(index)}
+                        className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {(orden.fotoUrls || []).length === 0 && (
+                    <p className="col-span-2 text-center text-xs text-[var(--text-muted)] py-8">
+                      No hay imágenes cargadas a esta orden.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "Notas" && (
+              <div className="space-y-3">
+                <label className="label">Notas Internas / Observaciones</label>
+                <textarea
+                  className="input w-full bg-slate-50/50"
+                  placeholder="Escribe observaciones de uso interno..."
+                  value={notasInternas}
+                  onChange={(e) => setNotasInternas(e.target.value)}
+                  onBlur={() => handleSaveField({ notasInternas })}
+                  rows={10}
+                />
+              </div>
+            )}
+
+            {activeTab === "Diagnóstico" && (
+              <div className="space-y-3">
+                <label className="label">Informe Técnico / Diagnóstico</label>
+                <textarea
+                  className="input w-full bg-slate-50/50"
+                  placeholder="Escriba aquí los detalles del diagnóstico y conclusiones..."
+                  value={informeTecnico}
+                  onChange={(e) => setInformeTecnico(e.target.value)}
+                  onBlur={() => handleSaveField({ informeTecnico })}
+                  rows={10}
+                />
+              </div>
+            )}
+
+            {activeTab === "Informe" && (
+              <div className="space-y-4 py-4 text-center">
+                <FileText size={40} className="mx-auto text-slate-300 mb-2" />
+                <p className="text-xs text-[var(--text-muted)]">
+                  Generación y descarga de informes técnicos para enviar al cliente en formato PDF.
+                </p>
+                <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-2 w-full justify-center rounded-lg shadow-sm">
+                  Descargar Informe Técnico PDF
+                </button>
+              </div>
+            )}
+
+            {activeTab === "Chat" && (
+              <div className="space-y-4 py-8 text-center text-slate-400 text-xs">
+                <MessageCircle size={32} className="mx-auto text-slate-300 mb-2" />
+                <p>El chat de comunicación interna se habilitará cuando se asigne un técnico al vehículo.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer bar */}
+      <div className="mt-4 pt-4 border-t border-[var(--border)] flex justify-between items-center bg-[var(--bg-card)] px-4 py-2 shrink-0 rounded-xl shadow-sm">
+        {/* Progress bar */}
+        <div className="flex items-center gap-3 w-72 text-xs">
+          <span className="font-extrabold text-slate-500">0%</span>
+          <div className="flex-1 progress-bar">
+            <div className="progress-fill" style={{ width: "0%" }}></div>
+          </div>
+        </div>
+
+        {/* Control actions */}
+        <div className="flex items-center gap-2">
+          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
+            Firmar
+          </button>
+          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
+            Etiqueta
+          </button>
+          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
+            Descargar
+          </button>
+          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
+            Enviar
+          </button>
+          <button className="btn bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-1.5 px-4 rounded-lg shadow-sm">
+            Imprimir
+          </button>
+        </div>
+      </div>
+
+      {/* AgregarItemModal */}
+      {isCatalogOpen && (
+        <AgregarItemModal
+          onClose={() => setIsCatalogOpen(false)}
+          onAdd={handleAddItem}
+        />
+      )}
+
+      {/* ModalInspeccion */}
+      <ModalInspeccion
+        isOpen={isModalInspeccionOpen}
+        onClose={() => setIsModalInspeccionOpen(false)}
+        vehiculo={vehiculo}
+        danos={danos}
+        onChangeDanos={setDanos}
+        onSave={() => handleSaveField({ inspeccionVisual: { danos } })}
+        fotos={(orden.fotoUrls || []).map((url) => ({ url, descripcion: "" }))}
+        onUploadFoto={handleUploadFoto}
+        onUpdateFoto={async () => {}}
+        onRemoveFoto={handleRemoveFoto}
+        observaciones={notasInternas}
+        onChangeObservaciones={setNotasInternas}
+      />
+
+      {/* ClienteModal */}
+      {isClienteModalOpen && (
+        <ClienteModal
+          cliente={cliente}
+          onClose={() => setIsClienteModalOpen(false)}
+          onSaved={() => {
+            setIsClienteModalOpen(false);
+            void loadData();
+          }}
+        />
+      )}
+
+      {/* VehiculoModal */}
+      <VehiculoModal
+        isOpen={isVehiculoModalOpen}
+        onClose={() => setIsVehiculoModalOpen(false)}
+        editingVehiculo={vehiculo}
+        onSuccess={() => {
+          setIsVehiculoModalOpen(false);
+          void loadData();
+        }}
+      />
+
+      {/* PagoModal */}
+      {isPagoModalOpen && (
+        <div 
+          className={`fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200 pt-[calc(var(--header-height)+1rem)] transition-all ${
+            sidebarOpen ? "lg:pl-[calc(var(--sidebar-width)+1rem)]" : ""
+          }`}
+        >
+          <div className="bg-[var(--bg-card)] w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                💵 Registrar Abonos / Pagos
+              </h2>
+              <button
+                onClick={() => setIsPagoModalOpen(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-md text-slate-500"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Totals info */}
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-[var(--border)] text-xs">
+                  <p className="text-[var(--text-muted)] font-semibold uppercase">Total</p>
+                  <p className="font-extrabold text-[var(--text-primary)] mt-0.5">${total.toFixed(2)}</p>
+                </div>
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-[var(--border)] text-xs">
+                  <p className="text-[var(--text-muted)] font-semibold uppercase">Cobrado</p>
+                  <p className="font-extrabold text-emerald-600 mt-0.5">${totalAbonado.toFixed(2)}</p>
+                </div>
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-[var(--border)] text-xs">
+                  <p className="text-[var(--text-muted)] font-semibold uppercase">Saldo</p>
+                  <p className="font-extrabold text-amber-600 mt-0.5">${saldoPendiente.toFixed(2)}</p>
+                </div>
+              </div>
+
+              {/* Form fields */}
+              <div className="form-group">
+                <label className="label">Monto ($)</label>
+                <input
+                  type="number"
+                  className="input"
+                  placeholder="0.00"
+                  value={montoPago}
+                  onChange={(e) => setMontoPago(e.target.value)}
+                  disabled={saldoPendiente <= 0.01}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Método de pago</label>
+                <select
+                  className="input"
+                  value={metodoPago}
+                  onChange={(e) => setMetodoPago(e.target.value as MetodoPago)}
+                  disabled={saldoPendiente <= 0.01}
+                >
+                  <option value="efectivo">Efectivo</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                  <option value="tarjeta_credito">Tarjeta de Crédito</option>
+                  <option value="tarjeta_debito">Tarjeta de Débito</option>
+                  <option value="otro">Otro</option>
+                </select>
+              </div>
+
+              {(metodoPago === "tarjeta_credito" || metodoPago === "tarjeta_debito") && montoPago && !isNaN(Number(montoPago)) ? (
+                <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-800">
+                  <p className="font-bold flex justify-between">
+                    <span>Recargo por tarjeta ({metodoPago === "tarjeta_credito" ? "8%" : "2%"}):</span>
+                    <span>${(Number(montoPago) * (metodoPago === "tarjeta_credito" ? 0.08 : 0.02)).toFixed(2)}</span>
+                  </p>
+                  <p className="font-extrabold flex justify-between mt-1 text-sm text-[var(--text-primary)]">
+                    <span>Total a cobrar al cliente:</span>
+                    <span>${(Number(montoPago) * (metodoPago === "tarjeta_credito" ? 1.08 : 1.02)).toFixed(2)}</span>
+                  </p>
+                </div>
+              ) : null}
+
+              {(metodoPago === "transferencia" || metodoPago.includes("tarjeta")) && (
+                <div className="form-group">
+                  <label className="label">Banco</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Escriba o seleccione banco"
+                    value={bancoPago}
+                    onChange={(e) => setBancoPago(e.target.value)}
+                    list="bancos-list"
+                  />
+                  <datalist id="bancos-list">
+                    <option value="Banco Pichincha" />
+                    <option value="Banco Guayaquil" />
+                    <option value="Banco del Pacífico" />
+                    <option value="Produbanco" />
+                    <option value="Banco Bolivariano" />
+                    <option value="Banco Internacional" />
+                    <option value="Banco del Austro" />
+                    <option value="Cooperativa JEP" />
+                  </datalist>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label className="label">Referencia / Comprobante</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Ej: #123456"
+                  value={referenciaPago}
+                  onChange={(e) => setReferenciaPago(e.target.value)}
+                  disabled={saldoPendiente <= 0.01}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="label">Notas (Opcional)</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Detalles sobre el pago..."
+                  value={notasPago}
+                  onChange={(e) => setNotasPago(e.target.value)}
+                  disabled={saldoPendiente <= 0.01}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddPago}
+                disabled={savingPago || saldoPendiente <= 0.01}
+                className="btn-primary w-full justify-center py-2"
+              >
+                {savingPago ? <Loader2 size={16} className="animate-spin" /> : "Registrar Pago"}
+              </button>
+
+              {/* Payments log */}
+              <div className="border-t border-[var(--border)] pt-4">
+                <label className="label uppercase text-[10px] tracking-wider mb-2 block font-bold">
+                  Historial de Pagos ({pagos.length})
+                </label>
+                <div className="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                  {pagos.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-[var(--border)] text-xs"
+                    >
+                      <div>
+                        <p className="font-bold text-slate-800">
+                          ${(p.montoBase ?? p.monto).toFixed(2)}
+                          {p.recargo ? <span className="text-amber-600 font-semibold text-[10px] ml-1">(+${p.recargo.toFixed(2)} recargo)</span> : null}
+                        </p>
+                        <p className="text-[10px] text-slate-500 capitalize">
+                          {p.metodoPago} {p.banco ? `· Banco: ${p.banco}` : ""} {p.referencia ? `· Ref: ${p.referencia}` : ""}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleDeletePago(p.id)}
+                        className="text-red-500 hover:bg-red-50 p-1.5 rounded"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {pagos.length === 0 && (
+                    <p className="text-center text-xs text-[var(--text-muted)] italic py-2">
+                      Sin abonos registrados.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-[var(--border)] bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setIsPagoModalOpen(false)}
+                className="btn-secondary text-xs px-4 py-2"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

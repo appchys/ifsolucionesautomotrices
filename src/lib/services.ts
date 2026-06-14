@@ -10,6 +10,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   writeBatch,
   increment,
   runTransaction,
@@ -17,6 +18,7 @@ import {
   onSnapshot,
   QueryConstraint,
   type Transaction,
+  Timestamp,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "./firebase";
@@ -43,6 +45,8 @@ import {
   Devolucion,
   AccionInventarioDevolucion,
   DevolucionProveedor,
+  Venta,
+  VentaItem,
 } from "@/types";
 
 function normalizarMargenGanancia(value: unknown): 25 | 40 {
@@ -375,25 +379,39 @@ export function subscribeOrdenes(
   );
 }
 
-type TipoNumeroDocumento = "orden" | "cotizacion";
+type TipoNumeroDocumento = "ingreso" | "orden" | "cotizacion";
 
 async function getProximoNumeroDocumento(tipo: TipoNumeroDocumento): Promise<number> {
   const countSnap = await getDocs(collection(db, "ordenesTrabajo"));
-  const numeros = countSnap.docs
-    .map((ordenDoc) => ordenDoc.data() as OrdenTrabajo)
-    .filter((orden) => (tipo === "cotizacion" ? orden.esCotizacion === true : orden.esCotizacion !== true))
-    .map((orden) => (tipo === "cotizacion" ? orden.numeroCotizacion ?? orden.numero : orden.numero))
-    .filter((numero): numero is number => typeof numero === "number" && Number.isFinite(numero));
+  const allDocs = countSnap.docs.map((ordenDoc) => ordenDoc.data() as OrdenTrabajo);
+
+  let numeros: number[];
+  if (tipo === "cotizacion") {
+    numeros = allDocs
+      .filter((o) => o.esCotizacion === true)
+      .map((o) => o.numeroCotizacion ?? o.numero)
+      .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  } else if (tipo === "orden") {
+    numeros = allDocs
+      .map((o) => o.numeroOrden)
+      .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  } else {
+    // ingreso
+    numeros = allDocs
+      .filter((o) => o.esCotizacion !== true)
+      .map((o) => o.numeroIngreso ?? o.numero)
+      .filter((n): n is number => typeof n === "number" && Number.isFinite(n));
+  }
 
   return Math.max(0, ...numeros) + 1;
 }
 
 export async function createOrden(data: Omit<OrdenTrabajo, "id">): Promise<string> {
   const esCotizacion = data.esCotizacion === true;
-  const numero = await getProximoNumeroDocumento(esCotizacion ? "cotizacion" : "orden");
+  const numero = await getProximoNumeroDocumento(esCotizacion ? "cotizacion" : "ingreso");
   const ref = await addDoc(collection(db, "ordenesTrabajo"), {
     ...removeUndefinedFields(data),
-    ...(esCotizacion ? { numeroCotizacion: numero } : { numero }),
+    ...(esCotizacion ? { numeroCotizacion: numero } : { numero, numeroIngreso: numero }),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -405,7 +423,7 @@ export async function createOrdenConItems(
   items: Omit<ItemOrden, "id" | "ordenId">[]
 ): Promise<string> {
   const esCotizacion = data.esCotizacion === true;
-  const numero = await getProximoNumeroDocumento(esCotizacion ? "cotizacion" : "orden");
+  const numero = await getProximoNumeroDocumento(esCotizacion ? "cotizacion" : "ingreso");
   const ordenRef = doc(collection(db, "ordenesTrabajo"));
 
   await runTransaction(db, async (transaction) => {
@@ -424,7 +442,7 @@ export async function createOrdenConItems(
 
     transaction.set(ordenRef, {
       ...removeUndefinedFields(data),
-      ...(esCotizacion ? { numeroCotizacion: numero } : { numero }),
+      ...(esCotizacion ? { numeroCotizacion: numero } : { numero, numeroIngreso: numero }),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -443,6 +461,88 @@ export async function createOrdenConItems(
 
 export async function getProximoNumeroOrden(tipo: TipoNumeroDocumento = "orden"): Promise<number> {
   return getProximoNumeroDocumento(tipo);
+}
+
+/** Busca si existe un presupuesto (esCotizacion) derivado de un cierto ingreso. */
+export async function getPresupuestoPorIngreso(numeroIngreso: number, vehiculoId: string): Promise<OrdenTrabajo | null> {
+  const snap = await getDocs(
+    query(
+      collection(db, "ordenesTrabajo"),
+      where("esCotizacion", "==", true),
+      where("vehiculoId", "==", vehiculoId)
+    )
+  );
+  const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo));
+  const numStr = String(numeroIngreso);
+  const found = docs.find((o) => String(o.motivo || "").includes(numStr));
+  return found || null;
+}
+
+/** Busca el ingreso que dio origen a este presupuesto. */
+export async function getIngresoOrigenDePresupuesto(presupuesto: OrdenTrabajo): Promise<OrdenTrabajo | null> {
+  if (!presupuesto.esCotizacion || !presupuesto.motivo) return null;
+  const match = presupuesto.motivo.match(/\d+/);
+  if (!match) return null;
+  const numIngreso = parseInt(match[0], 10);
+  const snap = await getDocs(
+    query(
+      collection(db, "ordenesTrabajo"),
+      where("esCotizacion", "==", false),
+      where("vehiculoId", "==", presupuesto.vehiculoId),
+      where("numeroIngreso", "==", numIngreso)
+    )
+  );
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() } as OrdenTrabajo;
+}
+
+/** Convierte un ingreso existente en orden de trabajo asignándole un `numeroOrden` y copiando ítems de su presupuesto asociado. */
+export async function convertirIngresoAOrden(ingresoId: string): Promise<number> {
+  const numeroOrden = await getProximoNumeroDocumento("orden");
+  const ingresoRef = doc(db, "ordenesTrabajo", ingresoId);
+  const ingresoSnap = await getDoc(ingresoRef);
+  
+  if (!ingresoSnap.exists()) {
+    throw new Error("INGRESO_NO_ENCONTRADO");
+  }
+  
+  const ingreso = ingresoSnap.data() as OrdenTrabajo;
+
+  // Actualizar el documento de ingreso para que sea orden
+  await updateDoc(ingresoRef, {
+    numeroOrden,
+    estado: "Proceso",
+    updatedAt: serverTimestamp(),
+  });
+
+  try {
+    // Buscar si hay un presupuesto vinculado
+    const numeroIngresoParaBuscar = ingreso.numeroIngreso ?? ingreso.numero ?? 0;
+    const presupuesto = await getPresupuestoPorIngreso(numeroIngresoParaBuscar, ingreso.vehiculoId);
+    
+    if (presupuesto?.id) {
+      // Obtener ítems del presupuesto
+      const itemsPresupuesto = await getItemsOrden(presupuesto.id);
+      if (itemsPresupuesto.length > 0) {
+        // Copiar ítems al orden
+        const batch = writeBatch(db);
+        itemsPresupuesto.forEach((item) => {
+          const newItemRef = doc(collection(db, "ordenesTrabajo", ingresoId, "itemsOrden"));
+          const { id, ...itemData } = item;
+          batch.set(newItemRef, {
+            ...itemData,
+            ordenId: ingresoId,
+            createdAt: serverTimestamp(),
+          });
+        });
+        await batch.commit();
+      }
+    }
+  } catch (error) {
+    console.error("Error al copiar ítems del presupuesto al convertir ingreso a orden:", error);
+  }
+
+  return numeroOrden;
 }
 
 export async function updateOrden(id: string, data: Partial<OrdenTrabajo>): Promise<void> {
@@ -1502,7 +1602,6 @@ export async function deleteVehicleViewImage(url: string): Promise<void> {
     /* ignorar */
   }
 }
-
 export async function saveVehicleViewImagesConfig(config: VehicleViewImagesConfig): Promise<void> {
   const ref = doc(db, "configuracion", `vehicleViewImages_${config.tipoVehiculo}`);
   const payload: Record<string, unknown> = {
@@ -1510,4 +1609,173 @@ export async function saveVehicleViewImagesConfig(config: VehicleViewImagesConfi
     updatedAt: serverTimestamp(),
   };
   await setDoc(ref, payload, { merge: true });
+}
+
+// ─── VENTAS (POS) ────────────────────────────────────────────────────────────
+export async function getVentas(): Promise<Venta[]> {
+  const snap = await getDocs(query(collection(db, "ventas"), orderBy("createdAt", "desc")));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Venta));
+}
+
+export async function getProximoNumeroVenta(): Promise<string> {
+  const q = query(collection(db, "ventas"), orderBy("numeroVenta", "desc"), limit(1));
+  const snap = await getDocs(q);
+  if (snap.empty) return "VEN-00001";
+  const lastVenta = snap.docs[0].data() as Venta;
+  const numStr = lastVenta.numeroVenta.replace("VEN-", "");
+  const lastNum = parseInt(numStr, 10);
+  return `VEN-${String(Number.isNaN(lastNum) ? 1 : lastNum + 1).padStart(5, "0")}`;
+}
+
+export async function createVenta(venta: Omit<Venta, "id" | "numeroVenta" | "estado">): Promise<string> {
+  const numeroVenta = await getProximoNumeroVenta();
+  const ventaRef = doc(collection(db, "ventas"));
+  
+  await runTransaction(db, async (transaction) => {
+    // Read all products first
+    const productRefs = venta.items.map((item) => doc(db, "productos", item.productoId));
+    const productSnaps = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
+    
+    // Validate stock for all products
+    const stockUpdates: { ref: ReturnType<typeof doc>; newStock: number; oldStock: number; product: Producto; item: VentaItem }[] = [];
+    
+    venta.items.forEach((item, index) => {
+      const snap = productSnaps[index];
+      if (!snap.exists()) {
+        throw new Error(`PRODUCTO_NO_ENCONTRADO:${item.nombre}`);
+      }
+      const product = { id: snap.id, ...snap.data() } as Producto;
+      const oldStock = getCantidadStock(product.stockActual);
+      const newStock = oldStock - item.cantidad;
+      
+      if (newStock < 0) {
+        throw new Error(`STOCK_INSUFICIENTE:${product.nombre}`);
+      }
+      
+      stockUpdates.push({
+        ref: snap.ref,
+        newStock,
+        oldStock,
+        product,
+        item
+      });
+    });
+    
+    // Apply updates and write movements
+    stockUpdates.forEach(({ ref, newStock, oldStock, product, item }) => {
+      // 1. Update product stock
+      transaction.update(ref, {
+        stockActual: newStock,
+        updatedAt: serverTimestamp(),
+      });
+      
+      // 2. Create stock movement
+      const movementRef = doc(collection(db, "movimientosStock"));
+      transaction.set(movementRef, {
+        productoId: product.id!,
+        productoNombre: product.nombre,
+        sku: product.sku,
+        tipo: "salida",
+        cantidad: item.cantidad,
+        stockAnterior: oldStock,
+        stockNuevo: newStock,
+        nota: `Salida por venta ${numeroVenta}`,
+        unidadMedida: product.unidadMedida ?? "",
+        createdAt: serverTimestamp(),
+      });
+    });
+    
+    // 3. Write sale document
+    const { pagos, ...ventaWithoutPagos } = venta;
+    const finalVenta: Venta = {
+      ...ventaWithoutPagos,
+      numeroVenta,
+      estado: "completada",
+      createdAt: serverTimestamp() as unknown as Timestamp,
+      updatedAt: serverTimestamp() as unknown as Timestamp,
+    };
+    
+    transaction.set(ventaRef, removeUndefinedFields(finalVenta));
+
+    // 4. Save payments in 'pagos' collection
+    if (pagos && pagos.length > 0) {
+      pagos.forEach((pago) => {
+        const pagoRef = doc(collection(db, "pagos"));
+        transaction.set(pagoRef, removeUndefinedFields({
+          ...pago,
+          ordenId: "", // empty placeholder to satisfy Pago type
+          ventaId: ventaRef.id,
+          createdAt: serverTimestamp(),
+        }));
+      });
+    }
+  });
+  
+  return ventaRef.id;
+}
+
+export async function anularVenta(ventaId: string): Promise<void> {
+  const ventaRef = doc(db, "ventas", ventaId);
+  const pagosSnap = await getDocs(
+    query(collection(db, "pagos"), where("ventaId", "==", ventaId))
+  );
+  
+  await runTransaction(db, async (transaction) => {
+    const ventaSnap = await transaction.get(ventaRef);
+    if (!ventaSnap.exists()) {
+      throw new Error("VENTA_NO_ENCONTRADA");
+    }
+    const venta = { id: ventaSnap.id, ...ventaSnap.data() } as Venta;
+    if (venta.estado === "anulada") {
+      throw new Error("VENTA_YA_ANULADA");
+    }
+    
+    // Read all products first
+    const productRefs = venta.items.map((item) => doc(db, "productos", item.productoId));
+    const productSnaps = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
+    
+    // Apply stock updates and write movements
+    venta.items.forEach((item, index) => {
+      const snap = productSnaps[index];
+      if (!snap.exists()) {
+        return;
+      }
+      
+      const product = { id: snap.id, ...snap.data() } as Producto;
+      const oldStock = getCantidadStock(product.stockActual);
+      const newStock = oldStock + item.cantidad;
+      
+      // Update stock
+      transaction.update(snap.ref, {
+        stockActual: newStock,
+        updatedAt: serverTimestamp(),
+      });
+      
+      // Create stock movement
+      const movementRef = doc(collection(db, "movimientosStock"));
+      transaction.set(movementRef, {
+        productoId: product.id!,
+        productoNombre: product.nombre,
+        sku: product.sku,
+        tipo: "entrada",
+        cantidad: item.cantidad,
+        stockAnterior: oldStock,
+        stockNuevo: newStock,
+        nota: `Reversa por anulación de venta ${venta.numeroVenta}`,
+        unidadMedida: product.unidadMedida ?? "",
+        createdAt: serverTimestamp(),
+      });
+    });
+    
+    // Delete payments associated with this venta
+    pagosSnap.docs.forEach((pagoDoc) => {
+      transaction.delete(pagoDoc.ref);
+    });
+    
+    // Update sale status
+    transaction.update(ventaRef, {
+      estado: "anulada",
+      updatedAt: serverTimestamp(),
+    });
+  });
 }

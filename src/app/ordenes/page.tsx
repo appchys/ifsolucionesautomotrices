@@ -14,7 +14,7 @@ const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"]
 type MenuPosition = { id: string; top: number; left: number };
 
 const getNumeroDocumento = (orden: OrdenTrabajo) =>
-  orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero;
+  orden.numeroOrden ?? (orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero);
 
 function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
   if (!value) return null;
@@ -86,6 +86,8 @@ export default function OrdenesPage() {
   }));
 
   const filtered = ordenesConDetalle.filter((o) => {
+    // Only show documents that have been converted to orden (have numeroOrden)
+    if (!o.numeroOrden) return false;
     const matchEstado = filtroEstado === "Todos" || o.estado === filtroEstado;
     const term = search.toLowerCase();
     const matchSearch =
@@ -193,12 +195,12 @@ export default function OrdenesPage() {
                 {filtered.map((o) => (
                   <tr 
                     key={o.id} 
-                    onClick={() => setEditingOrderId(o.id!)}
+                    onClick={() => router.push(`/ordenes/detalle?id=${o.id}`)}
                     className="cursor-pointer hover:bg-[var(--bg-hover)]"
                   >
                     <td>
                       <span className="font-mono font-bold text-sm" style={{ color: "var(--accent-light)" }}>
-                        #{String(getNumeroDocumento(o) ?? 0).padStart(4, "0")}
+                        #ORD-{String(o.numeroOrden ?? 0).padStart(5, "0")}
                       </span>
                     </td>
                     <td style={{ color: "var(--text-primary)" }}>
@@ -298,18 +300,13 @@ export default function OrdenesPage() {
         </div>
       ) : null}
 
-      {(showNuevaOrden || editingOrderId) && (
+      {showNuevaOrden && (
         <NuevaOrdenSidebar 
-          ordenId={editingOrderId ?? undefined}
-          onClose={() => {
-            setShowNuevaOrden(false);
-            setEditingOrderId(null);
-          }} 
+          onClose={() => setShowNuevaOrden(false)} 
           onSuccess={(id) => {
             setShowNuevaOrden(false);
-            setEditingOrderId(null);
             void loadRelations();
-            if (!editingOrderId) router.push(`/ordenes/detalle?id=${id}`);
+            router.push(`/ordenes/detalle?id=${id}`);
           }}
         />
       )}
