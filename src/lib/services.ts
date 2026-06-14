@@ -71,7 +71,12 @@ function resolverMargenProducto(producto?: Producto | null): 25 | 40 {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return Object.prototype.toString.call(value) === "[object Object]";
+  if (value === null || typeof value !== "object") return false;
+  if (value.constructor && value.constructor.name !== "Object") {
+    return false;
+  }
+  const proto = Object.getPrototypeOf(value);
+  return proto === null || proto === Object.prototype;
 }
 
 function removeUndefinedFields<T>(value: T): T {
@@ -1687,26 +1692,28 @@ export async function createVenta(venta: Omit<Venta, "id" | "numeroVenta" | "est
     
     // 3. Write sale document
     const { pagos, ...ventaWithoutPagos } = venta;
+    const cleanVenta = removeUndefinedFields(ventaWithoutPagos);
     const finalVenta: Venta = {
-      ...ventaWithoutPagos,
+      ...cleanVenta,
       numeroVenta,
       estado: "completada",
       createdAt: serverTimestamp() as unknown as Timestamp,
       updatedAt: serverTimestamp() as unknown as Timestamp,
     };
     
-    transaction.set(ventaRef, removeUndefinedFields(finalVenta));
+    transaction.set(ventaRef, finalVenta);
 
     // 4. Save payments in 'pagos' collection
     if (pagos && pagos.length > 0) {
       pagos.forEach((pago) => {
         const pagoRef = doc(collection(db, "pagos"));
-        transaction.set(pagoRef, removeUndefinedFields({
-          ...pago,
+        const cleanPago = removeUndefinedFields(pago);
+        transaction.set(pagoRef, {
+          ...cleanPago,
           ordenId: "", // empty placeholder to satisfy Pago type
           ventaId: ventaRef.id,
           createdAt: serverTimestamp(),
-        }));
+        });
       });
     }
   });

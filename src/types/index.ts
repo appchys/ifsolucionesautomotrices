@@ -204,6 +204,7 @@ export type MetodoPago = "efectivo" | "transferencia" | "tarjeta" | "tarjeta_cre
 export interface Pago {
   id?: string;
   ordenId: string;
+  ventaId?: string;
   monto: number;
   montoBase?: number;
   recargo?: number;

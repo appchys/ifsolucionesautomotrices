@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { getClienteById, getCompras, getDevoluciones, getDevolucionesProveedor, getItemsOrden, getOrdenes, getTodosPagos, getVehiculoById } from "@/lib/services";
-import type { Compra, CompraMetodoPago, Devolucion, DevolucionProveedor, ItemOrden, MetodoDevolucion, MetodoDevolucionProveedor, MetodoPago, OrdenTrabajo, Pago } from "@/types";
+import { getClienteById, getCompras, getDevoluciones, getDevolucionesProveedor, getItemsOrden, getOrdenes, getTodosPagos, getVehiculoById, getVentas } from "@/lib/services";
+import type { Compra, CompraMetodoPago, Devolucion, DevolucionProveedor, ItemOrden, MetodoDevolucion, MetodoDevolucionProveedor, MetodoPago, OrdenTrabajo, Pago, Venta } from "@/types";
 import { BANCOS_TRANSFERENCIA, normalizeBancoTransferencia } from "@/lib/paymentBanks";
 import {
   AlertCircle,
@@ -320,6 +320,8 @@ export default function ReporteFinancieroPage() {
   const [devoluciones, setDevoluciones] = useState<Devolucion[]>([]);
   const [devolucionesProveedor, setDevolucionesProveedor] = useState<DevolucionProveedor[]>([]);
   const [pagosTecnicos, setPagosTecnicos] = useState<TecnicoPagoDetalle[]>([]);
+  const [ventas, setVentas] = useState<Venta[]>([]);
+  const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
   const [loading, setLoading] = useState(true);
   const [vista, setVista] = useState<VistaReporte>("cobros");
   const [search, setSearch] = useState("");
@@ -333,12 +335,13 @@ export default function ReporteFinancieroPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [pagosOrdenes, comprasRegistradas, devolucionesRegistradas, devolucionesProveedorRegistradas, ordenesRegistradas] = await Promise.all([
+      const [pagosOrdenes, comprasRegistradas, devolucionesRegistradas, devolucionesProveedorRegistradas, ordenesRegistradas, ventasRegistradas] = await Promise.all([
         getTodosPagos(),
         getCompras(),
         getDevoluciones(),
         getDevolucionesProveedor(),
         getOrdenes(),
+        getVentas(),
       ]);
       const itemsPorOrden = await Promise.all(
         ordenesRegistradas.map(async (orden) => {
@@ -357,6 +360,8 @@ export default function ReporteFinancieroPage() {
       setDevoluciones(devolucionesRegistradas);
       setDevolucionesProveedor(devolucionesProveedorRegistradas);
       setPagosTecnicos(tecnicoDetalles);
+      setVentas(ventasRegistradas);
+      setOrdenes(ordenesRegistradas);
     } catch {
       toast.error("No se pudo cargar el reporte financiero");
     } finally {
@@ -371,12 +376,42 @@ export default function ReporteFinancieroPage() {
     return () => window.clearTimeout(id);
   }, []);
 
+  const ventasMap = useMemo(() => {
+    const map: Record<string, Venta> = {};
+    ventas.forEach((v) => {
+      if (v.id) map[v.id] = v;
+    });
+    return map;
+  }, [ventas]);
+
+  const ordenesMap = useMemo(() => {
+    const map: Record<string, OrdenTrabajo> = {};
+    ordenes.forEach((o) => {
+      if (o.id) map[o.id] = o;
+    });
+    return map;
+  }, [ordenes]);
+
   const movimientosCobros = useMemo<MovimientoReporte[]>(
     () =>
       cobros.map((pago) => {
         const banco = pago.metodoPago === "transferencia" ? normalizeBancoTransferencia(pago.banco) : "";
+        
+        let entidad = "Orden de trabajo";
+        let documento = pago.ordenId || "";
+        
+        if (pago.ventaId) {
+          const ventaObj = ventasMap[pago.ventaId];
+          entidad = "Venta";
+          documento = ventaObj ? (ventaObj.numeroVenta || `Venta #${pago.ventaId.slice(0, 5)}`) : `Venta #${pago.ventaId.slice(0, 5)}`;
+        } else if (pago.ordenId) {
+          const ordenObj = ordenesMap[pago.ordenId];
+          entidad = "Orden de trabajo";
+          documento = ordenObj ? `Orden #${String(ordenObj.numeroOrden ?? ordenObj.numero ?? 0).padStart(4, "0")}` : `Orden #${pago.ordenId.slice(0, 5)}`;
+        }
+        
         return {
-          id: pago.id ?? `${pago.ordenId}-${pago.monto}-${pago.referencia ?? ""}`,
+          id: pago.id ?? `${pago.ordenId}-${pago.ventaId ?? ""}-${pago.monto}-${pago.referencia ?? ""}`,
           fecha: parseReporteFecha(pago.createdAt),
           metodo: pago.metodoPago,
           metodoLabel: COBRO_METODO_LABELS[pago.metodoPago] ?? pago.metodoPago,
@@ -384,11 +419,11 @@ export default function ReporteFinancieroPage() {
           referencia: pago.referencia ?? "",
           notas: pago.notas ?? "",
           monto: pago.monto,
-          entidad: "Orden de trabajo",
-          documento: pago.ordenId,
+          entidad,
+          documento,
         };
       }),
-    [cobros]
+    [cobros, ventasMap, ordenesMap]
   );
 
   const movimientosPagos = useMemo<MovimientoReporte[]>(
