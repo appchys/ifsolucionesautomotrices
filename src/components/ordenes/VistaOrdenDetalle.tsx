@@ -67,6 +67,7 @@ import ModalInspeccion from "@/components/recepcion/ModalInspeccion";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
 import { useUIStore } from "@/store";
+import { getMergedChecklist } from "@/lib/checklist";
 
 const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
 const ESTADO_COLORS: Record<EstadoOrden, string> = {
@@ -164,7 +165,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       setKm(oData.kilometrajeIngreso ? String(oData.kilometrajeIngreso) : "");
       setNivelCombustible(oData.nivelCombustible || "1/2");
       setEstadoGeneral(oData.notasInternas || "");
-      setChecklist(oData.checklistInventario || []);
+      setChecklist(getMergedChecklist(oData.checklistInventario));
       setDanos(oData.inspeccionVisual?.danos || []);
       setInformeTecnico(oData.informeTecnico || "");
       setNotasInternas(oData.notasInternas || "");
@@ -435,12 +436,13 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       {/* Top Header Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-3 mb-4 shrink-0 bg-[var(--bg-card)] px-4 py-2 rounded-xl shadow-sm">
         <div className="flex items-center gap-3">
-          <Link
-            href="/ordenes"
-            className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900"
+          <button
+            onClick={() => router.back()}
+            className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center"
+            title="Volver"
           >
             <ChevronLeft size={20} />
-          </Link>
+          </button>
           <div>
             <h1 className="text-lg font-extrabold flex items-center gap-2">
               Orden <span className="text-blue-600 font-mono">#OT-{String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0")}</span>

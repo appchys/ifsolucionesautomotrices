@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit } from "lucide-react";
+import { ChevronLeft, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -22,15 +22,7 @@ import { createOrdenConItems } from "@/lib/services";
 import ModalInspeccion from "./ModalInspeccion";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
-
-const CHECKLIST_DEFAULT: ChecklistItem[] = [
-  { label: "Gata", checked: false },
-  { label: "Llanta de repuesto", checked: false },
-  { label: "Herramientas (llaves)", checked: false },
-  { label: "Extintor", checked: false },
-  { label: "Triángulos de emergencia", checked: false },
-  { label: "Documentos del vehículo", checked: false },
-];
+import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
 
 const NIVELES_COMBUSTIBLE: { label: string; value: NivelCombustible; color: string }[] = [
   { label: "E", value: "Vacío", color: "bg-red-500 text-white" },
@@ -72,6 +64,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
   const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isRetirarModalOpen, setIsRetirarModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,7 +102,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       setTipoServicio(ordenData.tipoServicio || "Mantenimiento");
       setMotivo(ordenData.motivo || "");
       setObservaciones(ordenData.notasInternas || "");
-      setChecklist(ordenData.checklistInventario?.length ? ordenData.checklistInventario : CHECKLIST_DEFAULT);
+      setChecklist(getMergedChecklist(ordenData.checklistInventario));
       setDiagnostico(ordenData.informeTecnico || "");
       setFotos(ordenData.fotosDiagnostico?.length ? ordenData.fotosDiagnostico : (ordenData.fotoUrls || []).map(url => ({ url, descripcion: "" })));
       setDanos(ordenData.inspeccionVisual?.danos || []);
@@ -238,6 +231,25 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
     }
   };
 
+  const handleRetirarVehiculo = async () => {
+    if (!orden) return;
+    setSaving(true);
+    const toastId = toast.loading("Registrando retiro de vehículo...");
+    try {
+      await updateOrden(ingresoId, {
+        archivado: true,
+      });
+      toast.success("Vehículo retirado y registro archivado con éxito", { id: toastId });
+      setIsRetirarModalOpen(false);
+      router.push("/ingresos");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al registrar el retiro del vehículo", { id: toastId });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggleTecnico = (tecnico: AppUser) => {
     let nuevos: AppUser[];
     if (tecnicosAsignados.find(t => t.uid === tecnico.uid)) {
@@ -322,53 +334,134 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
           </div>
 
           <div className="flex-1 max-w-xl hidden lg:flex items-center justify-center gap-8 text-sm">
-            <div className="flex flex-col items-center gap-1 text-green-600 font-semibold">
+            <Link href={`/ingresos/${orden.id}`} className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity">
               <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center border border-green-600 text-xs">✓</div>
               <span>Ingreso</span>
-            </div>
+            </Link>
             <div className="w-12 h-px bg-[var(--border)]"></div>
             
             {/* Inspección step */}
             {(() => {
               const inspeccionCompletada = danos.length > 0 || fotos.length > 0 || observaciones.length > 0;
-              return (
-                <div className={`flex flex-col items-center gap-1 ${inspeccionCompletada ? 'text-green-600 font-semibold' : 'text-[var(--text-muted)]'}`}>
+              const content = (
+                <>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${inspeccionCompletada ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
                     {inspeccionCompletada ? '✓' : '2'}
                   </div>
                   <span>Inspección</span>
+                </>
+              );
+
+              if (inspeccionCompletada) {
+                return (
+                  <button 
+                    onClick={() => setIsModalInspeccionOpen(true)}
+                    className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity border-none bg-transparent outline-none p-0"
+                    title="Ver inspección"
+                  >
+                    {content}
+                  </button>
+                );
+              }
+
+              return (
+                <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
+                  {content}
+                  <button 
+                    onClick={() => setIsModalInspeccionOpen(true)}
+                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 flex items-center gap-0.5 hover:underline cursor-pointer border-none bg-transparent p-0 outline-none"
+                  >
+                    <Plus size={10} /> Registrar
+                  </button>
                 </div>
               );
             })()}
 
             <div className="w-12 h-px bg-[var(--border)]"></div>
+            {/* Presupuesto step */}
             {(() => {
               const tienePresupuesto = !!presupuestoId;
-              return (
-                <div className={`flex flex-col items-center gap-1 ${tienePresupuesto ? 'text-green-600 font-semibold' : 'text-[var(--text-muted)]'}`}>
+              const content = (
+                <>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${tienePresupuesto ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
                     {tienePresupuesto ? '✓' : '3'}
                   </div>
                   <span>Presupuesto</span>
+                </>
+              );
+
+              if (tienePresupuesto) {
+                return (
+                  <Link 
+                    href={`/presupuestos/${presupuestoId}`}
+                    className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity no-underline"
+                    title="Ver presupuesto"
+                  >
+                    {content}
+                  </Link>
+                );
+              }
+
+              return (
+                <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
+                  {content}
+                  <button 
+                    onClick={handleCrearPresupuesto}
+                    disabled={creatingPresupuesto || saving}
+                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 flex items-center gap-0.5 hover:underline cursor-pointer border-none bg-transparent p-0 outline-none disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                  >
+                    {creatingPresupuesto ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Crear
+                  </button>
                 </div>
               );
             })()}
+            
             <div className="w-12 h-px bg-[var(--border)]"></div>
+            {/* Orden step */}
             {(() => {
               const tieneOrden = !!orden?.numeroOrden;
-              return (
-                <div className={`flex flex-col items-center gap-1 ${tieneOrden ? 'text-green-600 font-semibold' : 'text-[var(--text-muted)]'}`}>
+              const content = (
+                <>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${tieneOrden ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
                     {tieneOrden ? '✓' : '4'}
                   </div>
                   <span>Orden</span>
+                </>
+              );
+
+              if (tieneOrden) {
+                return (
+                  <Link 
+                    href={`/ordenes/detalle?id=${orden.id}`}
+                    className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity no-underline"
+                    title="Ver orden"
+                  >
+                    {content}
+                  </Link>
+                );
+              }
+
+              return (
+                <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
+                  {content}
+                  <button 
+                    onClick={handleCrearOrden}
+                    disabled={creatingOrden || saving}
+                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 flex items-center gap-0.5 hover:underline cursor-pointer border-none bg-transparent p-0 outline-none disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
+                  >
+                    {creatingOrden ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Crear
+                  </button>
                 </div>
               );
             })()}
           </div>
 
           <div className="flex items-center gap-3">
-            <button className="btn font-semibold text-orange-600 border-orange-200 hover:bg-orange-50 bg-white">
+            <button 
+              className="btn font-semibold text-orange-600 border-orange-200 hover:bg-orange-50 bg-white"
+              onClick={() => setIsRetirarModalOpen(true)}
+              disabled={saving}
+            >
                Retirar vehículo
             </button>
             <button 
@@ -629,21 +722,35 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               <label className="text-xs font-bold text-[var(--text-muted)] mb-2 block flex items-center justify-between">
                 <span>Inventario de vehículo</span>
               </label>
-              <div className="card p-0 divide-y divide-[var(--border)] overflow-hidden">
-                {checklist.map((item, index) => (
-                  <label key={index} className="p-3 flex items-center justify-between text-sm hover:bg-[var(--bg-hover)] cursor-pointer">
-                    <span>{item.label}</span> 
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 rounded text-blue-600" 
-                      checked={item.checked}
-                      onChange={() => {
-                        toggleChecklistItem(index);
-                        setTimeout(handleSave, 100);
-                      }}
-                    />
-                  </label>
-                ))}
+              <div className="grid grid-cols-2 border border-[var(--border)] rounded-xl overflow-hidden bg-white dark:bg-[var(--bg-card)]">
+                {checklist.map((item, index) => {
+                  const isLeft = index % 2 === 0;
+                  const totalRows = Math.ceil(checklist.length / 2);
+                  const lastRowStartIndex = (totalRows - 1) * 2;
+                  const hasBottomBorder = index < lastRowStartIndex;
+                  return (
+                    <label 
+                      key={index} 
+                      className={`p-3 flex items-center gap-3 text-sm hover:bg-[var(--bg-hover)] cursor-pointer select-none transition-colors ${
+                        isLeft ? "border-r" : ""
+                      } ${hasBottomBorder ? "border-b" : ""} border-[var(--border)]`}
+                    >
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                        checked={item.checked}
+                        onChange={() => {
+                          toggleChecklistItem(index);
+                          setTimeout(handleSave, 100);
+                        }}
+                      />
+                      <span className="text-slate-700 dark:text-slate-200">{item.label}</span>
+                    </label>
+                  );
+                })}
+                {checklist.length % 2 !== 0 && (
+                  <div className="p-3 border-[var(--border)]" />
+                )}
               </div>
             </div>
           </div>
@@ -792,6 +899,43 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
           void loadData();
         }}
       />
+
+      {isRetirarModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl w-full max-w-md p-6 shadow-2xl flex flex-col items-center">
+            <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/20 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-500 mb-4 border border-amber-100 dark:border-amber-900/30">
+              <LogOut size={26} />
+            </div>
+            
+            <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mb-2 text-center">
+              Retirar vehículo del taller
+            </h3>
+            
+            <p className="text-sm text-slate-500 dark:text-slate-400 text-center mb-6 leading-relaxed">
+              El ingreso <span className="font-bold text-slate-700 dark:text-slate-200">#ING-{String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}</span> será archivado y el vehículo dejará de aparecer como "en taller".
+            </p>
+            
+            <div className="flex gap-3 w-full">
+              <button 
+                type="button"
+                className="flex-1 btn bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 py-2.5 rounded-xl font-semibold justify-center transition-colors"
+                onClick={() => setIsRetirarModalOpen(false)}
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button"
+                className="flex-1 btn bg-amber-600 hover:bg-amber-700 text-white border-0 py-2.5 rounded-xl font-semibold justify-center transition-colors flex items-center gap-2"
+                onClick={handleRetirarVehiculo}
+                disabled={saving}
+              >
+                <LogOut size={16} /> Confirmar retiro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

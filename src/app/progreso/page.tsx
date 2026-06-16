@@ -10,7 +10,7 @@ const FEATURES: DevFeature[] = [
   { nombre: "Arquitectura de Datos", descripcion: "Colecciones: clientes, vehiculos, ordenesTrabajo, pagos", estado: "Completo", modulo: "Backend" },
   { nombre: "Módulo de Recepción", descripcion: "Wizard de 4 pasos: búsqueda por placa, cliente, vehículo, orden", estado: "Completo", modulo: "Recepción" },
   { nombre: "Selector de Daños", descripcion: "Diagrama SVG interactivo del vehículo para marcar daños", estado: "Completo", modulo: "Recepción" },
-  { nombre: "Checklist de Inventario", descripcion: "Gata, llanta, herramientas, extintor, triángulos", estado: "Completo", modulo: "Recepción" },
+  { nombre: "Checklist de Inventario", descripcion: "Antenas, botiquín, extintor, herramientas, llave de rueda, etc.", estado: "Completo", modulo: "Recepción" },
   { nombre: "Selector de Combustible", descripcion: "Selector visual de nivel de combustible con colores", estado: "Completo", modulo: "Recepción" },
   { nombre: "Dashboard Principal", descripcion: "Estadísticas en tiempo real, estado de órdenes, tabla reciente", estado: "Completo", modulo: "Dashboard" },
   { nombre: "Gestión de Órdenes", descripcion: "Lista, búsqueda, filtros y cambio de estado inline", estado: "Completo", modulo: "Órdenes" },

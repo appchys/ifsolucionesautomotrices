@@ -195,9 +195,13 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
         {/* Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-3 mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">
-            <Link href="/presupuestos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors">
+            <button 
+              onClick={() => router.back()} 
+              className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors border-none bg-transparent cursor-pointer text-inherit flex items-center justify-center"
+              title="Volver"
+            >
               <ChevronLeft size={20} />
-            </Link>
+            </button>
             <h1 className="text-xl font-bold flex items-center gap-2">
               Presupuesto <span className="text-blue-600">#PRE-{String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0")}</span>
             </h1>

@@ -97,6 +97,8 @@ export default function IngresosPage() {
   const filtered = ordenesConDetalle.filter((o) => {
     // Filtrar cotizaciones para mostrar solo ingresos
     if (o.esCotizacion) return false;
+    // Filtrar ingresos archivados (retirados del taller)
+    if (o.archivado) return false;
     // Filtrar órdenes derivadas (que fueron presupuestos convertidos)
     if (o.motivo && String(o.motivo).startsWith("Cotización derivada del ingreso")) return false;
 

@@ -74,15 +74,7 @@ import {
   getPagoRecargo,
   METODOS_PAGO_ORDEN,
 } from "@/lib/orderPayments";
-
-const CHECKLIST_DEFAULT: ChecklistItem[] = [
-  { label: "Gata", checked: false },
-  { label: "Llanta de repuesto", checked: false },
-  { label: "Herramientas (llaves)", checked: false },
-  { label: "Extintor", checked: false },
-  { label: "Triángulos de emergencia", checked: false },
-  { label: "Documentos del vehículo", checked: false },
-];
+import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
 
 const TIPOS_VEHICULO: TipoVehiculo[] = ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
 const TIPOS_SERVICIO: TipoServicio[] = ["Mantenimiento", "Reparación", "Garantía"];
@@ -627,7 +619,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
         setPresupuestoConfirmado(Boolean(orden.presupuestoConfirmadoPorCliente));
         setKm(orden.kilometrajeIngreso !== undefined ? String(orden.kilometrajeIngreso) : "");
         setNivelCombustible(orden.nivelCombustible);
-        setChecklist(orden.checklistInventario?.length ? orden.checklistInventario : CHECKLIST_DEFAULT);
+        setChecklist(getMergedChecklist(orden.checklistInventario));
         setDanos(orden.inspeccionVisual?.danos ?? []);
         setFlujoTrabajo(mergeFlujoTrabajo(orden.flujoTrabajo));
         setTecnicoIds(

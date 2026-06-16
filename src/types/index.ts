@@ -149,6 +149,7 @@ export interface OrdenTrabajo {
   fotoUrls?: string[];
   fotosDiagnostico?: FotoDiagnostico[];
   esCotizacion?: boolean;
+  archivado?: boolean;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   fechaEntrega?: Timestamp;

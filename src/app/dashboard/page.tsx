@@ -1,27 +1,17 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
 import {
   ClipboardList, Users, Car,
-  Clock, CheckCircle2, Truck, Wrench, AlertCircle, Plus
+  Wrench, Plus, ArrowRight, CheckCircle2
 } from "lucide-react";
 import { subscribeOrdenes, getClientes, getVehiculos } from "@/lib/services";
-import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
+import { OrdenTrabajo, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
-import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
+import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
 import { useRouter } from "next/navigation";
-
-const ESTADO_CONFIG: Record<EstadoOrden, { label: string; badge: string; icon: React.ElementType }> = {
-  Ingreso: { label: "Ingreso", badge: "status-ingreso", icon: Clock },
-  Proceso: { label: "En Proceso", badge: "status-proceso", icon: Wrench },
-  Finalizado: { label: "Finalizado", badge: "status-finalizado", icon: CheckCircle2 },
-  Entregado: { label: "Entregado", badge: "status-entregado", icon: Truck },
-};
-
-const getNumeroDocumento = (orden: OrdenTrabajo) =>
-  orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero;
 
 function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
   if (!value) return null;
@@ -31,59 +21,95 @@ function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
 }
 
 export default function DashboardPage() {
-  const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
+  const [allDocs, setAllDocs] = useState<OrdenTrabajo[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, Cliente>>({});
   const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>({});
   const [clientesCount, setClientesCount] = useState(0);
   const [vehiculosCount, setVehiculosCount] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [showNuevaOrden, setShowNuevaOrden] = useState(false);
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [showNuevoIngreso, setShowNuevoIngreso] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const loadMaps = async () => {
-      try {
-        const [cList, vList] = await Promise.all([getClientes(), getVehiculos()]);
-        setClientesCount(cList.length);
-        setVehiculosCount(vList.length);
-        
-        const cMap: Record<string, Cliente> = {};
-        const vMap: Record<string, Vehiculo> = {};
-        cList.forEach(c => { if (c.id) cMap[c.id] = c; });
-        vList.forEach(v => { if (v.id) vMap[v.id] = v; });
-        setClientesMap(cMap);
-        setVehiculosMap(vMap);
-      } catch (err) {
-        console.error("Error cargando datos del dashboard", err);
-      }
-    };
+  const loadRelations = useCallback(async () => {
+    try {
+      const [cList, vList] = await Promise.all([getClientes(), getVehiculos()]);
+      setClientesCount(cList.length);
+      setVehiculosCount(vList.length);
 
-    loadMaps();
-    const unsub = subscribeOrdenes((data) => {
-      setOrdenes(data);
-      setLoading(false);
-    });
-    
-    return () => unsub();
+      const cMap: Record<string, Cliente> = {};
+      const vMap: Record<string, Vehiculo> = {};
+      cList.forEach(c => { if (c.id) cMap[c.id] = c; });
+      vList.forEach(v => { if (v.id) vMap[v.id] = v; });
+      setClientesMap(cMap);
+      setVehiculosMap(vMap);
+    } catch (err) {
+      console.error("Error cargando datos del dashboard", err);
+    }
   }, []);
 
-  const byEstado = (estado: EstadoOrden) => ordenes.filter((o) => o.estado === estado).length;
-  
-  const recientes = ordenes.slice(0, 6).map(o => ({
-    ...o,
-    cliente: clientesMap[o.clienteId] || o.cliente,
-    vehiculo: vehiculosMap[o.vehiculoId] || o.vehiculo
-  }));
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadRelations(); }, 0);
+    const unsub = subscribeOrdenes((data) => {
+      setAllDocs(data);
+      setLoading(false);
+    });
+    return () => {
+      window.clearTimeout(timer);
+      unsub();
+    };
+  }, [loadRelations]);
+
+  // Derived data — same logic as /ingresos and /ordenes pages
+  const ingresos = allDocs.filter(o => !o.esCotizacion && !o.archivado);
+  const ordenesActivas = allDocs.filter(o => !!o.numeroOrden && o.estado !== "Entregado");
+  const ordenesFinalizadas = allDocs.filter(o => o.estado === "Entregado");
+  const ingresosPendientes = ingresos.filter(o => o.estado === "Ingreso" && !o.numeroOrden);
+
+  const hasInspeccion = (o: OrdenTrabajo) => {
+    return (
+      (o.inspeccionVisual?.danos?.length || 0) > 0 ||
+      (o.fotosDiagnostico?.length || 0) > 0 ||
+      (o.fotoUrls?.length || 0) > 0 ||
+      (o.notasInternas?.length || 0) > 0 ||
+      (o.informeTecnico?.length || 0) > 0
+    );
+  };
+
+  const checkPresupuestoYOrden = (o: OrdenTrabajo) => {
+    const derivados = allDocs.filter(
+      p => p.vehiculoId === o.vehiculoId &&
+      String(p.motivo).includes(String(o.numeroIngreso ?? o.numero))
+    );
+    const tienePresupuesto = derivados.some(d => d.esCotizacion);
+    const tieneOrden = !!o.numeroOrden;
+    return { tienePresupuesto, tieneOrden };
+  };
+
+  // Recent ingresos — only real ingresos, not cotizaciones
+  const recientes = ingresos
+    .slice(0, 8)
+    .map(o => ({
+      ...o,
+      cliente: clientesMap[o.clienteId] || o.cliente,
+      vehiculo: vehiculosMap[o.vehiculoId] || o.vehiculo,
+    }));
 
   const stats = [
     {
-      label: "Total Órdenes",
-      value: ordenes.length,
+      label: "Ingresos",
+      value: ingresos.length,
       icon: ClipboardList,
       color: "#2563eb",
       bg: "rgba(37,99,235,0.12)",
-      trend: `${byEstado("Proceso")} activas`,
+      trend: `${ingresosPendientes.length} pendientes`,
+    },
+    {
+      label: "Órdenes Activas",
+      value: ordenesActivas.length,
+      icon: Wrench,
+      color: "#a78bfa",
+      bg: "rgba(139,92,246,0.12)",
+      trend: `${ordenesFinalizadas.length} entregadas`,
     },
     {
       label: "Clientes",
@@ -101,14 +127,6 @@ export default function DashboardPage() {
       bg: "rgba(245,158,11,0.12)",
       trend: "en sistema",
     },
-    {
-      label: "En Proceso",
-      value: byEstado("Proceso"),
-      icon: Wrench,
-      color: "#a78bfa",
-      bg: "rgba(139,92,246,0.12)",
-      trend: "actualmente",
-    },
   ];
 
   return (
@@ -120,12 +138,12 @@ export default function DashboardPage() {
             {format(new Date(), "EEEE, d 'de' MMMM yyyy", { locale: es })}
           </p>
         </div>
-        <button 
-          onClick={() => setShowNuevaOrden(true)} 
+        <button
+          onClick={() => setShowNuevoIngreso(true)}
           className="btn-primary w-full sm:w-auto justify-center"
         >
           <Plus size={16} />
-          Nueva Orden
+          Nuevo Ingreso
         </button>
       </div>
 
@@ -145,11 +163,13 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Recent orders table */}
+      {/* Recent ingresos table */}
       <div className="card">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>Órdenes Recientes</h2>
-          <Link href="/ordenes" className="btn-ghost btn-sm">Ver todas</Link>
+          <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>Ingresos Recientes</h2>
+          <Link href="/ingresos" className="btn-ghost btn-sm">
+            Ver todos <ArrowRight size={14} />
+          </Link>
         </div>
 
         {loading ? (
@@ -158,65 +178,87 @@ export default function DashboardPage() {
           </div>
         ) : recientes.length === 0 ? (
           <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>
-            <AlertCircle size={36} className="mx-auto mb-2 opacity-30" />
-            <p className="text-sm">No hay órdenes aún</p>
-            <button 
-              onClick={() => setShowNuevaOrden(true)} 
+            <ClipboardList size={36} className="mx-auto mb-2 opacity-30" />
+            <p className="text-sm">No hay ingresos aún</p>
+            <button
+              onClick={() => setShowNuevoIngreso(true)}
               className="btn-primary btn-sm mt-3 inline-flex"
             >
-              Crear primera orden
+              Registrar primer ingreso
             </button>
           </div>
         ) : (
           <div className="table-container">
             <table className="table">
               <thead>
-                <tr>
-                  <th># Orden</th>
+                <tr className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+                  <th>N° Ingreso</th>
+                  <th>Fecha</th>
                   <th>Cliente</th>
                   <th className="hidden md:table-cell">Vehículo</th>
-                  <th className="hidden lg:table-cell">Tipo</th>
-                  <th>Estado</th>
-                  <th className="hidden sm:table-cell">Fecha</th>
+                  <th className="hidden md:table-cell">Placa</th>
+                  <th className="text-center hidden sm:table-cell">Insp.</th>
+                  <th className="text-center hidden sm:table-cell">Pres.</th>
+                  <th className="text-center hidden sm:table-cell">Orden</th>
+                  <th className="text-right">Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {recientes.map((o) => {
-                  const cfg = ESTADO_CONFIG[o.estado];
+                  const inspeccionOk = hasInspeccion(o);
+                  const { tienePresupuesto, tieneOrden } = checkPresupuestoYOrden(o);
+                  const numeroIngreso = o.numeroIngreso ?? o.numero;
+
                   return (
-                    <tr 
-                      key={o.id} 
-                      onClick={() => setEditingOrderId(o.id!)}
+                    <tr
+                      key={o.id}
+                      onClick={() => router.push(`/ingresos/${o.id}`)}
                       className="cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                     >
-                      <td className="font-mono font-semibold" style={{ color: "var(--accent-light)" }}>
-                        #{String(getNumeroDocumento(o) ?? 0).padStart(4, "0")}
+                      <td>
+                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
+                          #ING-{String(numeroIngreso ?? 0).padStart(5, "0")}
+                        </span>
+                      </td>
+                      <td className="text-sm text-[var(--text-secondary)]">
+                        {toDate(o.createdAt)
+                          ? format(toDate(o.createdAt)!, "dd-MMM", { locale: es })
+                          : "—"}
                       </td>
                       <td style={{ color: "var(--text-primary)" }}>
                         {o.cliente ? `${o.cliente.nombre} ${o.cliente.apellido}` : "—"}
                       </td>
+                      <td className="hidden md:table-cell text-[var(--text-secondary)]">
+                        {o.vehiculo ? `${o.vehiculo.marca} ${o.vehiculo.modelo}` : "—"}
+                      </td>
                       <td className="hidden md:table-cell">
-                        <div className="flex flex-col">
-                          <span className="font-mono font-bold text-xs">{o.vehiculo?.placa ?? "—"}</span>
-                          <span className="text-[10px] text-[var(--text-muted)]">
-                            {o.vehiculo ? `${o.vehiculo.marca} ${o.vehiculo.modelo}` : ""}
+                        <span className="font-mono text-sm font-medium">{o.vehiculo?.placa ?? "—"}</span>
+                      </td>
+                      <td className="text-center hidden sm:table-cell">
+                        <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
+                          inspeccionOk ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'
+                        }`}></div>
+                      </td>
+                      <td className="text-center hidden sm:table-cell">
+                        <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
+                          tienePresupuesto ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'
+                        }`}></div>
+                      </td>
+                      <td className="text-center hidden sm:table-cell">
+                        <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
+                          tieneOrden ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'
+                        }`}></div>
+                      </td>
+                      <td className="text-right">
+                        {tieneOrden ? (
+                          <span className="badge bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                            ORD-{String(o.numeroOrden).padStart(5, "0")}
                           </span>
-                        </div>
-                      </td>
-                      <td className="hidden lg:table-cell">
-                        <span className="badge badge-gray">{o.tipoServicio}</span>
-                      </td>
-                      <td>
-                        {o.esCotizacion ? (
-                          <span className="badge" style={{ background: "rgba(37,99,235,0.1)", color: "var(--accent)", border: "1px solid var(--accent-alpha)" }}>Cotización</span>
                         ) : (
-                          <span className={`badge ${cfg.badge}`}>{cfg.label}</span>
+                          <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                            Recibido
+                          </span>
                         )}
-                      </td>
-                      <td className="text-xs hidden sm:table-cell">
-                        {toDate(o.createdAt)
-                          ? format(toDate(o.createdAt)!, "dd/MM/yyyy", { locale: es })
-                          : "—"}
                       </td>
                     </tr>
                   );
@@ -227,20 +269,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {(showNuevaOrden || editingOrderId) && (
-        <NuevaOrdenSidebar 
-          ordenId={editingOrderId ?? undefined}
-          onClose={() => {
-            setShowNuevaOrden(false);
-            setEditingOrderId(null);
-          }}
-          onSuccess={(id) => {
-            setShowNuevaOrden(false);
-            setEditingOrderId(null);
-            if (!editingOrderId) router.push(`/ordenes/detalle?id=${id}`);
-          }}
-        />
-      )}
+      {showNuevoIngreso && <ModalNuevoIngreso onClose={() => setShowNuevoIngreso(false)} />}
     </AppShell>
   );
 }

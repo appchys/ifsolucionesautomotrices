@@ -66,6 +66,7 @@ import {
   getPagoRecargo,
   METODOS_PAGO_ORDEN,
 } from "@/lib/orderPayments";
+import { getMergedChecklist } from "@/lib/checklist";
 
 const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
 const ESTADO_BADGES: Record<EstadoOrden, string> = {
@@ -177,7 +178,7 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
     setMotivo(o.motivo ?? "");
     setKm(String(o.kilometrajeIngreso ?? ""));
     setNivelCombustible(o.nivelCombustible ?? "1/2");
-    setChecklist(o.checklistInventario ?? []);
+    setChecklist(getMergedChecklist(o.checklistInventario));
     setDanos(o.inspeccionVisual?.danos ?? []);
     setInformeTecnico(o.informeTecnico ?? "");
     setNotasInternas(o.notasInternas ?? "");
