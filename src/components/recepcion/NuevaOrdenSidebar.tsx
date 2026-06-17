@@ -1214,7 +1214,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
       {
         vehiculoId,
         clienteId,
-        estado: "Ingreso",
+        estado: "En Diagnóstico",
         tipoServicio,
         motivo: motivo.trim(),
         kilometrajeIngreso: km && !Number.isNaN(Number(km)) ? Number(km) : 0,

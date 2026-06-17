@@ -87,7 +87,7 @@ export default function IngresosPage() {
   const checkPresupuestoYOrden = (o: OrdenTrabajo) => {
     const derivados = ordenes.filter(p => p.vehiculoId === o.vehiculoId && String(p.motivo).includes(String(o.numeroIngreso ?? o.numero)));
     const tienePresupuesto = derivados.some(d => d.esCotizacion);
-    const esOrdenDirecta = o.numeroOrden !== undefined || o.estado !== "Ingreso";
+    const esOrdenDirecta = o.numeroOrden !== undefined || (o.estado !== "En Diagnóstico" && o.estado !== "Borrador");
     const tieneOrden = !!o.numeroOrden;
     return { tienePresupuesto, esOrdenDirecta, tieneOrden };
   };
@@ -104,10 +104,10 @@ export default function IngresosPage() {
 
     // Lógica básica de filtrado
     let matchEstado = true;
-    if (filtroActivo === "Recibidos") matchEstado = o.estado === "Ingreso" && !hasInspeccion(o);
-    if (filtroActivo === "Inspeccionados") matchEstado = o.estado === "Ingreso" && hasInspeccion(o);
+    if (filtroActivo === "Recibidos") matchEstado = (o.estado === "En Diagnóstico" || o.estado === "Borrador") && !hasInspeccion(o);
+    if (filtroActivo === "Inspeccionados") matchEstado = (o.estado === "En Diagnóstico" || o.estado === "Borrador") && hasInspeccion(o);
     if (filtroActivo === "Presupuestados") matchEstado = hasPresupuesto(o);
-    if (filtroActivo === "Con Orden") matchEstado = o.estado !== "Ingreso"; // Convertido a orden (ej. Proceso)
+    if (filtroActivo === "Con Orden") matchEstado = o.estado !== "En Diagnóstico" && o.estado !== "Borrador"; // Convertido a orden (ej. En Reparación)
 
     const term = search.toLowerCase();
     const matchSearch =

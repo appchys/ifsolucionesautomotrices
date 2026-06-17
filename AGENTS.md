@@ -11,3 +11,7 @@ This project is still in active development and does not need to preserve compat
 ## UI simplicity
 
 New features should keep the interface simple and avoid explanatory copy, repeated labels, or redundant controls. Prefer compact controls that show the current state directly and reveal secondary choices only when needed.
+
+Recuerda siempre hablarme en español
+
+No uses DOM o controlar pantalla a menos que el problema esté siendo muy dificil de resolver.

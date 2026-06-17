@@ -61,9 +61,9 @@ export default function DashboardPage() {
 
   // Derived data — same logic as /ingresos and /ordenes pages
   const ingresos = allDocs.filter(o => !o.esCotizacion && !o.archivado);
-  const ordenesActivas = allDocs.filter(o => !!o.numeroOrden && o.estado !== "Entregado");
-  const ordenesFinalizadas = allDocs.filter(o => o.estado === "Entregado");
-  const ingresosPendientes = ingresos.filter(o => o.estado === "Ingreso" && !o.numeroOrden);
+  const ordenesActivas = allDocs.filter(o => !!o.numeroOrden && o.estado !== "Entregada" && o.estado !== "Cancelada");
+  const ordenesFinalizadas = allDocs.filter(o => o.estado === "Entregada");
+  const ingresosPendientes = ingresos.filter(o => (o.estado === "En Diagnóstico" || o.estado === "Borrador") && !o.numeroOrden);
 
   const hasInspeccion = (o: OrdenTrabajo) => {
     return (

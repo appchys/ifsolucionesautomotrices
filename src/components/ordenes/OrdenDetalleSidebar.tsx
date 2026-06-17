@@ -68,17 +68,32 @@ import {
 } from "@/lib/orderPayments";
 import { getMergedChecklist } from "@/lib/checklist";
 
-const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
+const ESTADOS: EstadoOrden[] = [
+  "Borrador",
+  "En Diagnóstico",
+  "Esperando Repuestos",
+  "Esperando Aprobación",
+  "En Reparación",
+  "Completada",
+  "Listo para Entrega",
+  "Entregada",
+  "Cancelada",
+];
+
 const ESTADO_BADGES: Record<EstadoOrden, string> = {
-  Ingreso: "status-ingreso",
-  Proceso: "status-proceso",
-  Finalizado: "status-finalizado",
-  Entregado: "status-entregado",
+  "Borrador": "badge-gray",
+  "En Diagnóstico": "badge-blue",
+  "Esperando Repuestos": "badge-yellow",
+  "Esperando Aprobación": "badge-purple",
+  "En Reparación": "badge-cyan",
+  "Completada": "badge-green",
+  "Listo para Entrega": "badge-green",
+  "Entregada": "badge-gray",
+  "Cancelada": "badge-red",
 };
 
 const getNumeroDocumento = (orden: OrdenTrabajo) =>
   orden.esCotizacion ? orden.numeroCotizacion ?? orden.numero : orden.numero;
-
 interface Props {
   ordenId: string;
   onClose: () => void;

@@ -56,7 +56,16 @@ export interface Vehiculo {
   updatedAt?: Timestamp;
 }
 
-export type EstadoOrden = "Ingreso" | "Proceso" | "Finalizado" | "Entregado";
+export type EstadoOrden =
+  | "Borrador"
+  | "En Diagnóstico"
+  | "Esperando Repuestos"
+  | "Esperando Aprobación"
+  | "En Reparación"
+  | "Completada"
+  | "Listo para Entrega"
+  | "Entregada"
+  | "Cancelada";
 export type TipoServicio = "Mantenimiento" | "Reparación" | "Garantía";
 export type NivelCombustible = "Vacío" | "1/4" | "1/2" | "3/4" | "Lleno";
 
@@ -150,6 +159,7 @@ export interface OrdenTrabajo {
   fotosDiagnostico?: FotoDiagnostico[];
   esCotizacion?: boolean;
   archivado?: boolean;
+  firmaClienteUrl?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   fechaEntrega?: Timestamp;

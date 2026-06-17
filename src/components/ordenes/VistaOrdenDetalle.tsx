@@ -19,6 +19,7 @@ import {
   deletePago,
   uploadOrdenFoto,
   getPresupuestoPorIngreso,
+  getDatosTaller,
 } from "@/lib/services";
 import {
   OrdenTrabajo,
@@ -33,9 +34,11 @@ import {
   Vehiculo,
   Cliente,
   AppUser,
+  DatosTaller,
 } from "@/types";
 import {
   ChevronLeft,
+  ChevronDown,
   Printer,
   Mail,
   MessageCircle,
@@ -60,21 +63,50 @@ import {
   Check,
   Calendar,
   Grid,
+  FileDown,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
 import ModalInspeccion from "@/components/recepcion/ModalInspeccion";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
-import { useUIStore } from "@/store";
+import { useAuthStore, useUIStore } from "@/store";
 import { getMergedChecklist } from "@/lib/checklist";
 
-const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
+const ESTADOS: EstadoOrden[] = [
+  "Borrador",
+  "En Diagnóstico",
+  "Esperando Repuestos",
+  "Esperando Aprobación",
+  "En Reparación",
+  "Completada",
+  "Listo para Entrega",
+  "Entregada",
+  "Cancelada",
+];
+
 const ESTADO_COLORS: Record<EstadoOrden, string> = {
-  Ingreso: "border-blue-200 bg-blue-50 text-blue-700",
-  Proceso: "border-orange-200 bg-orange-50 text-orange-700",
-  Finalizado: "border-purple-200 bg-purple-50 text-purple-700",
-  Entregado: "border-green-200 bg-green-50 text-green-700",
+  "Borrador": "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800/80 dark:bg-slate-900/50 dark:text-slate-400",
+  "En Diagnóstico": "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-400",
+  "Esperando Repuestos": "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400",
+  "Esperando Aprobación": "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-400",
+  "En Reparación": "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-400",
+  "Completada": "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400",
+  "Listo para Entrega": "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/50 dark:bg-teal-950/30 dark:text-teal-400",
+  "Entregada": "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  "Cancelada": "border-zinc-200 bg-zinc-50 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400",
+};
+
+const ESTADO_DOT_COLORS: Record<EstadoOrden, string> = {
+  "Borrador": "#94a3b8",
+  "En Diagnóstico": "#3b82f6",
+  "Esperando Repuestos": "#f59e0b",
+  "Esperando Aprobación": "#a855f7",
+  "En Reparación": "#06b6d4",
+  "Completada": "#10b981",
+  "Listo para Entrega": "#10b981",
+  "Entregada": "#64748b",
+  "Cancelada": "#94a3b8",
 };
 
 interface VistaOrdenDetalleProps {
@@ -84,6 +116,7 @@ interface VistaOrdenDetalleProps {
 export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   const router = useRouter();
   const { sidebarOpen } = useUIStore();
+  const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -94,6 +127,13 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   const [items, setItems] = useState<ItemOrden[]>([]);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
   const [pagos, setPagos] = useState<Pago[]>([]);
+  const [taller, setTaller] = useState<DatosTaller | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
+  const [isPrintMenuOpen, setIsPrintMenuOpen] = useState(false);
+  const [isEstadoMenuOpen, setIsEstadoMenuOpen] = useState(false);
+  const [isTecnicoPopoverOpen, setIsTecnicoPopoverOpen] = useState(false);
+  const [todosLosUsuarios, setTodosLosUsuarios] = useState<AppUser[]>([]);
 
   // Linking State
   const [linkedPresupuesto, setLinkedPresupuesto] = useState<OrdenTrabajo | null>(null);
@@ -143,20 +183,22 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       }
 
       setOrden(oData);
-
-      const [cData, vData, itemsData, uData, pagosData] = await Promise.all([
+      const [cData, vData, itemsData, uData, pagosData, tallerData] = await Promise.all([
         oData.cliente || getClienteById(oData.clienteId),
         oData.vehiculo || getVehiculoById(oData.vehiculoId),
         getItemsOrden(ordenId),
         getUsuarios(),
         getPagos(ordenId),
+        getDatosTaller(),
       ]);
 
       setCliente(cData);
       setVehiculo(vData);
       setItems(itemsData);
       setTecnicos(uData.filter((u) => u.role === "tecnico" && u.activo));
+      setTodosLosUsuarios(uData);
       setPagos(pagosData);
+      setTaller(tallerData);
 
       // Populate local states
       setMotivo(oData.motivo || "");
@@ -298,6 +340,27 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
     }
   };
 
+  const handleTogglePersonalAsignado = async (tecnico: AppUser) => {
+    if (!orden) return;
+    const currentList = orden.personalAsignado || [];
+    const exists = currentList.some((u) => u.uid === tecnico.uid);
+    let nextList;
+    if (exists) {
+      nextList = currentList.filter((u) => u.uid !== tecnico.uid);
+    } else {
+      nextList = [
+        ...currentList,
+        {
+          uid: tecnico.uid,
+          email: tecnico.email,
+          displayName: tecnico.displayName,
+          role: tecnico.role,
+        },
+      ];
+    }
+    await handleSaveField({ personalAsignado: nextList });
+  };
+
   // Upload Photo
   const handleUploadFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -422,6 +485,117 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
     }
   };
 
+  const handleDownloadPDF = async (type: "cliente" | "tecnico") => {
+    if (!orden || !cliente || !vehiculo) return;
+    
+    setGeneratingPdf(true);
+    const toastId = toast.loading("Generando PDF...");
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      
+      let blob;
+      if (type === "cliente") {
+        const OrdenClientePDF = (await import("@/components/recepcion/OrdenClientePDF")).default;
+        blob = await pdf(
+          <OrdenClientePDF
+            orden={orden}
+            cliente={cliente}
+            vehiculo={vehiculo}
+            items={items}
+            pagos={pagos}
+            taller={taller}
+          />
+        ).toBlob();
+      } else {
+        const OrdenTecnicoPDF = (await import("@/components/recepcion/OrdenTecnicoPDF")).default;
+        blob = await pdf(
+          <OrdenTecnicoPDF
+            orden={orden}
+            cliente={cliente}
+            vehiculo={vehiculo}
+            items={items}
+            taller={taller}
+          />
+        ).toBlob();
+      }
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const numOt = String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0");
+      link.download = `orden_trabajo_${type}_${numOt}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success("PDF descargado con éxito", { id: toastId });
+    } catch (error) {
+      console.error("Error al generar PDF:", error);
+      toast.error("Error al generar el PDF", { id: toastId });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const handlePrintPDF = async (type: "cliente" | "tecnico") => {
+    if (!orden || !cliente || !vehiculo) return;
+    
+    setGeneratingPdf(true);
+    const toastId = toast.loading("Preparando impresión...");
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      
+      let blob;
+      if (type === "cliente") {
+        const OrdenClientePDF = (await import("@/components/recepcion/OrdenClientePDF")).default;
+        blob = await pdf(
+          <OrdenClientePDF
+            orden={orden}
+            cliente={cliente}
+            vehiculo={vehiculo}
+            items={items}
+            pagos={pagos}
+            taller={taller}
+          />
+        ).toBlob();
+      } else {
+        const OrdenTecnicoPDF = (await import("@/components/recepcion/OrdenTecnicoPDF")).default;
+        blob = await pdf(
+          <OrdenTecnicoPDF
+            orden={orden}
+            cliente={cliente}
+            vehiculo={vehiculo}
+            items={items}
+            taller={taller}
+          />
+        ).toBlob();
+      }
+
+      const url = URL.createObjectURL(blob);
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(url);
+        }, 1000);
+      };
+      
+      toast.success("Ventana de impresión abierta", { id: toastId });
+    } catch (error) {
+      console.error("Error al preparar impresión:", error);
+      toast.error("Error al preparar el PDF para impresión", { id: toastId });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   if (loading || !orden || !cliente || !vehiculo) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -430,6 +604,15 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       </div>
     );
   }
+  const assignedTechs = (orden.personalAsignado || []).filter(u => u.role === "tecnico");
+  const firstTech = assignedTechs[0];
+  const otherTechsCount = Math.max(0, assignedTechs.length - 1);
+  const firstTechDetails = firstTech ? todosLosUsuarios.find(u => u.uid === firstTech.uid) : null;
+  const firstTechPhoto = firstTechDetails?.photoURL;
+
+  const advisorUser = (orden.personalAsignado || []).find((u) => u.role !== "tecnico") || user;
+  const dbAdvisorUser = advisorUser?.uid ? todosLosUsuarios.find((u) => u.uid === advisorUser.uid) : null;
+  const advisorPhoto = dbAdvisorUser?.photoURL || advisorUser?.photoURL;
 
   return (
     <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
@@ -478,46 +661,246 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
             </div>
           </div>
 
-          {/* Technician Select */}
-          <div className="flex items-center gap-2 border-l border-[var(--border)] pl-4">
-            <select
-              value={tecnicoId}
-              onChange={(e) => {
-                setTecnicoId(e.target.value);
-                handleSaveField({ tecnicoId: e.target.value });
-              }}
-              className="bg-slate-100 hover:bg-slate-200 border-0 rounded-lg text-xs font-semibold px-3 py-1.5 pr-8 focus:ring-0 cursor-pointer outline-none"
+          {/* Technician Select Popover */}
+          <div className="relative border-l border-[var(--border)] pl-4">
+            <button
+              type="button"
+              onClick={() => setIsTecnicoPopoverOpen(!isTecnicoPopoverOpen)}
+              className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border-0 rounded-full text-xs font-bold px-3 py-1.5 cursor-pointer outline-none transition-colors"
             >
-              <option value="">Sin técnico</option>
-              {tecnicos.map((t) => (
-                <option key={t.uid} value={t.uid}>
-                  {t.displayName || t.email}
-                </option>
-              ))}
-            </select>
+              <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-700 dark:text-blue-300 font-extrabold uppercase text-[10px] overflow-hidden shrink-0">
+                {firstTechPhoto ? (
+                  <img src={firstTechPhoto} alt={firstTech?.displayName} className="w-full h-full object-cover" />
+                ) : (
+                  firstTech?.displayName?.substring(0, 2) || "—"
+                )}
+              </div>
+              <span className="text-[var(--text-primary)] max-w-[120px] truncate">
+                {firstTech?.displayName || "Sin técnico"}{otherTechsCount > 0 ? ` +${otherTechsCount}` : ""}
+              </span>
+              <ChevronDown size={14} className="text-slate-500 shrink-0" />
+            </button>
+
+            {isTecnicoPopoverOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsTecnicoPopoverOpen(false)}></div>
+                <div className="absolute left-0 mt-2 w-80 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl z-20 p-4 flex flex-col gap-4">
+                  {/* ATENDIDO POR */}
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Atendido Por</span>
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-orange-100 dark:bg-orange-950/30 flex items-center justify-center text-orange-700 dark:text-orange-300 font-bold uppercase text-xs overflow-hidden shrink-0">
+                        {advisorPhoto ? (
+                          <img src={advisorPhoto} alt={advisorUser?.displayName} className="w-full h-full object-cover" />
+                        ) : (
+                          advisorUser?.displayName?.substring(0, 2) || "U"
+                        )}
+                      </div>
+                      <div>
+                        <p className="font-extrabold text-xs text-[var(--text-primary)]">{advisorUser?.displayName || "Asesor"}</p>
+                        <p className="text-[10px] text-slate-400 font-medium capitalize">
+                          {advisorUser?.role === "recepcion" ? "Recepción" : advisorUser?.role === "asesor_servicio" ? "Asesor de Servicio" : advisorUser?.role || "Asesor"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <hr className="border-slate-100 dark:border-slate-800" />
+                  
+                  {/* TÉCNICOS */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Técnicos</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">
+                        {assignedTechs.length} asignado{assignedTechs.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                      {tecnicos.map((t) => {
+                        const isAssigned = (orden.personalAsignado || []).some((u) => u.uid === t.uid);
+                        return (
+                          <label
+                            key={t.uid}
+                            className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer text-xs transition-colors"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase overflow-hidden shrink-0">
+                                {t.photoURL ? (
+                                  <img src={t.photoURL} alt={t.displayName} className="w-full h-full object-cover" />
+                                ) : (
+                                  t.displayName?.substring(0, 2) || "T"
+                                )}
+                              </div>
+                              <span className="font-semibold text-[var(--text-primary)]">{t.displayName}</span>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={isAssigned}
+                              onChange={() => handleTogglePersonalAsignado(t)}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-0 w-4 h-4 cursor-pointer"
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  
+                  <hr className="border-slate-100 dark:border-slate-800" />
+                  
+                  <button
+                    type="button"
+                    onClick={() => setIsTecnicoPopoverOpen(false)}
+                    className="w-full py-1.5 text-center text-xs font-bold text-blue-600 hover:text-blue-700 bg-transparent border-0 cursor-pointer transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* Top actions & Payment */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 text-[var(--text-secondary)]">
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Imprimir"><Printer size={16} /></button>
+            {/* Botón de Imprimir con Dropdown (Cliente/Técnico) */}
+            <div className="relative">
+              <button
+                type="button"
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 disabled:opacity-50"
+                onClick={() => setIsPrintMenuOpen(!isPrintMenuOpen)}
+                disabled={generatingPdf || loading}
+                title="Imprimir"
+              >
+                {generatingPdf ? (
+                  <Loader2 size={16} className="animate-spin text-blue-600" />
+                ) : (
+                  <Printer size={16} />
+                )}
+              </button>
+              {isPrintMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsPrintMenuOpen(false)}></div>
+                  <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPrintMenuOpen(false);
+                        handlePrintPDF("cliente");
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 border-0 bg-transparent cursor-pointer font-semibold"
+                    >
+                      <User size={14} className="text-slate-500" />
+                      Imprimir para Cliente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPrintMenuOpen(false);
+                        handlePrintPDF("tecnico");
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 border-0 bg-transparent cursor-pointer font-semibold"
+                    >
+                      <PenTool size={14} className="text-slate-500" />
+                      Imprimir para Técnico
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            {/* Botón de Descargar PDF con Dropdown (Cliente/Técnico) */}
+            <div className="relative">
+              <button
+                type="button"
+                className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 disabled:opacity-50"
+                onClick={() => setIsDownloadMenuOpen(!isDownloadMenuOpen)}
+                disabled={generatingPdf || loading}
+                title="Descargar PDF"
+              >
+                {generatingPdf ? (
+                  <Loader2 size={16} className="animate-spin text-blue-600" />
+                ) : (
+                  <FileDown size={16} />
+                )}
+              </button>
+              {isDownloadMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsDownloadMenuOpen(false)}></div>
+                  <div className="absolute left-0 mt-2 w-48 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDownloadMenuOpen(false);
+                        handleDownloadPDF("cliente");
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 border-0 bg-transparent cursor-pointer font-semibold"
+                    >
+                      <User size={14} className="text-slate-500" />
+                      Orden para Cliente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDownloadMenuOpen(false);
+                        handleDownloadPDF("tecnico");
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 border-0 bg-transparent cursor-pointer font-semibold"
+                    >
+                      <PenTool size={14} className="text-slate-500" />
+                      Orden para Técnico
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
             <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Enviar Email"><Mail size={16} /></button>
             <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Chat"><MessageCircle size={16} /></button>
           </div>
 
-          {/* Estado Selector */}
-          <select
-            className={`border rounded-lg text-xs font-bold px-3 py-1.5 cursor-pointer outline-none ${ESTADO_COLORS[orden.estado]}`}
-            value={orden.estado}
-            onChange={(e) => handleChangeEstado(e.target.value as EstadoOrden)}
-          >
-            {ESTADOS.map((e) => (
-              <option key={e} value={e}>
-                {e}
-              </option>
-            ))}
-          </select>
+          {/* Estado Selector Personalizado */}
+          <div className="relative">
+            <button
+              type="button"
+              className={`flex items-center gap-2 border rounded-lg text-xs font-bold px-3 py-1.5 cursor-pointer outline-none transition-all ${ESTADO_COLORS[orden.estado] || "border-slate-200 bg-slate-50 text-slate-600"}`}
+              onClick={() => setIsEstadoMenuOpen(!isEstadoMenuOpen)}
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: ESTADO_DOT_COLORS[orden.estado] || "#94a3b8" }}
+              />
+              {orden.estado}
+            </button>
+            {isEstadoMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsEstadoMenuOpen(false)}></div>
+                <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1.5 overflow-hidden">
+                  {ESTADOS.map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      onClick={() => {
+                        setIsEstadoMenuOpen(false);
+                        handleChangeEstado(e);
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-3 border-0 bg-transparent cursor-pointer font-semibold transition-colors"
+                    >
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: ESTADO_DOT_COLORS[e] }}
+                      />
+                      <span className="flex-1 text-[var(--text-primary)]">{e}</span>
+                      {orden.estado === e && (
+                        <Check size={12} className="text-blue-600 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Dollar Sign / Pay button */}
           <button
@@ -1031,14 +1414,9 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
           <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
             Etiqueta
           </button>
-          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
-            Descargar
-          </button>
+          
           <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
             Enviar
-          </button>
-          <button className="btn bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-1.5 px-4 rounded-lg shadow-sm">
-            Imprimir
           </button>
         </div>
       </div>

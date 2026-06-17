@@ -68,7 +68,7 @@ export default function PagosPage() {
     const ordenes = await getOrdenes();
     const result: OrdenConSaldo[] = [];
     for (const o of ordenes) {
-      if (!o.id || o.estado === "Entregado") continue;
+      if (!o.id || o.estado === "Entregada") continue;
       const [items, pagos, cliente, vehiculo, devoluciones] = await Promise.all([
         getItemsOrden(o.id),
         getPagos(o.id),

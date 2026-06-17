@@ -10,7 +10,17 @@ import { Loader2, MoreVertical, Plus, Search, Trash2, Wrench } from "lucide-reac
 import { toast } from "react-hot-toast";
 import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
 
-const ESTADOS: EstadoOrden[] = ["Ingreso", "Proceso", "Finalizado", "Entregado"];
+const ESTADOS: EstadoOrden[] = [
+  "Borrador",
+  "En Diagnóstico",
+  "Esperando Repuestos",
+  "Esperando Aprobación",
+  "En Reparación",
+  "Completada",
+  "Listo para Entrega",
+  "Entregada",
+  "Cancelada",
+];
 type MenuPosition = { id: string; top: number; left: number };
 
 const getNumeroDocumento = (orden: OrdenTrabajo) =>

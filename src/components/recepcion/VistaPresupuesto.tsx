@@ -14,9 +14,10 @@ import {
   deleteItemOrden,
   updateItemOrden,
   getIngresoOrigenDePresupuesto,
-  deleteOrden
+  deleteOrden,
+  getDatosTaller
 } from "@/lib/services";
-import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden } from "@/types";
+import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden, DatosTaller } from "@/types";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
 
@@ -32,6 +33,8 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
   const [activeTab, setActiveTab] = useState("Vehículo");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [taller, setTaller] = useState<DatosTaller | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -46,12 +49,13 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
 
       setOrden(ordenData);
 
-      const [cData, vData, itemsData] = await Promise.all([
+      const [cData, vData, itemsData, tallerData] = await Promise.all([
         ordenData.cliente || getClienteById(ordenData.clienteId),
         ordenData.vehiculo || getVehiculoById(ordenData.vehiculoId),
-        getItemsOrden(presupuestoId)
+        getItemsOrden(presupuestoId),
+        getDatosTaller()
       ]);
-
+ 
       if (ordenData.esCotizacion) {
         const ingresoOrigen = await getIngresoOrigenDePresupuesto(ordenData);
         if (ingresoOrigen) {
@@ -61,10 +65,11 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
           }
         }
       }
-
+ 
       setCliente(cData);
       setVehiculo(vData);
       setItems(itemsData);
+      setTaller(tallerData);
     } catch (error) {
       console.error(error);
       toast.error("Error al cargar la información");
@@ -136,13 +141,50 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
     }
   };
 
+  const handleDownloadPDF = async () => {
+    if (!orden || !cliente || !vehiculo) return;
+    setGeneratingPdf(true);
+    const toastId = toast.loading("Generando PDF...");
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      const PresupuestoPDF = (await import("./PresupuestoPDF")).default;
+
+      const blob = await pdf(
+        <PresupuestoPDF
+          orden={orden}
+          cliente={cliente}
+          vehiculo={vehiculo}
+          items={items}
+          taller={taller}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const numPre = String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0");
+      link.download = `presupuesto_${numPre}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success("PDF descargado con éxito", { id: toastId });
+    } catch (error) {
+      console.error("Error al generar PDF:", error);
+      toast.error("Error al generar el PDF", { id: toastId });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const handleAprobar = async () => {
     if (!orden) return;
     if (confirm("¿Estás seguro de aprobar este presupuesto?")) {
       setSaving(true);
       try {
-        await updateOrden(presupuestoId, { estado: "Proceso", presupuestoConfirmadoPorCliente: true });
-        setOrden({ ...orden, estado: "Proceso", presupuestoConfirmadoPorCliente: true });
+        await updateOrden(presupuestoId, { estado: "En Reparación", presupuestoConfirmadoPorCliente: true });
+        setOrden({ ...orden, estado: "En Reparación", presupuestoConfirmadoPorCliente: true });
         toast.success("Presupuesto aprobado");
       } catch (err) {
         console.error(err);
@@ -219,7 +261,19 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
             {/* Actions icons */}
             <div className="flex items-center gap-1 mr-2 text-[var(--text-secondary)]">
               <button className="btn-icon"><Printer size={18} /></button>
-              <button className="btn-icon"><FileDown size={18} /></button>
+              <button 
+                type="button"
+                className="btn-icon text-slate-700 hover:text-blue-600 disabled:opacity-50"
+                onClick={handleDownloadPDF}
+                disabled={generatingPdf || loading}
+                title="Descargar PDF"
+              >
+                {generatingPdf ? (
+                  <Loader2 size={18} className="animate-spin text-blue-600" />
+                ) : (
+                  <FileDown size={18} />
+                )}
+              </button>
               <button className="btn-icon"><Mail size={18} /></button>
               <button className="btn-icon"><MessageSquare size={18} /></button>
               <button className="btn-icon"><Calendar size={18} /></button>
@@ -481,8 +535,13 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
               <button className="btn bg-white border border-[var(--border)] shadow-sm flex items-center gap-2">
                 <Mail size={16} /> Enviar
               </button>
-              <button className="btn bg-white border border-[var(--border)] shadow-sm flex items-center gap-2">
-                <FileDown size={16} /> PDF
+              <button 
+                type="button"
+                className="btn bg-white border border-[var(--border)] shadow-sm flex items-center gap-2 text-slate-700 hover:text-blue-600"
+                onClick={handleDownloadPDF}
+                disabled={generatingPdf || loading}
+              >
+                {generatingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />} PDF
               </button>
               <button className="btn-primary bg-blue-700 hover:bg-blue-800 border-none shadow flex items-center gap-2">
                 <Printer size={16} /> Imprimir

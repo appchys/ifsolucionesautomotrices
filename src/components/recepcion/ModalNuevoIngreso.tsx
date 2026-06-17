@@ -220,7 +220,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
       const ordenId = await createOrdenConItems({
         vehiculoId,
         clienteId: selectedCliente.id,
-        estado: tipoMode === "ingreso" ? "Ingreso" : "Proceso",
+        estado: tipoMode === "ingreso" ? "En Diagnóstico" : "En Reparación",
         tipoServicio: "Mantenimiento",
         motivo: tipoMode === "ingreso" ? "Ingreso inicial" : "Presupuesto inicial",
         kilometrajeIngreso: 0,

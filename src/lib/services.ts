@@ -516,7 +516,7 @@ export async function convertirIngresoAOrden(ingresoId: string): Promise<number>
   // Actualizar el documento de ingreso para que sea orden
   await updateDoc(ingresoRef, {
     numeroOrden,
-    estado: "Proceso",
+    estado: "En Reparación",
     updatedAt: serverTimestamp(),
   });
 
@@ -597,7 +597,7 @@ export async function updateOrden(id: string, data: Partial<OrdenTrabajo>): Prom
 
 export async function updateEstadoOrden(id: string, estado: EstadoOrden): Promise<void> {
   const update: Record<string, unknown> = { estado, updatedAt: serverTimestamp() };
-  if (estado === "Entregado") update.fechaEntrega = serverTimestamp();
+  if (estado === "Entregada") update.fechaEntrega = serverTimestamp();
   await updateDoc(doc(db, "ordenesTrabajo", id), update);
 }
 

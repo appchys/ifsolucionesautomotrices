@@ -13,13 +13,15 @@ import {
   uploadOrdenFoto,
   convertirIngresoAOrden,
   deleteOrden,
-  getPresupuestoPorIngreso
+  getPresupuestoPorIngreso,
+  getDatosTaller
 } from "@/lib/services";
-import { OrdenTrabajo, Cliente, Vehiculo, AppUser, NivelCombustible, ChecklistItem, FotoDiagnostico } from "@/types";
+import { OrdenTrabajo, Cliente, Vehiculo, AppUser, NivelCombustible, ChecklistItem, FotoDiagnostico, DatosTaller } from "@/types";
 import { useAuthStore } from "@/store";
 import { toast } from "react-hot-toast";
 import { createOrdenConItems } from "@/lib/services";
 import ModalInspeccion from "./ModalInspeccion";
+import ModalFirmaCliente from "./ModalFirmaCliente";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
 import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
@@ -45,6 +47,8 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
   const [tecnicosAsignados, setTecnicosAsignados] = useState<AppUser[]>([]);
   const [isTecnicosPopoverOpen, setIsTecnicosPopoverOpen] = useState(false);
+  const [taller, setTaller] = useState<DatosTaller | null>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   // Formularios Locales
   const [tecnicoId, setTecnicoId] = useState("");
@@ -65,15 +69,17 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRetirarModalOpen, setIsRetirarModalOpen] = useState(false);
+  const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [ordenData, tecnicosData] = await Promise.all([
+      const [ordenData, tecnicosData, tallerData] = await Promise.all([
         getOrdenById(ingresoId),
-        getUsuarios()
+        getUsuarios(),
+        getDatosTaller()
       ]);
       
       if (!ordenData) {
@@ -84,6 +90,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
 
       setTecnicos(tecnicosData.filter(u => u.role === "tecnico" && u.activo));
       setOrden(ordenData);
+      setTaller(tallerData);
 
       // Cargar relaciones
       const cData = ordenData.cliente || await getClienteById(ordenData.clienteId);
@@ -160,7 +167,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       const nuevoPresupuestoId = await createOrdenConItems({
         vehiculoId: orden.vehiculoId,
         clienteId: orden.clienteId,
-        estado: "Proceso", // o "Presupuestado"
+        estado: "En Reparación", // o "Presupuestado"
         tipoServicio: orden.tipoServicio,
         motivo: "Cotización derivada del ingreso " + (orden.numero ?? ""),
         kilometrajeIngreso: orden.kilometrajeIngreso,
@@ -250,6 +257,90 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
     }
   };
 
+  const handleDownloadPDF = async () => {
+    if (!orden || !cliente || !vehiculo) return;
+    setGeneratingPdf(true);
+    const toastId = toast.loading("Generando PDF...");
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      const ComprobanteIngresoPDF = (await import("./ComprobanteIngresoPDF")).default;
+
+      const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ") || "Sin asignar";
+
+      const blob = await pdf(
+        <ComprobanteIngresoPDF
+          orden={orden}
+          cliente={cliente}
+          vehiculo={vehiculo}
+          taller={taller}
+          tecnicoName={tecnicoName}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const numIngreso = String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0");
+      link.download = `comprobante_ingreso_${numIngreso}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success("PDF descargado con éxito", { id: toastId });
+    } catch (error) {
+      console.error("Error al generar PDF:", error);
+      toast.error("Error al generar el PDF", { id: toastId });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
+  const handlePrintPDF = async () => {
+    if (!orden || !cliente || !vehiculo) return;
+    setGeneratingPdf(true);
+    const toastId = toast.loading("Preparando impresión...");
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      const ComprobanteIngresoPDF = (await import("./ComprobanteIngresoPDF")).default;
+
+      const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ") || "Sin asignar";
+
+      const blob = await pdf(
+        <ComprobanteIngresoPDF
+          orden={orden}
+          cliente={cliente}
+          vehiculo={vehiculo}
+          taller={taller}
+          tecnicoName={tecnicoName}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(url);
+        }, 1000);
+      };
+      
+      toast.success("Ventana de impresión abierta", { id: toastId });
+    } catch (error) {
+      console.error("Error al preparar impresión:", error);
+      toast.error("Error al preparar el PDF para impresión", { id: toastId });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const toggleTecnico = (tecnico: AppUser) => {
     let nuevos: AppUser[];
     if (tecnicosAsignados.find(t => t.uid === tecnico.uid)) {
@@ -307,6 +398,21 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
     handleSave(); // Guardamos el cambio de arreglo
   };
 
+  const handleSaveFirma = async (signatureDataUrl: string) => {
+    setSaving(true);
+    const toastId = toast.loading("Guardando firma...");
+    try {
+      await updateOrden(ingresoId, { firmaClienteUrl: signatureDataUrl });
+      setOrden(prev => prev ? { ...prev, firmaClienteUrl: signatureDataUrl } : null);
+      toast.success("Firma registrada con éxito", { id: toastId });
+    } catch (error) {
+      console.error("Error al registrar la firma:", error);
+      toast.error("Error al registrar la firma", { id: toastId });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading || !orden || !cliente || !vehiculo) {
     return (
       <AppShell>
@@ -319,7 +425,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
 
   return (
     <AppShell>
-      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
+      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 5.5rem)", marginBottom: "-2rem" }}>
         {/* Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-4 mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">
@@ -480,6 +586,36 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               disabled={creatingOrden || saving}
             >
               {creatingOrden ? <Loader2 size={16} className="animate-spin" /> : orden?.numeroOrden ? `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}` : "+ Crear orden"}
+            </button>
+
+            {/* Botón de Descargar PDF (Solo ícono) */}
+            <button 
+              type="button"
+              className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center text-slate-700 hover:text-blue-600"
+              onClick={handleDownloadPDF}
+              disabled={generatingPdf || loading}
+              title="Descargar PDF"
+            >
+              {generatingPdf ? (
+                <Loader2 size={16} className="animate-spin text-blue-600" />
+              ) : (
+                <FileDown size={18} />
+              )}
+            </button>
+
+            {/* Botón de Imprimir PDF (Solo ícono) */}
+            <button 
+              type="button"
+              className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center text-slate-700 hover:text-blue-600"
+              onClick={handlePrintPDF}
+              disabled={generatingPdf || loading}
+              title="Imprimir"
+            >
+              {generatingPdf ? (
+                <Loader2 size={16} className="animate-spin text-blue-600" />
+              ) : (
+                <Printer size={18} />
+              )}
             </button>
 
             {/* 3-dots actions menu */}
@@ -841,26 +977,50 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                 Firma del cliente
               </h3>
               <div className="space-y-3">
-                <button className="btn w-full justify-start bg-white border border-[var(--border)] shadow-sm">
-                  Firmar aquí
-                </button>
-                <button className="btn w-full justify-start bg-white border border-[var(--border)] shadow-sm">
-                  ✉ Solicitar firma a {cliente.email || "cliente"}
+                {orden.firmaClienteUrl ? (
+                  <div className="card p-3 flex flex-col items-center gap-2 bg-slate-50 dark:bg-slate-900/10 border border-slate-200 rounded-xl relative group">
+                    <img 
+                      src={orden.firmaClienteUrl} 
+                      alt="Firma del cliente" 
+                      className="h-20 object-contain dark:invert" 
+                    />
+                    <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                      <span>✓ Firmado</span>
+                    </div>
+                    <button 
+                      onClick={() => setIsFirmaModalOpen(true)}
+                      className="btn btn-sm bg-white border border-[var(--border)] w-full justify-center shadow-sm text-xs mt-1"
+                    >
+                      Firmar de nuevo
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => setIsFirmaModalOpen(true)}
+                    className="btn w-full justify-start bg-white border border-[var(--border)] shadow-sm font-semibold flex items-center gap-2"
+                  >
+                    <ClipboardSignature size={14} className="text-slate-400" />
+                    Firmar aquí
+                  </button>
+                )}
+                
+                <button 
+                  onClick={() => {
+                    if (cliente.email) {
+                      toast.success(`Solicitud de firma enviada a ${cliente.email}`);
+                    } else {
+                      toast.error("El cliente no tiene un correo electrónico registrado");
+                    }
+                  }}
+                  className="btn w-full justify-start bg-white border border-[var(--border)] shadow-sm text-slate-700 font-semibold flex items-center gap-2"
+                >
+                  <Mail size={14} className="text-slate-400" />
+                  Solicitar firma a {cliente.email || "cliente"}
                 </button>
               </div>
             </div>
           </div>
 
-        </div>
-
-        {/* Footer */}
-        <div className="mt-2 pt-4 border-t border-[var(--border)] flex justify-end gap-3 flex-shrink-0 bg-white dark:bg-[var(--bg-card)]">
-          <button className="btn-primary bg-blue-700 hover:bg-blue-800 border-transparent shadow flex items-center gap-2">
-            <Printer size={16} /> Imprimir
-          </button>
-          <button className="btn bg-white border border-[var(--border)] shadow-sm flex items-center gap-2">
-            <FileDown size={16} /> PDF
-          </button>
         </div>
       </div>
 
@@ -936,6 +1096,14 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
           </div>
         </div>
       )}
+
+      <ModalFirmaCliente
+        isOpen={isFirmaModalOpen}
+        onClose={() => setIsFirmaModalOpen(false)}
+        onSave={handleSaveFirma}
+        clienteEmail={cliente.email}
+        numeroIngreso={`ING-${String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}`}
+      />
     </AppShell>
   );
 }
