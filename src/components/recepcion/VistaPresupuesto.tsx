@@ -60,6 +60,7 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
         const ingresoOrigen = await getIngresoOrigenDePresupuesto(ordenData);
         if (ingresoOrigen) {
           if (!ordenData.informeTecnico) ordenData.informeTecnico = ingresoOrigen.informeTecnico;
+          if (!ordenData.kilometrajeIngreso) ordenData.kilometrajeIngreso = ingresoOrigen.kilometrajeIngreso;
           if (ordenData.motivo?.startsWith("Cotización derivada del ingreso")) {
              ordenData.motivo = ingresoOrigen.motivo;
           }
@@ -178,6 +179,48 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
     }
   };
 
+  const handlePrintPDF = async () => {
+    if (!orden || !cliente || !vehiculo) return;
+    setGeneratingPdf(true);
+    const toastId = toast.loading("Preparando impresión...");
+    try {
+      const { pdf } = await import("@react-pdf/renderer");
+      const PresupuestoPDF = (await import("./PresupuestoPDF")).default;
+
+      const blob = await pdf(
+        <PresupuestoPDF
+          orden={orden}
+          cliente={cliente}
+          vehiculo={vehiculo}
+          items={items}
+          taller={taller}
+        />
+      ).toBlob();
+
+      const url = URL.createObjectURL(blob);
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = url;
+      document.body.appendChild(iframe);
+      
+      iframe.onload = () => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+          URL.revokeObjectURL(url);
+        }, 1000);
+      };
+      
+      toast.success("Ventana de impresión abierta", { id: toastId });
+    } catch (error) {
+      console.error("Error al preparar impresión:", error);
+      toast.error("Error al preparar el PDF para impresión", { id: toastId });
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   const handleAprobar = async () => {
     if (!orden) return;
     if (confirm("¿Estás seguro de aprobar este presupuesto?")) {
@@ -260,7 +303,19 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
           <div className="flex items-center gap-3">
             {/* Actions icons */}
             <div className="flex items-center gap-1 mr-2 text-[var(--text-secondary)]">
-              <button className="btn-icon"><Printer size={18} /></button>
+              <button 
+                type="button"
+                className="btn-icon text-slate-700 hover:text-blue-600 disabled:opacity-50" 
+                onClick={handlePrintPDF}
+                disabled={generatingPdf || loading}
+                title="Imprimir"
+              >
+                {generatingPdf ? (
+                  <Loader2 size={18} className="animate-spin text-blue-600" />
+                ) : (
+                  <Printer size={18} />
+                )}
+              </button>
               <button 
                 type="button"
                 className="btn-icon text-slate-700 hover:text-blue-600 disabled:opacity-50"
@@ -543,8 +598,13 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
               >
                 {generatingPdf ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />} PDF
               </button>
-              <button className="btn-primary bg-blue-700 hover:bg-blue-800 border-none shadow flex items-center gap-2">
-                <Printer size={16} /> Imprimir
+              <button 
+                type="button"
+                className="btn-primary bg-blue-700 hover:bg-blue-800 border-none shadow flex items-center gap-2 disabled:opacity-50"
+                onClick={handlePrintPDF}
+                disabled={generatingPdf || loading}
+              >
+                {generatingPdf ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />} Imprimir
               </button>
             </div>
 
