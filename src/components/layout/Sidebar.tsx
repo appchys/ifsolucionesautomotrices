@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, ClipboardList, Users, Car, CreditCard,
+  LayoutDashboard, ClipboardList, Columns3, Users, Car, CreditCard,
   Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3,
   FileDown, FileText, Receipt
 } from "lucide-react";
@@ -19,6 +19,7 @@ const navItems = [
   { href: "/ingresos", label: "Ingresos", icon: FileDown, roles: ["admin","recepcion"] },
   { href: "/presupuestos", label: "Presupuestos", icon: FileText, roles: ["admin","recepcion"] },
   { href: "/ordenes", label: "Órdenes", icon: ClipboardList, roles: ["admin","recepcion","tecnico","contador"] },
+  { href: "/ordenes/tablero", label: "Tablero", icon: Columns3, roles: ["admin","recepcion","tecnico","contador"] },
   { href: "/ventas", label: "Ventas", icon: Receipt, roles: ["admin","recepcion","contador"] },
   { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin","recepcion","contador"] },
   { href: "/vehiculos", label: "Vehículos", icon: Car, roles: ["admin","recepcion"] },
