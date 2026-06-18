@@ -72,6 +72,9 @@ import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
 import { useAuthStore, useUIStore } from "@/store";
 import { getMergedChecklist } from "@/lib/checklist";
+import { auth } from "@/lib/firebase";
+import ModalEnviarCorreo from "@/components/ordenes/ModalEnviarCorreo";
+import ModalFirmas from "@/components/ordenes/ModalFirmas";
 
 const ESTADOS: EstadoOrden[] = [
   "Borrador",
@@ -159,6 +162,8 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
   const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
   const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [isFirmasModalOpen, setIsFirmasModalOpen] = useState(false);
 
   // Local state for Payment Modal
   const [montoPago, setMontoPago] = useState("");
@@ -596,6 +601,59 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
     }
   };
 
+  const handleOpenEmailModal = async () => {
+    const toastId = toast.loading("Verificando conexión de Gmail...");
+    try {
+      const user = auth.currentUser;
+      if (!user) {
+        toast.error("Inicia sesión para realizar esta acción.", { id: toastId });
+        return;
+      }
+      
+      const token = await user.getIdToken();
+      const response = await fetch("/api/gmail/status", {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "same-origin",
+      });
+      
+      if (!response.ok) {
+        throw new Error("GMAIL_STATUS_FAILED");
+      }
+      
+      const data = await response.json();
+      if (data.connected) {
+        toast.dismiss(toastId);
+        setIsEmailModalOpen(true);
+      } else {
+        toast.error("Para enviar correos, primero debe vincular su cuenta de Gmail en la sección de Compras.", { id: toastId });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al verificar la conexión de Gmail.", { id: toastId });
+    }
+  };
+
+  const handleSaveFirmas = async (firmaClienteUrl: string, firmaTecnicoUrl: string) => {
+    const toastId = toast.loading("Guardando firmas...");
+    try {
+      await updateOrden(ordenId, { firmaClienteUrl, firmaTecnicoUrl });
+      setOrden((prev) =>
+        prev
+          ? {
+              ...prev,
+              firmaClienteUrl,
+              firmaTecnicoUrl,
+            }
+          : null
+      );
+      toast.success("Firmas registradas con éxito", { id: toastId });
+    } catch (error) {
+      console.error("Error al registrar las firmas:", error);
+      toast.error("Error al registrar las firmas", { id: toastId });
+      throw error;
+    }
+  };
+
   if (loading || !orden || !cliente || !vehiculo) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
@@ -612,7 +670,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
 
   const advisorUser = (orden.personalAsignado || []).find((u) => u.role !== "tecnico") || user;
   const dbAdvisorUser = advisorUser?.uid ? todosLosUsuarios.find((u) => u.uid === advisorUser.uid) : null;
-  const advisorPhoto = dbAdvisorUser?.photoURL || advisorUser?.photoURL;
+  const advisorPhoto = dbAdvisorUser?.photoURL || (advisorUser as any)?.photoURL;
 
   return (
     <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
@@ -856,7 +914,13 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
               )}
             </div>
 
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Enviar Email"><Mail size={16} /></button>
+            <button
+              onClick={handleOpenEmailModal}
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 bg-transparent border-0 cursor-pointer flex items-center justify-center"
+              title="Enviar Email"
+            >
+              <Mail size={16} />
+            </button>
             <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Chat"><MessageCircle size={16} /></button>
           </div>
 
@@ -1408,15 +1472,14 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
 
         {/* Control actions */}
         <div className="flex items-center gap-2">
-          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
+          <button
+            onClick={() => setIsFirmasModalOpen(true)}
+            className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm cursor-pointer"
+          >
             Firmar
           </button>
           <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
             Etiqueta
-          </button>
-          
-          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
-            Enviar
           </button>
         </div>
       </div>
@@ -1655,6 +1718,29 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
           </div>
         </div>
       )}
+      {/* ModalEnviarCorreo */}
+      <ModalEnviarCorreo
+        isOpen={isEmailModalOpen}
+        onClose={() => setIsEmailModalOpen(false)}
+        orden={orden}
+        cliente={cliente}
+        vehiculo={vehiculo}
+        items={items}
+        pagos={pagos}
+        taller={taller}
+      />
+
+      {/* ModalFirmas */}
+      <ModalFirmas
+        isOpen={isFirmasModalOpen}
+        onClose={() => setIsFirmasModalOpen(false)}
+        onSave={handleSaveFirmas}
+        clienteNombre={`${cliente.nombre} ${cliente.apellido}`}
+        tecnicoNombre={assignedTechs[0]?.displayName || "Técnico responsable"}
+        numeroOrden={String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0")}
+        initialFirmaClienteUrl={orden.firmaClienteUrl}
+        initialFirmaTecnicoUrl={orden.firmaTecnicoUrl}
+      />
     </div>
   );
 }

@@ -160,6 +160,7 @@ export interface OrdenTrabajo {
   esCotizacion?: boolean;
   archivado?: boolean;
   firmaClienteUrl?: string;
+  firmaTecnicoUrl?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   fechaEntrega?: Timestamp;
