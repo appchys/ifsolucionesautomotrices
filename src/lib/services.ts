@@ -49,25 +49,25 @@ import {
   VentaItem,
 } from "@/types";
 
-function normalizarMargenGanancia(value: unknown): 25 | 40 {
-  return Number(value) === 40 ? 40 : 25;
+export function normalizarMargenGanancia(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 25;
 }
 
 const IVA_RATE = 15;
 
-function calcularPrecioVenta(costoBase: number, margenGanancia: 25 | 40, aplicaIva = false): number {
+export function calcularPrecioVenta(costoBase: number, margenGanancia: number, aplicaIva = false): number {
   const precioConMargen = Number(costoBase || 0) * (1 + margenGanancia / 100);
   const precioFinal = aplicaIva ? precioConMargen * (1 + IVA_RATE / 100) : precioConMargen;
   return Number(precioFinal.toFixed(2));
 }
 
-function resolverMargenProducto(producto?: Producto | null): 25 | 40 {
+export function resolverMargenProducto(producto?: Producto | null): number {
   if (!producto) return 25;
-  if (producto.margenGanancia === 25 || producto.margenGanancia === 40) return producto.margenGanancia;
+  if (typeof producto.margenGanancia === "number") return producto.margenGanancia;
   const costoBase = Number(producto.costoBase ?? 0);
   if (costoBase <= 0) return 25;
-  const margenActual = (Number(producto.precioBase ?? 0) / costoBase - 1) * 100;
-  return Math.abs(margenActual - 40) < Math.abs(margenActual - 25) ? 40 : 25;
+  return Number(((Number(producto.precioBase ?? 0) / costoBase - 1) * 100).toFixed(2));
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

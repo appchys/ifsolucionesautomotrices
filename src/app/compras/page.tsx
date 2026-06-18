@@ -19,15 +19,20 @@ import {
   updateCompraPagos,
   updateGmailXmlDraftStatus,
   upsertGmailXmlDraft,
+  getProductoBySku,
+  updateProducto,
+  calcularPrecioVenta,
+  resolverMargenProducto,
 } from "@/lib/services";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { BANCOS_TRANSFERENCIA, BANCO_TRANSFERENCIA_LIST_ID } from "@/lib/paymentBanks";
-import type { Compra, CompraItem, CompraMetodoPago, CompraPago, DevolucionProveedor, EstadoPago, GmailXmlDraft, MetodoDevolucionProveedor } from "@/types";
+import type { Compra, CompraItem, CompraMetodoPago, CompraPago, DevolucionProveedor, EstadoPago, GmailXmlDraft, MetodoDevolucionProveedor, Producto } from "@/types";
 import {
   AlertCircle,
   ArrowRight,
   ArrowUpRight,
+  Boxes,
   Building,
   Check,
   CheckCircle2,
@@ -490,6 +495,14 @@ export default function ComprasPage() {
   const [copiedAutorizacion, setCopiedAutorizacion] = useState(false);
   const [expandedTributaria, setExpandedTributaria] = useState(false);
   const [productSearch, setProductSearch] = useState("");
+  const [selectedProductForSidebar, setSelectedProductForSidebar] = useState<CompraItem | null>(null);
+  const [sidebarTab, setSidebarTab] = useState<"factura" | "inventario" | "historial">("factura");
+  const [inventoryProduct, setInventoryProduct] = useState<Producto | null>(null);
+  const [loadingInventoryProduct, setLoadingInventoryProduct] = useState(false);
+  const [savingInventoryChanges, setSavingInventoryChanges] = useState(false);
+  const [adjustedCosto, setAdjustedCosto] = useState("");
+  const [adjustedMargen, setAdjustedMargen] = useState("");
+  const [adjustedAplicaIva, setAdjustedAplicaIva] = useState(false);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -497,6 +510,7 @@ export default function ComprasPage() {
       setCopiedAutorizacion(false);
       setExpandedTributaria(false);
       setProductSearch("");
+      setSelectedProductForSidebar(null);
       setSelectedDevoluciones([]);
       setDevolucionItemIndex(0);
       setDevolucionCantidad("");
@@ -510,6 +524,48 @@ export default function ComprasPage() {
 
     return () => window.clearTimeout(id);
   }, [selected]);
+
+  useEffect(() => {
+    if (!selectedProductForSidebar) {
+      setInventoryProduct(null);
+      setSidebarTab("factura");
+      return;
+    }
+
+    let active = true;
+    const loadInventoryProduct = async () => {
+      setLoadingInventoryProduct(true);
+      try {
+        const sku = selectedProductForSidebar.codigo.trim().toUpperCase();
+        if (sku) {
+          const prod = await getProductoBySku(sku);
+          if (active) {
+            setInventoryProduct(prod);
+            if (prod) {
+              setAdjustedCosto(String(prod.costoBase ?? ""));
+              setAdjustedMargen(String(prod.margenGanancia ?? ""));
+              setAdjustedAplicaIva(prod.aplicaIva ?? false);
+            } else {
+              setAdjustedCosto("");
+              setAdjustedMargen("");
+              setAdjustedAplicaIva(false);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error al cargar producto del inventario:", err);
+      } finally {
+        if (active) setLoadingInventoryProduct(false);
+      }
+    };
+
+    setSidebarTab("factura");
+    void loadInventoryProduct();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedProductForSidebar]);
 
   useEffect(() => {
     let active = true;
@@ -744,6 +800,72 @@ export default function ComprasPage() {
         .includes(term)
     );
   }, [compras, search]);
+
+  const selectedProductPriceHistory = useMemo(() => {
+    if (!selectedProductForSidebar) return [];
+    const sku = selectedProductForSidebar.codigo.trim().toUpperCase();
+    if (!sku) return [];
+
+    const history: {
+      fecha: string;
+      proveedor: string;
+      factura: string;
+      cantidad: number;
+      precioUnitario: number;
+      descuento: number;
+      total: number;
+    }[] = [];
+
+    compras.forEach((compra) => {
+      compra.items.forEach((item) => {
+        if (item.codigo.trim().toUpperCase() === sku) {
+          history.push({
+            fecha: compra.fechaEmision || compra.fechaAutorizacion || "",
+            proveedor: compra.proveedorRazonSocial,
+            factura: compra.numeroFactura,
+            cantidad: item.cantidad,
+            precioUnitario: item.precioUnitario,
+            descuento: item.descuento,
+            total: item.total,
+          });
+        }
+      });
+    });
+
+    return history;
+  }, [selectedProductForSidebar, compras]);
+
+  const handleSaveInventoryProductChanges = async () => {
+    if (!inventoryProduct?.id) return;
+    const costValue = Number(adjustedCosto);
+    const marginValue = Number(adjustedMargen);
+    if (!Number.isFinite(costValue) || costValue < 0) {
+      toast.error("Por favor ingresa un costo de compra válido.");
+      return;
+    }
+    if (!Number.isFinite(marginValue) || marginValue < 0) {
+      toast.error("Por favor ingresa un margen de ganancia válido.");
+      return;
+    }
+
+    setSavingInventoryChanges(true);
+    try {
+      const payload: Partial<Producto> = {
+        costoBase: costValue,
+        margenGanancia: marginValue,
+        aplicaIva: adjustedAplicaIva,
+        precioBase: calcularPrecioVenta(costValue, marginValue, adjustedAplicaIva),
+      };
+      await updateProducto(inventoryProduct.id, payload);
+      setInventoryProduct((prev: Producto | null) => prev ? { ...prev, ...payload } : null);
+      toast.success("Producto de inventario actualizado correctamente");
+    } catch (err) {
+      console.error("Error al actualizar producto de inventario:", err);
+      toast.error("No se pudo guardar la información del producto");
+    } finally {
+      setSavingInventoryChanges(false);
+    }
+  };
 
   const totalComprado = compras.reduce((sum, compra) => sum + compra.importeTotal, 0);
   const totalItems = compras.reduce((sum, compra) => sum + compra.items.length, 0);
@@ -2090,22 +2212,22 @@ export default function ComprasPage() {
         modalRoot
       )}
 
-      <div className="page-header flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-xl relative overflow-hidden">
+      <div className="page-header flex flex-col md:flex-row md:items-center justify-between gap-4 p-4.5 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-xl relative overflow-hidden">
         {/* Decorative subtle abstract elements */}
         <div className="absolute top-0 right-0 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none -mr-16 -mt-16"></div>
         <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-600/10 rounded-full blur-2xl pointer-events-none -ml-8 -mb-8"></div>
         
         <div className="relative z-10">
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent flex items-center gap-3">
-            <ShoppingCart className="text-blue-400" size={32} />
+          <h1 className="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent flex items-center gap-2.5">
+            <ShoppingCart className="text-blue-400" size={24} />
             Gestión de Compras
           </h1>
-          <p className="text-slate-400 text-sm mt-2 max-w-xl">
+          <p className="text-slate-400 text-xs mt-1.5 max-w-xl">
             Sube tus facturas electrónicas XML de forma instantánea para registrar proveedores, controlar pagos pendientes y sincronizar existencias de inventario en segundos.
           </p>
         </div>
         
-        <div className="relative z-10 flex flex-col sm:flex-row gap-3 flex-shrink-0">
+        <div className="relative z-10 flex flex-col sm:flex-row gap-2 flex-shrink-0">
           <input
             ref={inputRef}
             type="file"
@@ -2131,12 +2253,12 @@ export default function ComprasPage() {
             }}
             onDrop={handleUploadDrop}
             disabled={uploading}
-            className={`relative px-6 py-3.5 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all duration-300 shadow-[0_4px_20px_rgba(37,99,235,0.25)] hover:shadow-[0_4px_25px_rgba(37,99,235,0.45)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2.5 overflow-hidden group cursor-pointer ${draggingUpload ? "ring-4 ring-blue-300/60 scale-[1.02]" : ""}`}
+            className={`relative px-4 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 transition-all duration-300 shadow-[0_4px_20px_rgba(37,99,235,0.25)] hover:shadow-[0_4px_25px_rgba(37,99,235,0.45)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 overflow-hidden group cursor-pointer ${draggingUpload ? "ring-4 ring-blue-300/60 scale-[1.02]" : ""}`}
           >
             {uploading ? (
-              <Loader2 size={18} className="animate-spin text-white" />
+              <Loader2 size={15} className="animate-spin text-white" />
             ) : (
-              <Upload size={18} className="text-white group-hover:scale-110 transition-transform duration-300" />
+              <Upload size={15} className="text-white group-hover:scale-110 transition-transform duration-300" />
             )}
             <span>{uploading ? "Procesando archivo..." : "Cargar factura"}</span>
           </button>
@@ -2147,11 +2269,11 @@ export default function ComprasPage() {
                   type="button"
                   onClick={() => setGmailXmlPanelOpen(true)}
                   disabled={uploading}
-                  className="px-5 py-3.5 rounded-xl font-semibold text-white transition-all duration-300 shadow-[0_4px_20px_rgba(220,38,38,0.25)] hover:shadow-[0_4px_25px_rgba(220,38,38,0.45)] active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2.5 cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl font-semibold text-white transition-all duration-300 shadow-[0_4px_20px_rgba(220,38,38,0.25)] hover:shadow-[0_4px_25px_rgba(220,38,38,0.45)] active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
                   style={{ backgroundColor: '#DC2626' }}
                   title={gmailStatus.email ? `Conectado como ${gmailStatus.email}` : "Ver bandeja de XML de Gmail"}
                 >
-                  <Mail size={18} className="flex-shrink-0" />
+                  <Mail size={15} className="flex-shrink-0" />
                   <span>Bandeja XML</span>
                   {pendingXmlCount > 0 && (
                     <span 
@@ -2166,10 +2288,10 @@ export default function ComprasPage() {
                   type="button"
                   onClick={handleDisconnectGmail}
                   disabled={gmailLoading || gmailImporting}
-                  className="px-3.5 py-3.5 rounded-xl font-semibold text-slate-200 bg-white/10 hover:bg-white/15 border border-white/15 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
+                  className="px-3 py-2.5 rounded-xl font-semibold text-slate-200 bg-white/10 hover:bg-white/15 border border-white/15 transition-all duration-300 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
                   title={gmailStatus.email ? `Desconectar ${gmailStatus.email}` : "Desconectar Gmail"}
                 >
-                  {gmailLoading ? <Loader2 size={18} className="animate-spin" /> : <X size={18} />}
+                  {gmailLoading ? <Loader2 size={15} className="animate-spin" /> : <X size={15} />}
                 </button>
               </>
             ) : (
@@ -2177,10 +2299,10 @@ export default function ComprasPage() {
                 type="button"
                 onClick={handleConnectGmail}
                 disabled={gmailLoading}
-                className="px-5 py-3.5 rounded-xl font-semibold text-white transition-all duration-300 shadow-[0_4px_20px_rgba(220,38,38,0.25)] hover:shadow-[0_4px_25px_rgba(220,38,38,0.45)] active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2.5 cursor-pointer"
+                className="px-4 py-2.5 rounded-xl font-semibold text-white transition-all duration-300 shadow-[0_4px_20px_rgba(220,38,38,0.25)] hover:shadow-[0_4px_25px_rgba(220,38,38,0.45)] active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
                 style={{ backgroundColor: '#DC2626' }}
               >
-                {gmailLoading ? <Loader2 size={18} className="animate-spin" /> : <Mail size={18} />}
+                {gmailLoading ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
                 <span>{gmailLoading ? "Revisando Gmail..." : "Conectar Gmail"}</span>
               </button>
             )}
@@ -2188,52 +2310,52 @@ export default function ComprasPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
         {/* Compras registradas */}
-        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-4 relative overflow-hidden">
+        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-xl pointer-events-none"></div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
-            <ShoppingCart size={22} />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
+            <ShoppingCart size={20} />
           </div>
           <div>
-            <div className="text-2xl font-bold text-[var(--text-primary)]">{compras.length}</div>
-            <div className="text-xs text-[var(--text-muted)] font-medium mt-0.5">Compras registradas</div>
+            <div className="text-xl font-bold text-[var(--text-primary)]">{compras.length}</div>
+            <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-0.5">Facturas</div>
           </div>
         </div>
 
         {/* Total comprado */}
-        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-4 relative overflow-hidden">
+        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl pointer-events-none"></div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300">
-            <DollarSign size={22} />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300">
+            <DollarSign size={20} />
           </div>
           <div>
-            <div className="text-2xl font-bold text-[var(--text-primary)]">{formatMoney(totalComprado)}</div>
-            <div className="text-xs text-[var(--text-muted)] font-medium mt-0.5">Total invertido</div>
+            <div className="text-xl font-bold text-[var(--text-primary)] font-mono">{formatMoney(totalComprado)}</div>
+            <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-0.5">Total Invertido</div>
           </div>
         </div>
 
         {/* Productos importados */}
-        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-4 relative overflow-hidden">
+        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-xl pointer-events-none"></div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400 group-hover:scale-110 transition-transform duration-300">
-            <Package size={22} />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-indigo-50 text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400 group-hover:scale-110 transition-transform duration-300">
+            <Package size={20} />
           </div>
           <div>
-            <div className="text-2xl font-bold text-[var(--text-primary)]">{totalItems}</div>
-            <div className="text-xs text-[var(--text-muted)] font-medium mt-0.5">Productos importados</div>
+            <div className="text-xl font-bold text-[var(--text-primary)]">{totalItems}</div>
+            <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-0.5">Items creados</div>
           </div>
         </div>
 
         {/* IVA pagado */}
-        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-4 relative overflow-hidden">
+        <div className="group bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-3 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-full blur-xl pointer-events-none"></div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-cyan-50 text-cyan-600 dark:bg-cyan-950/30 dark:text-cyan-400 group-hover:scale-110 transition-transform duration-300">
-            <FileText size={22} />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-cyan-50 text-cyan-600 dark:bg-cyan-950/30 dark:text-cyan-400 group-hover:scale-110 transition-transform duration-300">
+            <FileText size={20} />
           </div>
           <div>
-            <div className="text-2xl font-bold text-[var(--text-primary)]">{formatMoney(totalIvaPagado)}</div>
-            <div className="text-xs text-[var(--text-muted)] font-medium mt-0.5">Total IVA pagado</div>
+            <div className="text-xl font-bold text-[var(--text-primary)] font-mono">{formatMoney(totalIvaPagado)}</div>
+            <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-0.5">IVA pagado</div>
           </div>
         </div>
 
@@ -2241,18 +2363,18 @@ export default function ComprasPage() {
         <button
           type="button"
           onClick={() => setGmailXmlPanelOpen(true)}
-          className="group text-left bg-[var(--bg-card)] border border-blue-200 dark:border-blue-900/30 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-4 relative overflow-hidden hover:border-blue-400 cursor-pointer w-full focus:outline-none"
+          className="group text-left bg-[var(--bg-card)] border border-blue-200 dark:border-blue-900/30 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-3 relative overflow-hidden hover:border-blue-400 cursor-pointer w-full focus:outline-none"
           aria-label="Ver facturas XML pendientes"
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-full blur-xl pointer-events-none group-hover:bg-blue-500/20 transition-all duration-300"></div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
-            <Clock size={22} className={pendingXmlCount > 0 ? "animate-pulse" : ""} />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
+            <Clock size={20} className={pendingXmlCount > 0 ? "animate-pulse" : ""} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{pendingXmlCount}</div>
-            <div className="text-xs text-[var(--text-muted)] font-medium mt-0.5 flex items-center gap-1">
-              Facturas pendientes
-              <ArrowUpRight size={14} className="text-blue-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-300" />
+            <div className="text-xl font-bold text-blue-600 dark:text-blue-400">{pendingXmlCount}</div>
+            <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1">
+              Pendientes XML
+              <ArrowUpRight size={12} className="text-blue-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-300" />
             </div>
           </div>
         </button>
@@ -2261,23 +2383,24 @@ export default function ComprasPage() {
         <button
           type="button"
           onClick={() => setProveedoresSidebarOpen(true)}
-          className="group text-left bg-[var(--bg-card)] border border-amber-200 dark:border-amber-900/30 rounded-2xl p-5 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-4 relative overflow-hidden hover:border-amber-400 cursor-pointer w-full focus:outline-none"
+          className="group text-left bg-[var(--bg-card)] border border-amber-200 dark:border-amber-900/30 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all duration-300 flex items-center gap-3 relative overflow-hidden hover:border-amber-400 cursor-pointer w-full focus:outline-none"
           aria-label="Ver detalle de valores pendientes por proveedor"
         >
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/10 rounded-full blur-xl pointer-events-none group-hover:bg-amber-500/20 transition-all duration-300"></div>
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 group-hover:scale-110 transition-transform duration-300">
-            <AlertCircle size={22} className="animate-pulse" />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400 group-hover:scale-110 transition-transform duration-300">
+            <AlertCircle size={20} className="animate-pulse" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{formatMoney(totalPendienteProveedores)}</div>
-            <div className="text-xs text-[var(--text-muted)] font-medium mt-0.5 flex items-center gap-1">
-              Pendiente proveedores
-              <ArrowUpRight size={14} className="text-amber-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-300" />
+            <div className="text-xl font-bold text-amber-600 dark:text-amber-400 font-mono">{formatMoney(totalPendienteProveedores)}</div>
+            <div className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-wider mt-0.5 flex items-center gap-1">
+              Pendiente Prov.
+              <ArrowUpRight size={12} className="text-amber-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-300" />
             </div>
-            <div className="text-[10px] text-[var(--success)] font-bold mt-1">Pagado {formatMoney(totalPagadoProveedores)}</div>
           </div>
         </button>
-      </div>      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-5">
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-4">
         <div className="card">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <h2 className="font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -2305,15 +2428,15 @@ export default function ComprasPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[860px]">
+              <table className="w-full text-left border-collapse min-w-[720px]">
                 <thead>
                   <tr className="border-b border-[var(--border)] text-[var(--text-muted)] text-sm">
-                    <th className="pb-3 px-4 font-semibold">Factura</th>
-                    <th className="pb-3 px-4 font-semibold">Fecha</th>
-                    <th className="pb-3 px-4 font-semibold">Proveedor</th>
-                    <th className="pb-3 px-4 font-semibold">Productos</th>
-                    <th className="pb-3 px-4 font-semibold">Pago</th>
-                    <th className="pb-3 px-4 font-semibold text-right">Total</th>
+                    <th className="pb-2.5 px-3 font-semibold">Factura</th>
+                    <th className="pb-2.5 px-3 font-semibold">Fecha</th>
+                    <th className="pb-2.5 px-3 font-semibold">Proveedor</th>
+                    <th className="pb-2.5 px-3 font-semibold">Productos</th>
+                    <th className="pb-2.5 px-3 font-semibold">Pago</th>
+                    <th className="pb-2.5 px-3 font-semibold text-right">Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2331,17 +2454,17 @@ export default function ComprasPage() {
                             : "hover:bg-slate-50 dark:hover:bg-slate-900/30"
                         }`}
                       >
-                        <td className={`py-3.5 px-4 relative ${active ? "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-blue-600" : ""}`}>
+                        <td className={`py-2.5 px-3 relative ${active ? "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-1 before:bg-blue-600" : ""}`}>
                           <p className="font-mono text-sm font-bold text-blue-600 dark:text-blue-400">{compra.numeroFactura}</p>
                           <p className="text-[10px] font-semibold text-[var(--text-muted)] mt-0.5">{compra.estadoAutorizacion || "Sin estado"}</p>
                         </td>
-                        <td className="py-3.5 px-4 text-xs text-[var(--text-secondary)] font-medium">{compra.fechaEmision}</td>
-                        <td className="py-3.5 px-4">
+                        <td className="py-2.5 px-3 text-xs text-[var(--text-secondary)] font-medium">{compra.fechaEmision}</td>
+                        <td className="py-2.5 px-3">
                           <p className="font-semibold text-sm text-[var(--text-primary)]">{compra.proveedorRazonSocial}</p>
                           <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">{compra.proveedorRuc}</p>
                         </td>
-                        <td className="py-3.5 px-4 text-xs font-semibold text-[var(--text-secondary)]">{compra.items.length} items</td>
-                        <td className="py-3.5 px-4">
+                        <td className="py-2.5 px-3 text-xs font-semibold text-[var(--text-secondary)]">{compra.items.length} items</td>
+                        <td className="py-2.5 px-3">
                           <div className="flex flex-col gap-1">
                             {estadoPago === "pagado" && (
                               <span className="inline-flex items-center gap-1.5 w-fit px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900/30">
@@ -2368,7 +2491,7 @@ export default function ComprasPage() {
                             )}
                           </div>
                         </td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-sm text-[var(--text-primary)]">
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-sm text-[var(--text-primary)]">
                           {formatMoney(compra.importeTotal)}
                         </td>
                       </tr>
@@ -2379,9 +2502,9 @@ export default function ComprasPage() {
             </div>
           )}
         </div>
-        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm">
+        <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm">
           {selected ? (
-            <div className="space-y-5">
+            <div className="space-y-4">
               {/* Header de Detalle */}
               <div className="pb-4 border-b border-[var(--border)]">
                 <div className="flex items-start justify-between gap-3">
@@ -2964,7 +3087,8 @@ export default function ComprasPage() {
                           {filteredSelectedItems.map((item, index) => (
                             <tr
                               key={`${item.codigo}-${index}`}
-                              className="hover:bg-slate-50 dark:hover:bg-slate-900/20 transition-colors"
+                              className="hover:bg-slate-50 dark:hover:bg-slate-900/20 active:bg-slate-100 dark:active:bg-slate-900/40 transition-colors cursor-pointer"
+                              onClick={() => setSelectedProductForSidebar(item)}
                             >
                               <td className="px-3 py-3 align-top">
                                 <p className="font-semibold text-[var(--text-primary)] leading-relaxed break-words">
@@ -3018,6 +3142,368 @@ export default function ComprasPage() {
           )}
         </div>
       </div>
+
+      {modalRoot && selectedProductForSidebar && createPortal(
+        <div
+          className="fixed inset-0 z-[900] flex justify-end bg-slate-950/50 backdrop-blur-sm animate-fade-in"
+          onClick={() => setSelectedProductForSidebar(null)}
+        >
+          <aside
+            className="h-full w-full max-w-lg bg-[var(--bg-card)] shadow-2xl border-l border-[var(--border)] flex flex-col animate-slide-in"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 border-b border-[var(--border)] flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-900/30">
+                  <Package size={10} />
+                  Información del Producto
+                </span>
+                <h2 className="text-base font-bold mt-2.5 text-[var(--text-primary)] break-words leading-snug">
+                  {selectedProductForSidebar.descripcion}
+                </h2>
+                <div className="flex items-center gap-1.5 mt-1.5 text-xs text-[var(--text-muted)] font-mono">
+                  <Hash size={12} />
+                  <span>Código: {selectedProductForSidebar.codigo || "SIN_CODIGO"}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedProductForSidebar(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all duration-200 border border-slate-200 dark:border-slate-800 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Tabs Navigation */}
+            <div className="flex border-b border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 px-6">
+              <button
+                type="button"
+                onClick={() => setSidebarTab("factura")}
+                className={`flex-1 py-3 text-xs font-semibold border-b-2 text-center transition-all ${
+                  sidebarTab === "factura"
+                    ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                Compra Actual
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("inventario")}
+                className={`flex-1 py-3 text-xs font-semibold border-b-2 text-center transition-all ${
+                  sidebarTab === "inventario"
+                    ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                Inventario & Ajustes
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("historial")}
+                className={`flex-1 py-3 text-xs font-semibold border-b-2 text-center transition-all ${
+                  sidebarTab === "historial"
+                    ? "border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
+                    : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                Historial de Costos
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {sidebarTab === "factura" && (
+                <div className="space-y-6 animate-fade-in">
+                  {/* Resumen de Valores de Compra */}
+                  <div className="space-y-3">
+                    <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Valores de la Transacción</h3>
+                    
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/30 border border-[var(--border)]">
+                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Cantidad</span>
+                        <p className="font-mono font-bold text-base text-[var(--text-primary)] mt-1">
+                          {selectedProductForSidebar.cantidad}
+                        </p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/30 border border-[var(--border)]">
+                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Precio Unit.</span>
+                        <p className="font-mono font-bold text-base text-[var(--text-primary)] mt-1">
+                          {formatMoney(selectedProductForSidebar.precioUnitario)}
+                        </p>
+                      </div>
+                      <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/30 border border-[var(--border)]">
+                        <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Descuento</span>
+                        <p className={`font-mono font-bold text-base mt-1 ${selectedProductForSidebar.descuento > 0 ? "text-red-500" : "text-[var(--text-muted)]"}`}>
+                          {formatMoney(selectedProductForSidebar.descuento)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* desglose de totales */}
+                  <div className="p-4 rounded-xl border border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 space-y-3">
+                    <h4 className="text-xs font-bold text-[var(--text-primary)]">Desglose Financiero</h4>
+                    
+                    <div className="space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-[var(--text-secondary)]">
+                        <span>Subtotal Neto</span>
+                        <span className="font-mono font-semibold">{formatMoney(selectedProductForSidebar.subtotalSinImpuesto)}</span>
+                      </div>
+                      
+                      <div className="flex justify-between items-center text-[var(--text-secondary)]">
+                        <span>IVA {typeof selectedProductForSidebar.tarifaIva === "number" ? `(${selectedProductForSidebar.tarifaIva}%)` : ""}</span>
+                        <span className="font-mono font-semibold">{formatMoney(selectedProductForSidebar.impuesto)}</span>
+                      </div>
+
+                      {selectedProductForSidebar.baseImponibleIva !== undefined && selectedProductForSidebar.baseImponibleIva > 0 && (
+                        <div className="flex justify-between items-center text-[var(--text-muted)] text-[11px]">
+                          <span>Base Imponible IVA</span>
+                          <span className="font-mono">{formatMoney(selectedProductForSidebar.baseImponibleIva)}</span>
+                        </div>
+                      )}
+
+                      <hr className="border-[var(--border)] my-1" />
+
+                      <div className="flex justify-between items-center text-sm font-bold text-[var(--text-primary)] pt-1">
+                        <span>Total Facturado</span>
+                        <span className="font-mono text-blue-600 dark:text-blue-400">{formatMoney(selectedProductForSidebar.total)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Origen (Información de la factura de compra) */}
+                  {selected && (
+                    <div className="space-y-3">
+                      <h3 className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Factura de Compra Relacionada</h3>
+                      
+                      <div className="p-4 rounded-xl border border-[var(--border)] space-y-3 text-xs">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Proveedor</span>
+                            <p className="font-semibold text-[var(--text-primary)] mt-0.5 break-words">
+                              {selected.proveedorRazonSocial}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
+                              RUC: {selected.proveedorRuc}
+                            </p>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Nº de Factura</span>
+                            <p className="font-semibold text-[var(--text-primary)] mt-0.5 font-mono">
+                              {selected.numeroFactura}
+                            </p>
+                            <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                              Fecha: {selected.fechaEmision}
+                            </p>
+                          </div>
+                        </div>
+
+                        <hr className="border-[var(--border)]" />
+
+                        <div>
+                          <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase flex items-center justify-between">
+                            Clave de Acceso SRI
+                            <button
+                              type="button"
+                              onClick={() => copyToClipboard(selected.claveAcceso, "acceso")}
+                              className="inline-flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                            >
+                              {copiedAcceso ? (
+                                <>
+                                  <Check size={10} /> Copiado
+                                </>
+                              ) : (
+                                <>
+                                  <Copy size={10} /> Copiar
+                                </>
+                              )}
+                            </button>
+                          </span>
+                          <p className="font-mono text-[10px] text-[var(--text-secondary)] mt-1 select-all break-all bg-slate-50 dark:bg-slate-900/40 p-2 rounded border border-[var(--border)]">
+                            {selected.claveAcceso}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {sidebarTab === "inventario" && (
+                <div className="space-y-6 animate-fade-in">
+                  {loadingInventoryProduct ? (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <Loader2 size={24} className="animate-spin text-blue-600 mb-2" />
+                      <span className="text-xs text-[var(--text-muted)]">Cargando producto de inventario...</span>
+                    </div>
+                  ) : !inventoryProduct ? (
+                    <div className="text-center py-12 rounded-xl border border-dashed border-[var(--border)] bg-slate-50 dark:bg-slate-900/10 p-6">
+                      <Package size={28} className="mx-auto mb-3 text-slate-400 opacity-60" />
+                      <p className="font-semibold text-xs text-[var(--text-primary)]">Producto no Sincronizado</p>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-1.5 max-w-xs mx-auto">
+                        Este producto no se encuentra registrado en el inventario global. Asegúrate de sincronizar la compra para agregarlo.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      <div className="p-4 rounded-xl border border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Stock en Bodega</p>
+                          <p className="text-sm font-semibold text-[var(--text-primary)] mt-1 flex items-center gap-1.5">
+                            <Boxes size={14} className="text-slate-400" />
+                            {Math.floor(Number(inventoryProduct.stockActual ?? 0))} {inventoryProduct.unidadMedida || "Unidad(es)"}
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-[var(--border)]">
+                          Inventario Activo
+                        </span>
+                      </div>
+
+                      <div className="space-y-4">
+                        <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide border-b border-[var(--border)] pb-1.5">Ajustes Financieros</h4>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="form-group">
+                            <label className="label">Costo de Compra ($)</label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              className="input font-mono font-semibold"
+                              placeholder="0.00"
+                              value={adjustedCosto}
+                              onChange={(e) => setAdjustedCosto(e.target.value)}
+                            />
+                          </div>
+
+                          <div className="form-group">
+                            <label className="label">Margen de Ganancia (%)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              className="input font-mono font-semibold"
+                              placeholder="25"
+                              value={adjustedMargen}
+                              onChange={(e) => setAdjustedMargen(e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--border)] hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
+                          <div className="min-w-0 pr-3">
+                            <label className="text-xs font-bold text-[var(--text-primary)] block">Aplica IVA (15%)</label>
+                            <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">Determina si se agrega el impuesto al precio de venta final</span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-800 transition-colors cursor-pointer"
+                            checked={adjustedAplicaIva}
+                            onChange={(e) => setAdjustedAplicaIva(e.target.checked)}
+                          />
+                        </div>
+
+                        {/* Caja de previsualización reactiva */}
+                        <div className="p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-950/10 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-[var(--text-secondary)]">Precio de Venta Base (Público)</span>
+                            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 font-mono">
+                              {formatMoney(calcularPrecioVenta(Number(adjustedCosto || 0), Number(adjustedMargen || 0), adjustedAplicaIva))}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-[var(--text-muted)] leading-relaxed">
+                            Fórmula: <code className="font-mono bg-slate-100 dark:bg-slate-900 px-1 py-0.5 rounded">Costo * (1 + Margen/100) {adjustedAplicaIva ? "* 1.15 (IVA)" : ""}</code>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleSaveInventoryProductChanges}
+                          disabled={savingInventoryChanges}
+                          className="btn-primary w-full justify-center py-2.5 text-xs font-bold shadow-md cursor-pointer"
+                        >
+                          {savingInventoryChanges ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin mr-1.5" />
+                              Guardando cambios...
+                            </>
+                          ) : (
+                            <>
+                              <Check size={14} className="mr-1.5" />
+                              Guardar Ajustes de Inventario
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {sidebarTab === "historial" && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+                    <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">Compras Registradas del Artículo</h4>
+                    <span className="text-[10px] font-bold text-[var(--text-muted)]">{selectedProductPriceHistory.length} transacciones</span>
+                  </div>
+
+                  {selectedProductPriceHistory.length === 0 ? (
+                    <div className="text-center py-8 text-[var(--text-muted)] text-xs">
+                      No se encontraron registros de compra para este artículo.
+                    </div>
+                  ) : (
+                    <div className="max-h-[480px] overflow-auto rounded-xl border border-[var(--border)]">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900/80 border-b border-[var(--border)] text-[10px] uppercase text-[var(--text-muted)] font-bold">
+                          <tr>
+                            <th className="px-3 py-2.5">Fecha</th>
+                            <th className="px-3 py-2.5">Factura / Proveedor</th>
+                            <th className="px-3 py-2.5 text-right">Cant.</th>
+                            <th className="px-3 py-2.5 text-right">Costo Unit.</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[var(--border)] bg-white dark:bg-[var(--bg-card)]">
+                          {selectedProductPriceHistory.map((hist, idx) => (
+                            <tr key={`${hist.factura}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                              <td className="px-3 py-2.5 text-[10px] font-mono text-[var(--text-secondary)] whitespace-nowrap align-top">
+                                {hist.fecha}
+                              </td>
+                              <td className="px-3 py-2.5 align-top">
+                                <p className="font-semibold text-[var(--text-primary)] leading-tight">{hist.factura}</p>
+                                <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate max-w-[180px]">{hist.proveedor}</p>
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono font-medium text-[var(--text-secondary)] align-top">
+                                {hist.cantidad}
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-mono font-bold text-blue-600 dark:text-blue-400 align-top">
+                                {formatMoney(hist.precioUnitario)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-[var(--border)] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedProductForSidebar(null)}
+                className="px-5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all duration-200 cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </aside>
+        </div>,
+        modalRoot
+      )}
     </AppShell>
   );
 }

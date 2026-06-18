@@ -258,7 +258,7 @@ export default function GmailXmlSidebar({
 
   return (
     <div
-      className={`fixed inset-0 z-[1000] flex justify-end bg-slate-950/45 backdrop-blur-sm animate-fade-in ${sidebarOpen ? "sidebar-aware-overlay" : ""}`}
+      className={`fixed inset-0 z-[1000] flex justify-end bg-slate-950/45 backdrop-blur-sm animate-fade-in ${sidebarOpen ? "sidebar-aware-overlay" : "sidebar-aware-overlay-collapsed"}`}
       onClick={onClose}
     >
       <div

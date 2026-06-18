@@ -1865,7 +1865,7 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
   };
 
   return (
-    <div className={`nueva-orden-sidebar-container ${sidebarOpen ? 'nueva-orden-sidebar-shifted' : ''}`}>
+    <div className={`nueva-orden-sidebar-container ${sidebarOpen ? 'nueva-orden-sidebar-shifted' : 'nueva-orden-sidebar-shifted-collapsed'}`}>
       <button
         type="button"
         aria-label="Cerrar"

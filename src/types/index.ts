@@ -306,7 +306,7 @@ export interface Producto {
   unidadMedida?: string;
   precioBase: number;
   costoBase: number;
-  margenGanancia?: 25 | 40;
+  margenGanancia?: number;
   aplicaIva: boolean;
   sku: string;
   stockActual?: number;

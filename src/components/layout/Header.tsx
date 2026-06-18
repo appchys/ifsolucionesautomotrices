@@ -9,7 +9,7 @@ export default function Header() {
   return (
     <header
       className={`fixed top-0 right-0 z-20 flex items-center justify-between gap-4 transition-all duration-300 ${
-        sidebarOpen ? "header-displaced" : "left-0"
+        sidebarOpen ? "header-displaced" : "header-displaced-collapsed"
       }`}
       style={{
         height: "var(--header-height)",
@@ -22,7 +22,7 @@ export default function Header() {
     >
       <button
         onClick={toggleSidebar}
-        className="btn-ghost btn-icon"
+        className="btn-ghost btn-icon lg:hidden"
         aria-label={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
         aria-expanded={sidebarOpen}
         aria-controls="app-sidebar"

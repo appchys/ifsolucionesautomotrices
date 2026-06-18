@@ -38,7 +38,7 @@ export default function AppShell({
       {/* Main area */}
       <div
         className={`flex-1 flex flex-col transition-all duration-300 ${
-          sidebarOpen ? "sidebar-displaced" : "ml-0"
+          sidebarOpen ? "sidebar-displaced" : "sidebar-displaced-collapsed"
         }`}
       >
         {!hideHeader && <Header />}

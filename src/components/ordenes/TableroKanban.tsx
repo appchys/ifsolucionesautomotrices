@@ -29,7 +29,9 @@ import {
   Truck,
   Archive,
   XCircle,
-  HelpCircle
+  HelpCircle,
+  ChevronsLeftRight,
+  ChevronsRightLeft
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import OrdenDetalleSidebar from "@/components/ordenes/OrdenDetalleSidebar";
@@ -160,6 +162,9 @@ export default function TableroKanban() {
   const [quickViewOrderId, setQuickViewOrderId] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Columnas colapsadas por el usuario
+  const [collapsedCols, setCollapsedCols] = useState<Record<string, boolean>>({});
 
   // Cargar relaciones de clientes y vehículos
   const loadRelations = useCallback(async () => {
@@ -303,6 +308,77 @@ export default function TableroKanban() {
   const totalSinPagoCount = processedDocs.filter(
     o => !!o.numeroOrden && o.valores.total > 0 && o.valores.abonado === 0
   ).length;
+
+  // Alternar el colapso manual de una columna
+  const toggleColCollapse = (colId: string) => {
+    setCollapsedCols(prev => {
+      const col = COLUMNAS.find(c => c.id === colId);
+      const colIsEmpty = col ? getDocsPorColumna(col).length === 0 : false;
+      const currentVal = prev[colId] !== undefined ? prev[colId] : colIsEmpty;
+      return {
+        ...prev,
+        [colId]: !currentVal
+      };
+    });
+  };
+
+  // Determinar el estado del colapso global de columnas
+  const getCurrentGlobalCollapseState = (): "all" | "empty" | "none" | "mixed" => {
+    let collapsedCount = 0;
+    let emptyCollapsedCount = 0;
+    let emptyCount = 0;
+
+    COLUMNAS.forEach((col) => {
+      const colDocs = getDocsPorColumna(col);
+      const isEmpty = colDocs.length === 0;
+      const isCollapsed = collapsedCols[col.id] !== undefined ? collapsedCols[col.id] : isEmpty;
+
+      if (isEmpty) {
+        emptyCount++;
+        if (isCollapsed) emptyCollapsedCount++;
+      }
+      if (isCollapsed) {
+        collapsedCount++;
+      }
+    });
+
+    if (collapsedCount === COLUMNAS.length) return "all";
+    if (collapsedCount === 0) return "none";
+
+    const nonCollapseds = COLUMNAS.length - collapsedCount;
+    const nonEmptys = COLUMNAS.length - emptyCount;
+    if (emptyCollapsedCount === emptyCount && nonCollapseds === nonEmptys) {
+      return "empty";
+    }
+
+    return "mixed";
+  };
+
+  // Alternar el colapso global ciclando entre los 3 estados
+  const handleGlobalCollapseToggle = () => {
+    const currentState = getCurrentGlobalCollapseState();
+    const nextCollapsed: Record<string, boolean> = {};
+
+    if (currentState === "none") {
+      // none -> empty (contraer vacías)
+      COLUMNAS.forEach((col) => {
+        const isEmpty = getDocsPorColumna(col).length === 0;
+        nextCollapsed[col.id] = isEmpty;
+      });
+    } else if (currentState === "empty") {
+      // empty -> all (contraer todas)
+      COLUMNAS.forEach((col) => {
+        nextCollapsed[col.id] = true;
+      });
+    } else {
+      // all o mixed -> none (expandir todas)
+      COLUMNAS.forEach((col) => {
+        nextCollapsed[col.id] = false;
+      });
+    }
+
+    setCollapsedCols(nextCollapsed);
+  };
 
   // Manejadores de Drag and Drop
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -486,6 +562,35 @@ export default function TableroKanban() {
             <span>{totalSinPagoCount} sin pago</span>
           </button>
 
+          {/* Botón Contraer/Expandir todas las columnas (3 estados) */}
+          {(() => {
+            const globalState = getCurrentGlobalCollapseState();
+            let buttonTitle = "Contraer columnas vacías";
+            let buttonIcon = <Columns3 size={15} />;
+
+            if (globalState === "none") {
+              buttonTitle = "Contraer columnas vacías";
+              buttonIcon = <Columns3 size={15} />;
+            } else if (globalState === "empty") {
+              buttonTitle = "Contraer todas las columnas";
+              buttonIcon = <ChevronsRightLeft size={16} />;
+            } else {
+              buttonTitle = "Expandir todas las columnas";
+              buttonIcon = <ChevronsLeftRight size={16} />;
+            }
+
+            return (
+              <button
+                onClick={handleGlobalCollapseToggle}
+                className="btn btn-sm h-9 w-9 bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border)] rounded-xl flex items-center justify-center cursor-pointer"
+                title={buttonTitle}
+                aria-label={buttonTitle}
+              >
+                {buttonIcon}
+              </button>
+            );
+          })()}
+
           {/* Botón Pantalla Completa */}
           <button
             onClick={toggleFullscreen}
@@ -518,6 +623,7 @@ export default function TableroKanban() {
               const colDocs = getDocsPorColumna(col);
               const isOver = activeOverCol === col.id;
               const isEmpty = colDocs.length === 0;
+              const isCollapsed = collapsedCols[col.id] !== undefined ? collapsedCols[col.id] : isEmpty;
               
               return (
                 <div
@@ -526,45 +632,49 @@ export default function TableroKanban() {
                   onDragLeave={() => setActiveOverCol(null)}
                   onDrop={(e) => handleDrop(e, col)}
                   className={`flex flex-col shrink-0 h-full rounded-2xl border transition-all ${
-                    isEmpty ? "w-[56px]" : "w-[300px]"
+                    isCollapsed ? "w-[56px]" : "w-[300px]"
                   } ${
                     isOver 
                       ? "bg-slate-100/90 border-dashed border-blue-400 scale-[1.01] dark:bg-slate-950/40" 
-                      : draggedId && isEmpty
+                      : draggedId && isCollapsed
                         ? "border-dashed border-slate-300 dark:border-slate-800 bg-slate-50/10 dark:bg-slate-950/10"
                         : "border-transparent bg-transparent"
                   }`}
-                  title={isEmpty ? col.title : undefined}
+                  title={isCollapsed ? col.title : undefined}
                 >
                   {/* Cabecera de la columna */}
                   <div 
-                    className={`p-3 border-b-2 flex items-center shrink-0 ${
-                      isEmpty ? "justify-center px-1" : "justify-between"
+                    className={`p-3 border-b-2 flex items-center shrink-0 cursor-pointer select-none transition-all ${
+                      isCollapsed ? "justify-center px-1" : "justify-between"
                     }`}
                     style={{ borderBottomColor: col.dotColor }}
+                    onClick={() => toggleColCollapse(col.id)}
+                    title={isCollapsed ? `Hacer clic para expandir columna ${col.title}` : `Hacer clic para contraer columna ${col.title}`}
                   >
-                    <div className={`flex items-center gap-2 ${isEmpty ? "justify-center" : ""}`}>
+                    <div className={`flex items-center gap-2 ${isCollapsed ? "justify-center" : "min-w-0"}`}>
                       <col.icon 
                         size={16} 
                         style={{ color: col.dotColor }} 
-                        className={isEmpty ? "mx-auto" : ""} 
+                        className={isCollapsed ? "mx-auto" : "flex-shrink-0"} 
                       />
-                      {!isEmpty && (
-                        <h3 className="font-bold text-xs text-[var(--text-primary)] truncate max-w-[170px]" title={col.title}>
+                      {!isCollapsed && (
+                        <h3 className="font-bold text-xs text-[var(--text-primary)] truncate max-w-[150px]" title={col.title}>
                           {col.title}
                         </h3>
                       )}
                     </div>
-                    {!isEmpty && (
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${col.badgeColorClass}`}>
-                        {colDocs.length}
-                      </span>
+                    {!isCollapsed && (
+                      <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${col.badgeColorClass}`}>
+                          {colDocs.length}
+                        </span>
+                      </div>
                     )}
                   </div>
 
                   {/* Listado de tarjetas */}
                   <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar min-h-0">
-                    {!isEmpty && colDocs.map((o) => {
+                    {!isCollapsed && colDocs.map((o) => {
                         const esIngresoCard = !o.numeroOrden;
                         const numero = esIngresoCard 
                           ? `ING-${String(o.numeroIngreso ?? o.numero ?? 0).padStart(5, "0")}`

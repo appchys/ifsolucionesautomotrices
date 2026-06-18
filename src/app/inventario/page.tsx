@@ -19,7 +19,7 @@ type InventarioForm = {
   descripcion?: string;
   precioBase: number | string;
   costoBase: number | string;
-  margenGanancia?: 25 | 40 | string;
+  margenGanancia?: number | string;
   aplicaIva: boolean;
   sku?: string;
   stockActual?: number | string;
@@ -44,22 +44,22 @@ const formatCurrency = (value: number | undefined) => `$${Number(value ?? 0).toF
 const IVA_RATE = 15;
 const SIN_CATEGORIA_LABEL = "Sin categoria";
 
-function normalizarMargenGanancia(value: unknown): 25 | 40 {
-  return Number(value) === 40 ? 40 : 25;
+function normalizarMargenGanancia(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 25;
 }
 
-function calcularPrecioVenta(costoBase: number, margenGanancia: 25 | 40, aplicaIva = false): number {
+function calcularPrecioVenta(costoBase: number, margenGanancia: number, aplicaIva = false): number {
   const precioConMargen = Number(costoBase || 0) * (1 + margenGanancia / 100);
   const precioFinal = aplicaIva ? precioConMargen * (1 + IVA_RATE / 100) : precioConMargen;
   return Number(precioFinal.toFixed(2));
 }
 
-function resolverMargenProducto(producto: Producto): 25 | 40 {
-  if (producto.margenGanancia === 25 || producto.margenGanancia === 40) return producto.margenGanancia;
+function resolverMargenProducto(producto: Producto): number {
+  if (typeof producto.margenGanancia === "number") return producto.margenGanancia;
   const costoBase = Number(producto.costoBase ?? 0);
   if (costoBase <= 0) return 25;
-  const margenActual = (Number(producto.precioBase ?? 0) / costoBase - 1) * 100;
-  return Math.abs(margenActual - 40) < Math.abs(margenActual - 25) ? 40 : 25;
+  return Number(((Number(producto.precioBase ?? 0) / costoBase - 1) * 100).toFixed(2));
 }
 const PRODUCT_UNITS = ["Unidad", "Litro", "Galón", "Metro", "Kilogramo", "Gramo", "Caja", "Par", "Juego"];
 
@@ -257,7 +257,7 @@ export default function InventarioPage() {
   const [notaMovimientoStock, setNotaMovimientoStock] = useState("");
   const [guardandoStock, setGuardandoStock] = useState(false);
   const [costoBaseForm, setCostoBaseForm] = useState(0);
-  const [margenGananciaForm, setMargenGananciaForm] = useState<25 | 40>(25);
+  const [margenGananciaForm, setMargenGananciaForm] = useState<number>(25);
   const [aplicaIvaForm, setAplicaIvaForm] = useState(true);
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<InventarioForm>();
@@ -433,7 +433,7 @@ export default function InventarioPage() {
     }
   };
 
-  const cambiarMargenProducto = async (producto: Producto, margenGanancia: 25 | 40) => {
+  const cambiarMargenProducto = async (producto: Producto, margenGanancia: number) => {
     if (!producto.id || togglingMargen.has(producto.id)) return;
     const margenActual = resolverMargenProducto(producto);
     if (margenActual === margenGanancia) return;

@@ -20,6 +20,7 @@
   --text-secondary: #475569;
   --text-muted: #64748b;
   --sidebar-width: 260px;
+  --sidebar-width-collapsed: 70px;
   --header-height: 64px;
   --app-content-gutter-x: clamp(1.25rem, 4vw, 3rem);
   --app-content-gutter-y: 1.5rem;
@@ -43,6 +44,25 @@
   --text-primary: #f1f5f9;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
+}
+
+.sidebar-open {
+  width: var(--sidebar-width);
+  border-right: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+.sidebar-collapsed {
+  width: 0px;
+  border-right: none;
+  box-shadow: none;
+}
+
+@media (min-width: 1024px) {
+  .sidebar-collapsed {
+    width: var(--sidebar-width-collapsed);
+    border-right: 1px solid var(--border);
+  }
 }
 
 *,
@@ -71,7 +91,13 @@ html, body {
 .sidebar-displaced {
   margin-left: 0;
 }
+.sidebar-displaced-collapsed {
+  margin-left: 0;
+}
 .header-displaced {
+  left: 0;
+}
+.header-displaced-collapsed {
   left: 0;
 }
 
@@ -79,14 +105,26 @@ html, body {
   .sidebar-displaced {
     margin-left: var(--sidebar-width);
   }
+  .sidebar-displaced-collapsed {
+    margin-left: var(--sidebar-width-collapsed);
+  }
   .header-displaced {
     left: var(--sidebar-width);
+  }
+  .header-displaced-collapsed {
+    left: var(--sidebar-width-collapsed);
   }
   .sidebar-aware-overlay {
     left: var(--sidebar-width);
   }
+  .sidebar-aware-overlay-collapsed {
+    left: var(--sidebar-width-collapsed);
+  }
   .nueva-orden-sidebar-container.nueva-orden-sidebar-shifted {
     left: var(--sidebar-width);
+  }
+  .nueva-orden-sidebar-container.nueva-orden-sidebar-shifted-collapsed {
+    left: var(--sidebar-width-collapsed);
   }
 }
 
@@ -334,11 +372,13 @@ textarea.input { resize: vertical; }
   border-radius: 10px;
   font-size: 13px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: all 0.2s ease, padding 0.3s ease;
   cursor: pointer;
   color: var(--text-secondary);
   text-decoration: none;
   border-left: 3px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .sidebar-link:hover { background: var(--bg-hover); color: var(--text-primary); }
 .sidebar-link.active {
