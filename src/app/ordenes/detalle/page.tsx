@@ -16,7 +16,7 @@ function OrdenDetalleContent() {
   if (!id) return null;
 
   return (
-    <AppShell>
+    <AppShell hideHeader>
       <VistaOrdenDetalle ordenId={id} />
     </AppShell>
   );

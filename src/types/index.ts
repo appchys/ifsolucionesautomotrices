@@ -164,12 +164,13 @@ export interface OrdenTrabajo {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
   fechaEntrega?: Timestamp;
+  facturaManual?: string;
 }
 
 export interface ItemOrden {
   id?: string;
   ordenId: string;
-  tipo: "producto" | "servicio";
+  tipo: "producto" | "servicio" | "externo";
   productoId?: string;
   productoSku?: string;
   productoNombre?: string;
@@ -179,6 +180,10 @@ export interface ItemOrden {
   impuestoAplicable: number;
   subtotal: number;
   createdAt?: Timestamp;
+  proveedorExterno?: string;
+  costoExterno?: number;
+  compraId?: string;
+  pagadoExterno?: boolean;
 }
 
 export type AccionInventarioDevolucion = "reingresar_stock" | "merma" | "garantia_proveedor" | "sin_reingreso";

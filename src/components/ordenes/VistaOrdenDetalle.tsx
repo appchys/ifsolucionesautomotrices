@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -20,6 +20,8 @@ import {
   uploadOrdenFoto,
   getPresupuestoPorIngreso,
   getDatosTaller,
+  getProductos,
+  getServicios,
 } from "@/lib/services";
 import {
   OrdenTrabajo,
@@ -35,6 +37,8 @@ import {
   Cliente,
   AppUser,
   DatosTaller,
+  Producto,
+  Servicio,
 } from "@/types";
 import {
   ChevronLeft,
@@ -64,6 +68,8 @@ import {
   Calendar,
   Grid,
   FileDown,
+  MoreVertical,
+  Box,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
@@ -144,6 +150,8 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   // Edit / Form State
   const [motivo, setMotivo] = useState("");
   const [tipoServicio, setTipoServicio] = useState<TipoServicio>("Mantenimiento");
+  const [editingFactura, setEditingFactura] = useState(false);
+  const [facturaVal, setFacturaVal] = useState("");
   const [fechaCreacion, setFechaCreacion] = useState("");
   const [fechaEntrega, setFechaEntrega] = useState("");
   const [tecnicoId, setTecnicoId] = useState("");
@@ -164,6 +172,14 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isFirmasModalOpen, setIsFirmasModalOpen] = useState(false);
+  const [activePopoverItemId, setActivePopoverItemId] = useState<string | null>(null);
+
+  // Catalog search states
+  const [catalogoProductos, setCatalogoProductos] = useState<Producto[]>([]);
+  const [catalogoServicios, setCatalogoServicios] = useState<Servicio[]>([]);
+  const [searchText, setSearchText] = useState("");
+  const [searchResultsOpen, setSearchResultsOpen] = useState(false);
+  const [searchQuantities, setSearchQuantities] = useState<Record<string, number>>({});
 
   // Local state for Payment Modal
   const [montoPago, setMontoPago] = useState("");
@@ -188,13 +204,15 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       }
 
       setOrden(oData);
-      const [cData, vData, itemsData, uData, pagosData, tallerData] = await Promise.all([
+      const [cData, vData, itemsData, uData, pagosData, tallerData, prodData, servData] = await Promise.all([
         oData.cliente || getClienteById(oData.clienteId),
         oData.vehiculo || getVehiculoById(oData.vehiculoId),
         getItemsOrden(ordenId),
         getUsuarios(),
         getPagos(ordenId),
         getDatosTaller(),
+        getProductos(),
+        getServicios(),
       ]);
 
       setCliente(cData);
@@ -204,6 +222,8 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       setTodosLosUsuarios(uData);
       setPagos(pagosData);
       setTaller(tallerData);
+      setCatalogoProductos(prodData);
+      setCatalogoServicios(servData);
 
       // Populate local states
       setMotivo(oData.motivo || "");
@@ -216,6 +236,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       setDanos(oData.inspeccionVisual?.danos || []);
       setInformeTecnico(oData.informeTecnico || "");
       setNotasInternas(oData.notasInternas || "");
+      setFacturaVal(oData.facturaManual || "");
 
       // Date parsing
       if (oData.createdAt) {
@@ -284,52 +305,196 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
 
   // Add Item to Order
   const handleAddItem = async (itemData: Omit<ItemOrden, "id" | "ordenId" | "subtotal">) => {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const subtotal = itemData.cantidad * itemData.precioUnitario;
+    const itemOptimista: ItemOrden = {
+      ...itemData,
+      id: tempId,
+      ordenId,
+      subtotal,
+    };
+
+    // Actualización optimista del estado local
+    setItems((prev) => [...prev, itemOptimista]);
+
     try {
-      const subtotal = itemData.cantidad * itemData.precioUnitario;
-      const newItem: Omit<ItemOrden, "id"> = {
+      const newItemData = {
         ...itemData,
         ordenId,
         subtotal,
       };
-      await addItemOrden(ordenId, newItem);
-      setItems(await getItemsOrden(ordenId));
+      
+      const realId = await addItemOrden(ordenId, newItemData);
+      
+      // Reemplazar el tempId con el ID real de Firestore en el estado
+      setItems((prev) =>
+        prev.map((it) => (it.id === tempId ? { ...it, id: realId } : it))
+      );
       toast.success("Item agregado");
     } catch (err) {
       console.error(err);
+      // Revertir el estado local en caso de error
+      setItems((prev) => prev.filter((it) => it.id !== tempId));
       toast.error("Error al agregar item");
     }
   };
 
-  // Update Item in Order
-  const handleUpdateItem = async (itemId: string, fieldName: keyof ItemOrden, value: any) => {
-    try {
-      const itemToUpdate = items.find((i) => i.id === itemId);
-      if (!itemToUpdate) return;
-      const updatedItem = { ...itemToUpdate, [fieldName]: value };
-      updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+  // Sync external items to Purchases module
+  const syncExternoItemWithCompra = async (item: ItemOrden, updatedFields: Partial<ItemOrden>) => {
+    const finalItem = { ...item, ...updatedFields };
+    
+    // Si no es tipo externo y tiene compra vinculada, borramos la compra
+    if (finalItem.tipo !== "externo") {
+      if (finalItem.compraId) {
+        try {
+          const { deleteDoc, doc } = await import("firebase/firestore");
+          const { db } = await import("@/lib/firebase");
+          await deleteDoc(doc(db, "compras", finalItem.compraId));
+          // Limpiar compraId y datos externos en Firebase
+          await updateItemOrden(ordenId, finalItem.id!, {
+            compraId: "",
+            proveedorExterno: "",
+            costoExterno: 0,
+            pagadoExterno: false
+          });
+        } catch (error) {
+          console.error("Error al eliminar compra vinculada a item externo:", error);
+        }
+      }
+      return;
+    }
 
+    // Si es externo pero no tiene costo o taller, no guardamos aún en compras
+    if (!finalItem.costoExterno || !finalItem.proveedorExterno) {
+      return;
+    }
+
+    try {
+      const { doc, setDoc, addDoc, collection } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+
+      const compraData: any = {
+        estadoAutorizacion: "AUTORIZADO",
+        numeroAutorizacion: "AUT-" + Date.now(),
+        fechaAutorizacion: new Date().toLocaleDateString(),
+        proveedorRazonSocial: finalItem.proveedorExterno,
+        proveedorRuc: "EXTERNO",
+        claveAcceso: "EXT-" + finalItem.id,
+        establecimiento: "001",
+        puntoEmision: "001",
+        secuencial: String(Date.now()).slice(-9),
+        numeroFactura: `OT-${String(orden?.numeroOrden ?? orden?.numero ?? 0).padStart(4, "0")}-${finalItem.id?.slice(-4)}`,
+        fechaEmision: new Date().toISOString().split("T")[0],
+        compradorRazonSocial: taller?.razonSocial || "Taller",
+        compradorIdentificacion: taller?.ruc || "Taller RUC",
+        totalSinImpuestos: finalItem.costoExterno * finalItem.cantidad,
+        totalDescuento: 0,
+        importeTotal: finalItem.costoExterno * finalItem.cantidad,
+        moneda: "USD",
+        items: [{
+          codigo: "EXT",
+          descripcion: `Servicio externo: ${finalItem.descripcion}`,
+          cantidad: finalItem.cantidad,
+          precioUnitario: finalItem.costoExterno,
+          descuento: 0,
+          subtotalSinImpuesto: finalItem.costoExterno * finalItem.cantidad,
+          impuesto: 0,
+          total: finalItem.costoExterno * finalItem.cantidad,
+        }],
+        pagosProveedor: finalItem.pagadoExterno ? [{
+          monto: finalItem.costoExterno * finalItem.cantidad,
+          metodoPago: "efectivo",
+          fecha: new Date().toISOString().split("T")[0],
+        }] : [],
+        totalPagadoProveedor: finalItem.pagadoExterno ? finalItem.costoExterno * finalItem.cantidad : 0,
+        saldoProveedor: finalItem.pagadoExterno ? 0 : finalItem.costoExterno * finalItem.cantidad,
+        estadoPagoProveedor: finalItem.pagadoExterno ? "pagado" : "pendiente",
+        inventarioSincronizado: false,
+        updatedAt: new Date(),
+      };
+
+      if (finalItem.compraId) {
+        await setDoc(doc(db, "compras", finalItem.compraId), compraData, { merge: true });
+      } else {
+        compraData.createdAt = new Date();
+        const docRef = await addDoc(collection(db, "compras"), compraData);
+        await updateItemOrden(ordenId, finalItem.id!, {
+          compraId: docRef.id
+        });
+        setItems(prev => prev.map(i => i.id === finalItem.id ? { ...i, compraId: docRef.id } : i));
+      }
+    } catch (error) {
+      console.error("Error al sincronizar item externo con compra:", error);
+    }
+  };
+
+  // Update multiple fields in Item
+  const handleUpdateItemFields = async (itemId: string, updates: Partial<ItemOrden>) => {
+    // Si es un item temporal, no permitir su actualización hasta que se guarde en Firestore
+    if (itemId.startsWith("temp-")) return;
+
+    const itemToUpdate = items.find((i) => i.id === itemId);
+    if (!itemToUpdate) return;
+    const updatedItem = { ...itemToUpdate, ...updates };
+    updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+
+    const previousItems = [...items];
+
+    // Actualizar UI inmediatamente
+    setItems((prev) => prev.map((it) => (it.id === itemId ? updatedItem : it)));
+
+    try {
       await updateItemOrden(ordenId, itemId, {
-        [fieldName]: value,
+        ...updates,
         subtotal: updatedItem.subtotal,
       });
-      setItems(items.map((it) => (it.id === itemId ? updatedItem : it)));
+
+      // Sincronizar item externo con compras en segundo plano
+      void syncExternoItemWithCompra(itemToUpdate, updates);
     } catch (err) {
       console.error(err);
       toast.error("Error al actualizar item");
+      // Revertir cambios en caso de error
+      setItems(previousItems);
     }
+  };
+
+  // Update Item in Order (backward compatibility wrapper)
+  const handleUpdateItem = async (itemId: string, fieldName: keyof ItemOrden, value: any) => {
+    await handleUpdateItemFields(itemId, { [fieldName]: value });
   };
 
   // Delete Item from Order
   const handleDeleteItem = async (itemId?: string) => {
     if (!itemId) return;
+    if (itemId.startsWith("temp-")) return; // No eliminar si es temporal y se está guardando
     if (!confirm("¿Eliminar este ítem?")) return;
+
+    const itemToDelete = items.find((i) => i.id === itemId);
+    if (!itemToDelete) return;
+
+    const previousItems = [...items];
+
+    // Actualizar UI inmediatamente
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+
     try {
+      if (itemToDelete.compraId) {
+        try {
+          const { deleteDoc, doc } = await import("firebase/firestore");
+          const { db } = await import("@/lib/firebase");
+          await deleteDoc(doc(db, "compras", itemToDelete.compraId));
+        } catch (err) {
+          console.error("Error al eliminar compra asociada a item externo:", err);
+        }
+      }
       await deleteItemOrden(ordenId, itemId);
-      setItems(items.filter((i) => i.id !== itemId));
       toast.success("Ítem eliminado");
     } catch (err) {
       console.error(err);
       toast.error("Error al eliminar item");
+      // Revertir cambios en caso de error
+      setItems(previousItems);
     }
   };
 
@@ -431,6 +596,38 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
 
   const totalAbonado = pagos.reduce((acc, p) => acc + (p.montoBase ?? p.monto), 0);
   const saldoPendiente = Math.max(0, total - totalAbonado);
+
+  // Filter catalog items reactively
+  const filteredCatalogResults = useMemo(() => {
+    if (!searchText.trim()) return [];
+    const term = searchText.toLowerCase();
+    
+    const matchedProds = catalogoProductos.filter((p) =>
+      p.nombre.toLowerCase().includes(term) || (p.sku && p.sku.toLowerCase().includes(term))
+    ).map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      precio: p.precioBase,
+      aplicaIva: p.aplicaIva,
+      tipo: "producto" as const,
+      sku: p.sku,
+      stockActual: p.stockActual ?? 0,
+    }));
+
+    const matchedServs = catalogoServicios.filter((s) =>
+      s.nombre.toLowerCase().includes(term)
+    ).map((s) => ({
+      id: s.id,
+      nombre: s.nombre,
+      precio: s.precioBase,
+      aplicaIva: s.aplicaIva,
+      tipo: "servicio" as const,
+      sku: undefined,
+      stockActual: Infinity,
+    }));
+
+    return [...matchedProds, ...matchedServs].slice(0, 10);
+  }, [catalogoProductos, catalogoServicios, searchText]);
 
   const handleAddPago = async () => {
     if (!montoPago || isNaN(Number(montoPago)) || Number(montoPago) <= 0) {
@@ -673,7 +870,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   const advisorPhoto = dbAdvisorUser?.photoURL || (advisorUser as any)?.photoURL;
 
   return (
-    <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
+    <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 2rem)" }}>
       {/* Top Header Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-3 mb-4 shrink-0 bg-[var(--bg-card)] px-4 py-2 rounded-xl shadow-sm">
         <div className="flex items-center gap-3">
@@ -688,6 +885,40 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
             <h1 className="text-lg font-extrabold flex items-center gap-2">
               Orden <span className="text-blue-600 font-mono">#OT-{String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0")}</span>
             </h1>
+            <div className="mt-0.5 leading-none flex">
+              {editingFactura ? (
+                <input
+                  type="text"
+                  className="bg-transparent border-b border-slate-300 dark:border-slate-700 text-[11px] font-semibold text-slate-400 dark:text-slate-500 focus:outline-none focus:border-blue-500 px-1 py-0 w-36"
+                  value={facturaVal}
+                  autoFocus
+                  onChange={(e) => setFacturaVal(e.target.value)}
+                  onBlur={async () => {
+                    setEditingFactura(false);
+                    await handleSaveField({ facturaManual: facturaVal.trim() });
+                  }}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter") {
+                      setEditingFactura(false);
+                      await handleSaveField({ facturaManual: facturaVal.trim() });
+                    } else if (e.key === "Escape") {
+                      setEditingFactura(false);
+                      setFacturaVal(orden.facturaManual || "");
+                    }
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingFactura(true)}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-400 border-none bg-transparent cursor-pointer py-0"
+                  title="Editar número de factura"
+                >
+                  <span>{orden.facturaManual ? `Factura: ${orden.facturaManual}` : "Sin factura"}</span>
+                  <Edit2 size={10} className="opacity-60" />
+                </button>
+              )}
+            </div>
           </div>
           
           {/* Creation and Delivery Dates */}
@@ -983,80 +1214,154 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
         {/* Left Column (Items & Form) - Scrollable */}
         <div className="flex-1 flex flex-col gap-5 overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0">
           
-          {/* Customer info card */}
-          <div className="card bg-[var(--bg-card)] flex items-center justify-between gap-4 py-3 border border-[var(--border)] shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 text-sm font-bold uppercase">
-                {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
-              </div>
-              <div>
-                <p className="font-extrabold text-sm text-[var(--text-primary)] uppercase">
-                  {cliente.nombre} {cliente.apellido}
-                </p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <a
-                    href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
-                    target="_blank"
-                    className="text-xs text-[var(--text-muted)] hover:text-green-600 flex items-center gap-1"
-                  >
-                    <span className="text-green-500 font-bold">📲</span> {cliente.telefono}
-                  </a>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setIsClienteModalOpen(true)}
-              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
-              title="Cambiar cliente"
-            >
-              <Edit2 size={15} />
-            </button>
-          </div>
 
-          {/* MOTIVO DE INGRESO */}
-          <div className="card bg-[var(--bg-card)] border border-[var(--border)] shadow-sm space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Motivo de Ingreso</span>
-              <div className="flex items-center gap-4 text-xs font-semibold text-[var(--text-secondary)]">
-                {["Diagnóstico", "Reparación", "Mantenimiento", "Garantía"].map((tipo) => (
-                  <label key={tipo} className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="tipoServicio"
-                      className="text-blue-600 focus:ring-0 cursor-pointer"
-                      checked={tipoServicio === tipo || (tipo === "Mantenimiento" && tipoServicio === "Mantenimiento")}
-                      onChange={() => {
-                        const parsedVal = tipo === "Diagnóstico" ? "Mantenimiento" : (tipo as TipoServicio);
-                        setTipoServicio(parsedVal);
-                        handleSaveField({ tipoServicio: parsedVal });
-                      }}
-                    />
-                    {tipo}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <textarea
-              className="input w-full bg-slate-50/50 hover:bg-slate-50 border border-[var(--border)] text-sm rounded-lg"
-              placeholder="Describa el motivo detallado de ingreso"
-              value={motivo}
-              onChange={(e) => setMotivo(e.target.value)}
-              onBlur={() => handleSaveField({ motivo })}
-              rows={2}
-            />
-          </div>
 
           {/* Items search */}
-          <div className="flex gap-3 shrink-0">
+          <div className="flex gap-3 shrink-0 relative">
             <div className="relative flex-1">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input
                 type="text"
-                className="input pl-10 w-full border border-[var(--border)] text-sm rounded-lg bg-[var(--bg-card)] focus:border-blue-500"
-                placeholder="Buscar producto, servicio o código de barras... (CTRL+K)"
-                onClick={() => setIsCatalogOpen(true)}
-                readOnly
+                className="input pl-10 w-full border border-[var(--border)] text-sm rounded-lg bg-[var(--bg-card)] focus:border-blue-500 text-[var(--text-primary)]"
+                placeholder="Buscar producto, servicio o código de barras..."
+                value={searchText}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                  setSearchResultsOpen(true);
+                }}
+                onFocus={() => setSearchResultsOpen(true)}
               />
+
+              {/* Autocomplete Dropdown Panel */}
+              {searchResultsOpen && searchText.trim() && (
+                <>
+                  <div className="fixed inset-0 z-[100]" onClick={() => setSearchResultsOpen(false)}></div>
+                  <div className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-72 overflow-y-auto z-[110] divide-y divide-slate-100 dark:divide-slate-800 custom-scrollbar">
+                    {filteredCatalogResults.length === 0 ? (
+                      <div className="p-4 text-center text-xs text-[var(--text-muted)]">
+                        No se encontraron resultados para "{searchText}"
+                      </div>
+                    ) : (
+                      filteredCatalogResults.map((result) => {
+                        const isProd = result.tipo === "producto";
+                        const stockActual = isProd ? Math.floor(result.stockActual) : Infinity;
+                        const outOfStock = isProd && stockActual <= 0;
+                        const qty = searchQuantities[result.id || ""] ?? 1;
+                        return (
+                          <div
+                            key={result.id}
+                            className={`w-full flex flex-col sm:flex-row sm:items-center justify-between p-3 text-left transition-colors text-xs gap-3 ${
+                              outOfStock 
+                                ? "opacity-50 bg-slate-50/50 cursor-not-allowed" 
+                                : "hover:bg-blue-50/50 dark:hover:bg-blue-950/10"
+                            }`}
+                          >
+                            {/* Información del item */}
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-blue-600 shrink-0">
+                                {isProd ? <Box size={16} /> : <PenTool size={16} />}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-[var(--text-primary)]">{result.nombre}</span>
+                                  {result.aplicaIva && (
+                                    <span className="text-[8px] bg-blue-100 text-blue-700 px-1 py-0.2 rounded font-bold uppercase tracking-wider">
+                                      IVA
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px] text-[var(--text-muted)] mt-0.5">
+                                  {isProd ? (
+                                    <>
+                                      <span className="uppercase font-mono">SKU: {result.sku || "S/N"}</span>
+                                      <span>·</span>
+                                      <span className={outOfStock ? "text-red-500 font-semibold" : ""}>Stock: {stockActual}</span>
+                                    </>
+                                  ) : (
+                                    <span>Servicio</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Controles de Precio, Cantidad y Agregar */}
+                            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 pl-11 sm:pl-0">
+                              <div className="font-extrabold text-[var(--text-primary)] text-sm whitespace-nowrap">
+                                ${result.precio.toFixed(2)}
+                              </div>
+
+                              {outOfStock ? (
+                                <span className="text-[10px] bg-red-100 dark:bg-red-950/30 text-red-600 px-2.5 py-1 rounded-md font-bold uppercase tracking-wider border border-red-200 dark:border-red-900/30">
+                                  Agotado
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  {/* Controles de cantidad */}
+                                  <div className="inline-flex items-center border border-[var(--border)] rounded-lg bg-white dark:bg-slate-800 overflow-hidden shadow-sm h-7">
+                                    <button
+                                      type="button"
+                                      className="px-1.5 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-650 text-xs font-bold text-slate-500 h-full border-0 cursor-pointer"
+                                      onClick={() => setSearchQuantities(prev => ({ ...prev, [result.id || ""]: Math.max(1, qty - 1) }))}
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      className="w-8 text-center border-0 p-0 text-xs font-semibold focus:ring-0 bg-transparent text-[var(--text-primary)]"
+                                      value={qty}
+                                      onChange={(e) => {
+                                        const parsedVal = Math.max(1, Math.min(stockActual, Number(e.target.value) || 1));
+                                        setSearchQuantities(prev => ({ ...prev, [result.id || ""]: parsedVal }));
+                                      }}
+                                    />
+                                    <button
+                                      type="button"
+                                      className="px-1.5 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-650 text-xs font-bold text-slate-500 h-full border-0 cursor-pointer"
+                                      onClick={() => setSearchQuantities(prev => ({ ...prev, [result.id || ""]: Math.min(stockActual, qty + 1) }))}
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+
+                                  {/* Botón Agregar */}
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const precioUnitario = (!isProd || !result.aplicaIva) ? result.precio : Number((result.precio / 1.15).toFixed(2));
+                                      await handleAddItem({
+                                        tipo: result.tipo,
+                                        productoId: result.id,
+                                        productoSku: result.sku,
+                                        productoNombre: result.nombre,
+                                        descripcion: result.nombre,
+                                        cantidad: qty,
+                                        precioUnitario,
+                                        impuestoAplicable: result.aplicaIva ? 15 : 0,
+                                      });
+                                      // Limpiar búsqueda
+                                      setSearchText("");
+                                      setSearchResultsOpen(false);
+                                      // Limpiar cantidad específica
+                                      setSearchQuantities(prev => {
+                                        const next = { ...prev };
+                                        delete next[result.id || ""];
+                                        return next;
+                                      });
+                                    }}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1.5 rounded-lg text-xs shadow-sm transition-colors cursor-pointer border-none flex items-center gap-1"
+                                  >
+                                    Agregar
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </>
+              )}
             </div>
             <button
               onClick={() => setIsCatalogOpen(true)}
@@ -1067,131 +1372,254 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
           </div>
 
           {/* Table of items */}
-          <div className="border border-[var(--border)] rounded-xl shadow-sm bg-[var(--bg-card)]">
-            {/* Table header */}
+          <div className="border border-[var(--border)] rounded-xl shadow-sm bg-[var(--bg-card)] overflow-visible">
             <table className="table w-full">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-slate-50/50">
                   <th>Descripción</th>
                   <th className="text-center w-24">Cant</th>
                   <th className="text-right w-28">Precio</th>
-                  <th className="text-center w-20">Dcto</th>
+                  <th className="text-center w-20">IVA</th>
                   <th className="text-right w-28">Total</th>
-                  <th className="w-10"></th>
+                  <th className="w-16"></th>
                 </tr>
               </thead>
-            </table>
+              <tbody className="divide-y divide-slate-100">
+                {items.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-10 text-[var(--text-muted)] text-sm">
+                      No hay repuestos o servicios cargados a esta orden.
+                    </td>
+                  </tr>
+                ) : (
+                  items.map((item, idx) => {
+                    const isOptimistic = item.id?.startsWith("temp-");
+                    return (
+                      <tr key={item.id || idx} className={`hover:bg-slate-50/50 transition-opacity duration-300 ${isOptimistic ? "opacity-65 pointer-events-none select-none" : ""}`}>
+                      <td className="py-2.5">
+                        <p className="font-bold text-[var(--text-primary)] text-sm truncate" title={item.descripcion}>
+                          {item.descripcion}
+                        </p>
+                        {item.productoSku && (
+                          <p className="font-mono text-[10px] text-[var(--text-muted)] uppercase mt-0.5">
+                            SKU: {item.productoSku}
+                          </p>
+                        )}
+                      </td>
+                      <td className="text-center py-2.5">
+                        <div className="inline-flex items-center border border-[var(--border)] rounded-lg bg-white overflow-hidden shadow-sm">
+                          <button
+                            type="button"
+                            className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                            onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            className="w-10 text-center border-0 p-0 text-xs font-semibold focus:ring-0"
+                            value={item.cantidad}
+                            onChange={(e) => {
+                              const newItems = [...items];
+                              newItems[idx].cantidad = Number(e.target.value);
+                              setItems(newItems);
+                            }}
+                            onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
+                          />
+                          <button
+                            type="button"
+                            className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                            onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </td>
+                      <td className="text-right py-2.5">
+                        <div className="relative inline-block w-24">
+                          <input
+                            type="number"
+                            className="w-full text-right border border-[var(--border)] rounded-lg p-1 text-xs focus:ring-0"
+                            value={item.precioUnitario}
+                            onChange={(e) => {
+                              const newItems = [...items];
+                              newItems[idx].precioUnitario = Number(e.target.value);
+                              setItems(newItems);
+                            }}
+                            onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                          />
+                        </div>
+                      </td>
+                      <td className="text-center text-xs text-slate-500 py-2.5">
+                        {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
+                      </td>
+                      <td className="text-right font-extrabold text-sm text-[var(--text-primary)] py-2.5">
+                        ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                      </td>
+                      <td className="text-center py-2.5 relative flex items-center justify-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                          className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                            activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                          }`}
+                          title="Opciones de ítem"
+                        >
+                          <MoreVertical size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(item.id)}
+                          className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100"
+                          title="Eliminar ítem"
+                        >
+                          <Trash2 size={14} />
+                        </button>
 
-            {/* Scrollable table body */}
-            <div style={{ maxHeight: "220px", overflowY: "auto" }} className="custom-scrollbar">
-              <table className="table w-full">
-                <tbody className="divide-y divide-slate-100">
-                  {items.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-10 text-[var(--text-muted)] text-sm">
-                        No hay repuestos o servicios cargados a esta orden.
+                        {/* Popover flotante de 3 puntos */}
+                        {activePopoverItemId === item.id && (
+                          <>
+                            <div className="fixed inset-0 z-[120]" onClick={() => setActivePopoverItemId(null)}></div>
+                            <div className="absolute right-10 top-0 z-[130] w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-4 text-left">
+                              {/* TIPO DE ITEM */}
+                              <div className="mb-4">
+                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">TIPO DE ITEM</span>
+                                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg">
+                                  {(["servicio", "producto", "externo"] as const).map((t) => (
+                                    <button
+                                      key={t}
+                                      type="button"
+                                      className={`flex-1 text-center py-1 text-xs font-bold rounded-md transition-all capitalize border-0 cursor-pointer ${
+                                        (item.tipo === t || (t === "servicio" && !item.tipo))
+                                          ? "bg-blue-600 text-white shadow-sm"
+                                          : "text-slate-500 dark:text-slate-400 bg-transparent hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+                                      }`}
+                                      onClick={() => {
+                                        void handleUpdateItemFields(item.id!, { tipo: t });
+                                      }}
+                                    >
+                                      {t === "externo" ? "Externo" : t === "servicio" ? "Servicio" : "Producto"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Exento de Impuesto */}
+                              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 mb-3">
+                                <div>
+                                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Exento de impuesto</span>
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-0.5">IVA 15%</span>
+                                </div>
+                                <label className="relative inline-flex items-center cursor-pointer select-none">
+                                  <input
+                                    type="checkbox"
+                                    checked={item.impuestoAplicable === 0}
+                                    onChange={(e) => {
+                                      const isExent = e.target.checked;
+                                      void handleUpdateItemFields(item.id!, { impuestoAplicable: isExent ? 0 : 15 });
+                                    }}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                              </div>
+
+                              {/* % IVA */}
+                              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 mb-3">
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">% IVA</span>
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="number"
+                                    className="w-16 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
+                                    value={item.impuestoAplicable}
+                                    disabled={item.impuestoAplicable === 0}
+                                    onChange={(e) => {
+                                      const val = Number(e.target.value);
+                                      const newItems = items.map(it => it.id === item.id ? { ...it, impuestoAplicable: val } : it);
+                                      setItems(newItems);
+                                    }}
+                                    onBlur={(e) => {
+                                      void handleUpdateItemFields(item.id!, { impuestoAplicable: Number(e.target.value) });
+                                    }}
+                                  />
+                                  <span className="text-xs text-slate-500">%</span>
+                                </div>
+                              </div>
+
+                              {/* OPCIONES DE ITEM EXTERNO (CONDICIONAL) */}
+                              {item.tipo === "externo" && (
+                                <div className="border-t border-slate-100 dark:border-slate-800 pt-3 space-y-3">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Taller / Proveedor Externo</label>
+                                    <input
+                                      type="text"
+                                      className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
+                                      placeholder="Ej: Rectificadora Guayaquil"
+                                      value={item.proveedorExterno || ""}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        const newItems = items.map(it => it.id === item.id ? { ...it, proveedorExterno: val } : it);
+                                        setItems(newItems);
+                                      }}
+                                      onBlur={(e) => {
+                                        void handleUpdateItemFields(item.id!, { proveedorExterno: e.target.value });
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <div className="flex-1">
+                                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Costo ($)</label>
+                                      <input
+                                        type="number"
+                                        className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
+                                        placeholder="0.00"
+                                        value={item.costoExterno || ""}
+                                        onChange={(e) => {
+                                          const val = Number(e.target.value);
+                                          const newItems = items.map(it => it.id === item.id ? { ...it, costoExterno: val } : it);
+                                          setItems(newItems);
+                                        }}
+                                        onBlur={(e) => {
+                                          void handleUpdateItemFields(item.id!, { costoExterno: Number(e.target.value) });
+                                        }}
+                                      />
+                                    </div>
+                                    <div className="flex-1 flex flex-col justify-end">
+                                      <label className="flex items-center gap-1.5 cursor-pointer pb-2 text-xs font-semibold text-slate-700 dark:text-slate-300 select-none">
+                                        <input
+                                          type="checkbox"
+                                          checked={item.pagadoExterno || false}
+                                          onChange={(e) => {
+                                            void handleUpdateItemFields(item.id!, { pagadoExterno: e.target.checked });
+                                          }}
+                                          className="rounded border-slate-300 text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                                        />
+                                        ¿Pagado?
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* BOTÓN CERRAR */}
+                              <div className="border-t border-slate-100 dark:border-slate-800 pt-2 mt-3 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePopoverItemId(null)}
+                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold border-none cursor-pointer"
+                                >
+                                  Cerrar
+                                </button>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </td>
                     </tr>
-                  ) : (
-                    items.map((item, idx) => (
-                      <tr key={item.id || idx} className="hover:bg-slate-50/50">
-                        <td className="py-2.5">
-                          <p className="font-bold text-[var(--text-primary)] text-sm truncate" title={item.descripcion}>
-                            {item.descripcion}
-                          </p>
-                          {item.productoSku && (
-                            <p className="font-mono text-[10px] text-[var(--text-muted)] uppercase mt-0.5">
-                              SKU: {item.productoSku}
-                            </p>
-                          )}
-                        </td>
-                        <td className="text-center py-2.5">
-                          <div className="inline-flex items-center border border-[var(--border)] rounded-lg bg-white overflow-hidden shadow-sm">
-                            <button
-                              type="button"
-                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
-                              onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              className="w-10 text-center border-0 p-0 text-xs font-semibold focus:ring-0"
-                              value={item.cantidad}
-                              onChange={(e) => {
-                                const newItems = [...items];
-                                newItems[idx].cantidad = Number(e.target.value);
-                                setItems(newItems);
-                              }}
-                              onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
-                            />
-                            <button
-                              type="button"
-                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
-                              onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </td>
-                        <td className="text-right py-2.5">
-                          <div className="relative inline-block w-24">
-                            <input
-                              type="number"
-                              className="w-full text-right border border-[var(--border)] rounded-lg p-1 text-xs focus:ring-0"
-                              value={item.precioUnitario}
-                              onChange={(e) => {
-                                const newItems = [...items];
-                                newItems[idx].precioUnitario = Number(e.target.value);
-                                setItems(newItems);
-                              }}
-                              onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
-                            />
-                          </div>
-                        </td>
-                        <td className="text-center text-xs text-slate-500 py-2.5">
-                          0%
-                        </td>
-                        <td className="text-right font-extrabold text-sm text-[var(--text-primary)] py-2.5">
-                          ${(item.precioUnitario * item.cantidad).toFixed(2)}
-                        </td>
-                        <td className="text-center py-2.5">
-                          <button
-                            onClick={() => handleDeleteItem(item.id)}
-                            className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totals panel — always visible, never clipped */}
-            <div className="bg-slate-50/50 border-t border-[var(--border)] p-4 flex justify-end rounded-b-xl">
-              <div className="w-64 space-y-2 text-xs">
-                <div className="flex justify-between text-slate-500">
-                  <span className="font-semibold uppercase">Subtotal</span>
-                  <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <button className="text-blue-600 hover:underline flex items-center gap-1">
-                    🏷 Aplicar descuento
-                  </button>
-                </div>
-                <div className="flex justify-between text-slate-500">
-                  <span className="font-semibold uppercase">IVA (15%)</span>
-                  <span className="font-bold text-[var(--text-primary)]">${iva.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-base pt-2 border-t border-[var(--border)] text-[var(--text-primary)]">
-                  <span className="font-extrabold uppercase">Total</span>
-                  <span className="font-extrabold text-blue-600">${total.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
+                  );
+                })
+              )}
+              </tbody>
+            </table>
           </div>
 
           <div className="flex justify-start">
@@ -1254,6 +1682,69 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
                 >
                   Ver ficha completa del vehículo →
                 </a>
+
+                {/* Customer info card */}
+                <div className="flex items-center justify-between p-3 border border-[var(--border)] rounded-xl bg-slate-50/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white text-sm font-bold uppercase shrink-0">
+                      {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[var(--text-primary)] leading-tight uppercase">
+                        {cliente.nombre} {cliente.apellido}
+                      </h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <a
+                          href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
+                          target="_blank"
+                          className="text-xs text-[var(--text-muted)] hover:text-green-600 flex items-center gap-1.5"
+                        >
+                          <MessageCircle size={14} className="text-green-500 fill-green-500/10" /> {cliente.telefono}
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsClienteModalOpen(true)}
+                    className="p-1.5 hover:bg-slate-100 rounded-md text-slate-500"
+                    title="Cambiar cliente"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+                </div>
+
+                {/* MOTIVO DE INGRESO */}
+                <div className="form-group border-b border-[var(--border)] pb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="label">Motivo de Ingreso</label>
+                    <div className="flex items-center gap-3 text-[10px] font-semibold text-[var(--text-secondary)]">
+                      {["Diagnóstico", "Reparación", "Mantenimiento", "Garantía"].map((tipo) => (
+                        <label key={tipo} className="flex items-center gap-1 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="tipoServicio"
+                            className="text-blue-600 focus:ring-0 cursor-pointer w-3.5 h-3.5"
+                            checked={tipoServicio === tipo || (tipo === "Mantenimiento" && tipoServicio === "Mantenimiento")}
+                            onChange={() => {
+                              const parsedVal = tipo === "Diagnóstico" ? "Mantenimiento" : (tipo as TipoServicio);
+                              setTipoServicio(parsedVal);
+                              handleSaveField({ tipoServicio: parsedVal });
+                            }}
+                          />
+                          {tipo}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <textarea
+                    className="input w-full bg-slate-50/50 hover:bg-slate-50 border border-[var(--border)] text-xs rounded-lg"
+                    placeholder="Describa el motivo detallado de ingreso"
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                    onBlur={() => handleSaveField({ motivo })}
+                    rows={2}
+                  />
+                </div>
 
                 {/* Kilometraje */}
                 <div className="form-group">
@@ -1461,12 +1952,29 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       </div>
 
       {/* Footer bar */}
-      <div className="mt-4 pt-4 border-t border-[var(--border)] flex justify-between items-center bg-[var(--bg-card)] px-4 py-2 shrink-0 rounded-xl shadow-sm">
+      <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap justify-between items-center bg-[var(--bg-card)] px-4 py-2 shrink-0 rounded-xl shadow-sm gap-4">
         {/* Progress bar */}
-        <div className="flex items-center gap-3 w-72 text-xs">
-          <span className="font-extrabold text-slate-500">0%</span>
-          <div className="flex-1 progress-bar">
-            <div className="progress-fill" style={{ width: "0%" }}></div>
+        <div className="flex items-center gap-2.5 w-60 text-xs">
+          <span className="font-extrabold text-[var(--text-secondary)]">Progreso</span>
+          <div className="flex-1 progress-bar h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div className="progress-fill h-full bg-blue-600" style={{ width: "0%" }}></div>
+          </div>
+          <span className="font-extrabold text-[var(--text-secondary)]">0%</span>
+        </div>
+
+        {/* Totals panel compact */}
+        <div className="flex items-center gap-6 text-xs font-semibold">
+          <div>
+            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Subtotal</span>
+            <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>
+          </div>
+          <div>
+            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">IVA (15%)</span>
+            <span className="font-bold text-[var(--text-primary)]">${iva.toFixed(2)}</span>
+          </div>
+          <div className="border-l border-[var(--border)] pl-4">
+            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Total</span>
+            <span className="font-extrabold text-sm text-blue-600">${total.toFixed(2)}</span>
           </div>
         </div>
 
@@ -1534,6 +2042,9 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       {/* PagoModal */}
       {isPagoModalOpen && (
         <div 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsPagoModalOpen(false);
+          }}
           className={`fixed inset-0 z-[150] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in duration-200 pt-[calc(var(--header-height)+1rem)] transition-all ${
             sidebarOpen ? "lg:pl-[calc(var(--sidebar-width)+1rem)]" : ""
           }`}
@@ -1541,8 +2052,8 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
           <div className="bg-[var(--bg-card)] w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--text-primary)]">
-                💵 Registrar Abonos / Pagos
+              <h2 className="text-sm font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-1.5">
+                <DollarSign size={16} className="text-emerald-600" /> Registrar Abonos / Pagos
               </h2>
               <button
                 onClick={() => setIsPagoModalOpen(false)}

@@ -373,6 +373,43 @@ export default function TableroKanban() {
     }
   };
 
+  // Mover tarjeta al estado siguiente al hacer clic en la flecha
+  const moverAlEstadoSiguiente = async (o: OrdenTrabajo) => {
+    if (!o.id) return;
+    
+    const esIngreso = !o.numeroOrden;
+    const colActualIndex = esIngreso 
+      ? 0 
+      : COLUMNAS.findIndex(c => c.estado === o.estado);
+
+    if (colActualIndex === -1 || colActualIndex >= 8) return; // Menor que "Entregada" (index 8)
+
+    const colDestino = COLUMNAS[colActualIndex + 1];
+    if (colDestino.id === "cancelada") return; // No mover a cancelada automáticamente
+
+    setIsUpdating(true);
+    const toastId = toast.loading("Moviendo al estado siguiente...");
+
+    try {
+      if (esIngreso) {
+        const targetEstado = colDestino.estado === "Ingresado" ? "Borrador" : colDestino.estado;
+        await convertirIngresoAOrden(o.id);
+        await updateEstadoOrden(o.id, targetEstado);
+        toast.success(`Ingreso convertido a orden y movido a ${colDestino.title}`, { id: toastId });
+      } else {
+        if (colDestino.estado !== "Ingresado") {
+          await updateEstadoOrden(o.id, colDestino.estado);
+          toast.success(`Orden movida a ${colDestino.title}`, { id: toastId });
+        }
+      }
+    } catch (error) {
+      console.error("Error al mover al estado siguiente", error);
+      toast.error("No se pudo mover al estado siguiente", { id: toastId });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   // Alternar pantalla completa
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -475,11 +512,12 @@ export default function TableroKanban() {
       ) : (
         <div className="flex-1 min-h-0 overflow-hidden relative">
           <div 
-            className="absolute inset-0 flex gap-4 overflow-x-auto pb-4 pt-1 px-1 custom-scrollbar select-none"
+            className="absolute inset-0 flex items-stretch gap-4 overflow-x-auto pb-4 pt-1 px-1 custom-scrollbar select-none"
           >
             {COLUMNAS.map((col) => {
               const colDocs = getDocsPorColumna(col);
               const isOver = activeOverCol === col.id;
+              const isEmpty = colDocs.length === 0;
               
               return (
                 <div
@@ -487,41 +525,56 @@ export default function TableroKanban() {
                   onDragOver={(e) => handleDragOver(e, col.id)}
                   onDragLeave={() => setActiveOverCol(null)}
                   onDrop={(e) => handleDrop(e, col)}
-                  className={`flex flex-col w-[300px] shrink-0 h-fit max-h-full rounded-2xl border transition-all ${
+                  className={`flex flex-col shrink-0 h-full rounded-2xl border transition-all ${
+                    isEmpty ? "w-[56px]" : "w-[300px]"
+                  } ${
                     isOver 
-                      ? "bg-slate-100/80 border-dashed border-blue-400 scale-[1.01] dark:bg-slate-900/70" 
-                      : "border-transparent bg-transparent"
+                      ? "bg-slate-100/90 border-dashed border-blue-400 scale-[1.01] dark:bg-slate-950/40" 
+                      : draggedId && isEmpty
+                        ? "border-dashed border-slate-300 dark:border-slate-800 bg-slate-50/10 dark:bg-slate-950/10"
+                        : "border-transparent bg-transparent"
                   }`}
+                  title={isEmpty ? col.title : undefined}
                 >
                   {/* Cabecera de la columna */}
                   <div 
-                    className="p-3 border-b-2 flex items-center justify-between shrink-0"
+                    className={`p-3 border-b-2 flex items-center shrink-0 ${
+                      isEmpty ? "justify-center px-1" : "justify-between"
+                    }`}
                     style={{ borderBottomColor: col.dotColor }}
                   >
-                    <div className="flex items-center gap-2">
-                      <col.icon size={16} style={{ color: col.dotColor }} />
-                      <h3 className="font-bold text-xs text-[var(--text-primary)] truncate max-w-[170px]" title={col.title}>
-                        {col.title}
-                      </h3>
+                    <div className={`flex items-center gap-2 ${isEmpty ? "justify-center" : ""}`}>
+                      <col.icon 
+                        size={16} 
+                        style={{ color: col.dotColor }} 
+                        className={isEmpty ? "mx-auto" : ""} 
+                      />
+                      {!isEmpty && (
+                        <h3 className="font-bold text-xs text-[var(--text-primary)] truncate max-w-[170px]" title={col.title}>
+                          {col.title}
+                        </h3>
+                      )}
                     </div>
-                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${col.badgeColorClass}`}>
-                      {colDocs.length}
-                    </span>
+                    {!isEmpty && (
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${col.badgeColorClass}`}>
+                        {colDocs.length}
+                      </span>
+                    )}
                   </div>
 
                   {/* Listado de tarjetas */}
                   <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar min-h-0">
-                    {colDocs.length === 0 ? (
-                      <div className="h-full flex items-center justify-center py-12 text-center">
-                        <span className="text-[11px] text-[var(--text-muted)] italic font-medium">Sin órdenes</span>
-                      </div>
-                    ) : (
-                      colDocs.map((o) => {
+                    {!isEmpty && colDocs.map((o) => {
                         const esIngresoCard = !o.numeroOrden;
                         const numero = esIngresoCard 
                           ? `ING-${String(o.numeroIngreso ?? o.numero ?? 0).padStart(5, "0")}`
                           : `OT-${String(o.numeroOrden ?? o.numero ?? 0).padStart(4, "0")}`;
                         
+                        const colActualIndex = esIngresoCard 
+                          ? 0 
+                          : COLUMNAS.findIndex(c => c.estado === o.estado);
+                        const puedeMoverSiguiente = colActualIndex !== -1 && colActualIndex < 8;
+
                         // Determinar color de dot basado en abono/saldo
                         let dotColor = "#94a3b8"; // Sin pago/default
                         if (!esIngresoCard) {
@@ -578,24 +631,7 @@ export default function TableroKanban() {
 
                               {/* Acciones flotantes que aparecen al pasar el mouse (hover) */}
                               <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--bg-card)] pl-1.5 z-10">
-                                {/* Ojo para abrir Sidebar interactivo rápido */}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (esIngresoCard) {
-                                      // Para ingresos redirigimos
-                                      router.push(`/ingresos/${o.id}`);
-                                    } else {
-                                      setQuickViewOrderId(o.id!);
-                                    }
-                                  }}
-                                  className="w-6 h-6 rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-                                  title="Ver detalles rápidos"
-                                >
-                                  <Eye size={12} />
-                                </button>
-                                {/* Flecha para ir al detalle completo de la página */}
+                                {/* Ojo para ir al detalle completo de la página */}
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -609,8 +645,22 @@ export default function TableroKanban() {
                                   className="w-6 h-6 rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
                                   title="Ver página de detalle"
                                 >
-                                  <ArrowRight size={12} />
+                                  <Eye size={12} />
                                 </button>
+                                {/* Flecha para mover al estado siguiente */}
+                                {puedeMoverSiguiente && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      moverAlEstadoSiguiente(o);
+                                    }}
+                                    className="w-6 h-6 rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
+                                    title="Mover al estado siguiente"
+                                  >
+                                    <ArrowRight size={12} />
+                                  </button>
+                                )}
                               </div>
                             </div>
 
@@ -665,8 +715,7 @@ export default function TableroKanban() {
                             </div>
                           </div>
                         );
-                      })
-                    )}
+                    })}
                   </div>
                 </div>
               );

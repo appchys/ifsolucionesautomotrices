@@ -6,7 +6,13 @@ import { useAuthStore, useUIStore } from "@/store";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+export default function AppShell({ 
+  children, 
+  hideHeader = false 
+}: { 
+  children: React.ReactNode;
+  hideHeader?: boolean;
+}) {
   const { user, loading } = useAuthStore();
   const { sidebarOpen } = useUIStore();
   const router = useRouter();
@@ -35,16 +41,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "sidebar-displaced" : "ml-0"
         }`}
       >
-        <Header />
+        {!hideHeader && <Header />}
         <main
           className="flex-1 overflow-y-auto animate-fade-in"
           style={{
-            marginTop: "var(--header-height)",
-            minHeight: "calc(100vh - var(--header-height))",
-            paddingTop: "var(--app-content-gutter-y)",
-            paddingBottom: "var(--app-content-gutter-y-lg)",
-            paddingLeft: "var(--app-content-gutter-x)",
-            paddingRight: "var(--app-content-gutter-x)",
+            marginTop: hideHeader ? "0px" : "var(--header-height)",
+            minHeight: hideHeader ? "100vh" : "calc(100vh - var(--header-height))",
+            paddingTop: hideHeader ? "1rem" : "var(--app-content-gutter-y)",
+            paddingBottom: hideHeader ? "1rem" : "var(--app-content-gutter-y-lg)",
+            paddingLeft: hideHeader ? "1.5rem" : "var(--app-content-gutter-x)",
+            paddingRight: hideHeader ? "1.5rem" : "var(--app-content-gutter-x)",
           }}
         >
           <div className="app-page-stack">{children}</div>
