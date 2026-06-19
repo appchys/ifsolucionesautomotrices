@@ -2,7 +2,6 @@
 
 import AppShell from "@/components/layout/AppShell";
 import TableroKanban from "@/components/ordenes/TableroKanban";
-import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
@@ -26,24 +25,8 @@ export default function TableroPage() {
         </button>
       </div>
 
-      {/* Selector de pestañas (Tabs) */}
-      <div className="flex gap-2 border-b border-[var(--border)] mb-5 shrink-0">
-        <Link 
-          href="/ordenes" 
-          className="py-2 px-4 text-sm font-semibold transition-all border-b-2 border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-        >
-          Lista
-        </Link>
-        <Link 
-          href="/ordenes/tablero" 
-          className="py-2 px-4 text-sm font-extrabold transition-all border-b-2 border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400"
-        >
-          Tablero
-        </Link>
-      </div>
-
       {/* Componente del Tablero */}
-      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 13.5rem)" }}>
+      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 11rem)" }}>
         <TableroKanban />
       </div>
 

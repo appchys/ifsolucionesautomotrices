@@ -440,7 +440,7 @@ export async function createOrdenConItems(
           .map((item) => ({
             item,
             cantidadDelta: -getCantidadStock(item.cantidad),
-            nota: `Salida por orden ${ordenRef.id}`,
+            nota: `Salida por orden #OT ${String(numero).padStart(4, "0")}`,
           }))
       );
     }
@@ -573,7 +573,7 @@ export async function updateOrden(id: string, data: Partial<OrdenTrabajo>): Prom
             .map((item) => ({
               item,
               cantidadDelta: -getCantidadStock(item.cantidad),
-              nota: `Conversion de cotizacion a orden ${id}`,
+              nota: `Conversión de cotización a orden #OT ${String(numeroOrdenConversion ?? ordenActual.numero ?? id).padStart(4, "0")}`,
             }))
         );
       }
@@ -697,7 +697,7 @@ export async function deleteOrden(id: string): Promise<void> {
           .map((item) => ({
             item,
             cantidadDelta: getCantidadStock(item.cantidad),
-            nota: `Reversa por eliminar orden ${id}`,
+            nota: `Reversa por eliminar orden #OT ${String(orden?.numeroOrden ?? orden?.numero ?? id).padStart(4, "0")}`,
           })),
         { omitirProductosEliminados: true }
       );
@@ -739,7 +739,7 @@ export async function addItemOrden(ordenId: string, item: Omit<ItemOrden, "id">)
         transaction,
         item,
         -getCantidadStock(item.cantidad),
-        `Salida por orden ${ordenId}`
+        `Salida por orden #OT ${String(orden.numeroOrden ?? orden.numero ?? ordenId).padStart(4, "0")}`
       );
     }
 
@@ -774,7 +774,7 @@ export async function updateItemOrden(ordenId: string, itemId: string, data: Par
           transaction,
           itemSiguiente,
           -diferencia,
-          `Ajuste de cantidad en orden ${ordenId}`
+          `Ajuste de cantidad en orden #OT ${String(orden.numeroOrden ?? orden.numero ?? ordenId).padStart(4, "0")}`
         );
       }
     }
@@ -803,7 +803,7 @@ export async function deleteItemOrden(ordenId: string, itemId: string): Promise<
         transaction,
         item,
         getCantidadStock(item.cantidad),
-        `Reversa por eliminar item de orden ${ordenId}`,
+        `Reversa por eliminar ítem de orden #OT ${String(orden.numeroOrden ?? orden.numero ?? ordenId).padStart(4, "0")}`,
         { omitirProductosEliminados: true }
       );
     }
@@ -902,7 +902,7 @@ export async function createDevolucion(data: {
         transaction,
         item,
         cantidad,
-        `Devolucion de cliente - orden ${data.ordenId}: ${data.motivo.trim()}`
+        `Devolución de cliente - orden #OT ${String(orden.numeroOrden ?? orden.numero ?? data.ordenId).padStart(4, "0")}: ${data.motivo.trim()}`
       );
     }
 
@@ -1085,6 +1085,46 @@ export async function registrarMovimientoStockManual(
 
 export async function deleteProducto(id: string): Promise<void> {
   await deleteDoc(doc(db, "productos", id));
+}
+
+export async function getMovimientosStockByProducto(productoId: string): Promise<MovimientoStock[]> {
+  const snap = await getDocs(
+    query(
+      collection(db, "movimientosStock"),
+      where("productoId", "==", productoId)
+    )
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as MovimientoStock))
+    .sort((a, b) => {
+      const aTime = a.createdAt && typeof a.createdAt === "object" && "seconds" in a.createdAt
+        ? Number((a.createdAt as { seconds?: number }).seconds ?? 0)
+        : 0;
+      const bTime = b.createdAt && typeof b.createdAt === "object" && "seconds" in b.createdAt
+        ? Number((b.createdAt as { seconds?: number }).seconds ?? 0)
+        : 0;
+      return bTime - aTime;
+    });
+}
+
+export async function getHistorialPrecios(productoId: string): Promise<Array<{ id: string; createdAt?: unknown; costoBase?: number; margenGanancia?: number; precioBase?: number }>> {
+  const snap = await getDocs(
+    query(
+      collection(db, "historialPrecios"),
+      where("productoId", "==", productoId)
+    )
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as any))
+    .sort((a, b) => {
+      const aTime = a.createdAt && typeof a.createdAt === "object" && "seconds" in a.createdAt
+        ? Number((a.createdAt as { seconds?: number }).seconds ?? 0)
+        : 0;
+      const bTime = b.createdAt && typeof b.createdAt === "object" && "seconds" in b.createdAt
+        ? Number((b.createdAt as { seconds?: number }).seconds ?? 0)
+        : 0;
+      return bTime - aTime;
+    });
 }
 
 export async function getServicios(): Promise<Servicio[]> {

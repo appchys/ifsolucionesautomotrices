@@ -404,6 +404,9 @@ export default function TableroKanban() {
     handleDragEnd();
 
     if (!id) return;
+
+    // Asegurar que la columna destino se expanda
+    setCollapsedCols((prev) => ({ ...prev, [col.id]: false }));
     
     // Obtener la orden arrastrada
     const docArrastrado = processedDocs.find(o => o.id === id);
@@ -462,6 +465,9 @@ export default function TableroKanban() {
 
     const colDestino = COLUMNAS[colActualIndex + 1];
     if (colDestino.id === "cancelada") return; // No mover a cancelada automáticamente
+
+    // Asegurar que la columna destino se expanda
+    setCollapsedCols((prev) => ({ ...prev, [colDestino.id]: false }));
 
     setIsUpdating(true);
     const toastId = toast.loading("Moviendo al estado siguiente...");
@@ -649,7 +655,7 @@ export default function TableroKanban() {
                     }`}
                     style={{ borderBottomColor: col.dotColor }}
                     onClick={() => toggleColCollapse(col.id)}
-                    title={isCollapsed ? `Hacer clic para expandir columna ${col.title}` : `Hacer clic para contraer columna ${col.title}`}
+                    title={col.title}
                   >
                     <div className={`flex items-center gap-2 ${isCollapsed ? "justify-center" : "min-w-0"}`}>
                       <col.icon 

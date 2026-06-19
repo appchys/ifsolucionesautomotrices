@@ -11,6 +11,7 @@ import {
   registrarMovimientoStockManual
 } from "@/lib/services";
 import { Producto, Servicio } from "@/types";
+import ProductoDetalleSidebar from "@/components/inventario/ProductoDetalleSidebar";
 
 type Tab = "productos" | "servicios";
 type InventarioItem = Producto | Servicio;
@@ -906,15 +907,17 @@ export default function InventarioPage() {
       </div>
 
         <div className="hidden lg:block sticky top-24 h-[calc(100vh-8rem)]">
-          <ProductoDetalle
-            item={itemSeleccionado}
-            onClose={() => setItemSeleccionado(null)}
-            onEdit={abrirModalEditar}
-          />
+          {(!itemSeleccionado || !isProducto(itemSeleccionado)) && (
+            <ProductoDetalle
+              item={itemSeleccionado}
+              onClose={() => setItemSeleccionado(null)}
+              onEdit={abrirModalEditar}
+            />
+          )}
         </div>
       </div>
 
-      {itemSeleccionado && (
+      {itemSeleccionado && !isProducto(itemSeleccionado) && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setItemSeleccionado(null)} />
           <div className="absolute right-0 top-0 h-full w-full max-w-[420px] p-3">
@@ -926,6 +929,21 @@ export default function InventarioPage() {
             />
           </div>
         </div>
+      )}
+
+      {itemSeleccionado && isProducto(itemSeleccionado) && (
+        <ProductoDetalleSidebar
+          key={itemSeleccionado.id ?? itemSeleccionado.nombre}
+          producto={itemSeleccionado}
+          onClose={() => setItemSeleccionado(null)}
+          onUpdate={() => {
+            void cargarDatos();
+            getProductos().then((prods) => {
+              const updated = prods.find((p) => p.id === itemSeleccionado.id);
+              if (updated) setItemSeleccionado(updated);
+            });
+          }}
+        />
       )}
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title={itemEditando ? `Editar ${tab === "productos" ? "Producto" : "Servicio"}` : `Nuevo ${tab === "productos" ? "Producto" : "Servicio"}`}>

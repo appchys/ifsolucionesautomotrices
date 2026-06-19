@@ -6,7 +6,6 @@ import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Loader2, MoreVertical, Plus, Search, Trash2, Wrench } from "lucide-react";
 import { toast } from "react-hot-toast";
 import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
@@ -149,21 +148,6 @@ export default function OrdenesPage() {
         </button>
       </div>
 
-      {/* Selector de pestañas (Tabs) */}
-      <div className="flex gap-2 border-b border-[var(--border)] mb-5 shrink-0">
-        <Link 
-          href="/ordenes" 
-          className="py-2 px-4 text-sm font-extrabold transition-all border-b-2 border-blue-600 text-blue-600 dark:border-blue-500 dark:text-blue-400"
-        >
-          Lista
-        </Link>
-        <Link 
-          href="/ordenes/tablero" 
-          className="py-2 px-4 text-sm font-semibold transition-all border-b-2 border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-        >
-          Tablero
-        </Link>
-      </div>
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3">
