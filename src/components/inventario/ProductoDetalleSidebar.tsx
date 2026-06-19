@@ -17,6 +17,9 @@ import {
   Truck,
   Ruler,
   Hash,
+  Image as ImageIcon,
+  Edit2,
+  Trash2,
 } from "lucide-react";
 import { Producto, MovimientoStock } from "@/types";
 import {
@@ -26,6 +29,7 @@ import {
   registrarMovimientoStockManual,
   calcularPrecioVenta,
   getOrdenById,
+  uploadInventarioImagen,
 } from "@/lib/services";
 import { toast } from "react-hot-toast";
 
@@ -178,6 +182,25 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
   const [categoria, setCategoria] = useState(producto.categoria || "");
   const [unidadMedida, setUnidadMedida] = useState(producto.unidadMedida || "Unidad");
   const [descripcion, setDescripcion] = useState(producto.descripcion || "");
+  
+  const [imagenPreview, setImagenPreview] = useState<string | null>(producto.imagenUrl || null);
+  const [archivoImagen, setArchivoImagen] = useState<File | null>(null);
+  const [eliminarImagen, setEliminarImagen] = useState(false);
+
+  const handleImagenChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setArchivoImagen(file);
+      setImagenPreview(URL.createObjectURL(file));
+      setEliminarImagen(false);
+    }
+  };
+
+  const handleEliminarImagen = () => {
+    setArchivoImagen(null);
+    setImagenPreview(null);
+    setEliminarImagen(true);
+  };
 
   const [costoBase, setCostoBase] = useState(producto.costoBase || 0);
   const [margenGanancia, setMargenGanancia] = useState(producto.margenGanancia ?? 25);
@@ -362,16 +385,31 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
 
     setGuardando(true);
     try {
+      let finalImageUrl = producto.imagenUrl || "";
+
+      if (eliminarImagen) {
+        finalImageUrl = "";
+      }
+
+      if (archivoImagen) {
+        finalImageUrl = await uploadInventarioImagen(producto.id, archivoImagen, "producto");
+      }
+
       await updateProducto(producto.id, {
         nombre: nombre.trim(),
         sku: sku.trim().toUpperCase(),
         categoria: categoria.trim(),
         unidadMedida: unidadMedida.trim(),
         descripcion: descripcion.trim(),
+        imagenUrl: finalImageUrl,
       });
+
+      setArchivoImagen(null);
+      setEliminarImagen(false);
       toast.success("Detalles actualizados");
       onUpdate();
-    } catch {
+    } catch (error) {
+      console.error(error);
       toast.error("Error al guardar cambios");
     } finally {
       setGuardando(false);
@@ -488,7 +526,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {activeTab === "detalles" && (
-          <form onSubmit={handleGuardarDetalles} className="space-y-5 animate-fade-in">
+          <form id="form-detalles" onSubmit={handleGuardarDetalles} className="space-y-5 animate-fade-in">
             <Card title="Datos básicos">
               <div className="space-y-4">
                 <div className="form-group">
@@ -521,14 +559,47 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
               </div>
             </Card>
 
-            <Card title="Descripción">
-              <textarea
-                value={descripcion}
-                onChange={(e) => setDescripcion(e.target.value)}
-                className="input resize-none"
-                rows={3}
-                placeholder="Descripción del artículo"
-              />
+            <Card title="Descripción y Foto">
+              <div className="flex gap-4 items-start">
+                <div className="flex-1 min-w-0">
+                  <textarea
+                    value={descripcion}
+                    onChange={(e) => setDescripcion(e.target.value)}
+                    className="input resize-none w-full"
+                    rows={3}
+                    placeholder="Descripción del artículo"
+                  />
+                </div>
+                <div className="w-20 shrink-0">
+                  <div className="relative group w-20 h-20 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-all duration-200">
+                    {imagenPreview ? (
+                      <>
+                        <img src={imagenPreview} alt="Preview" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                          <label className="p-1 rounded-md bg-white/20 hover:bg-white/40 text-white cursor-pointer transition-colors" title="Cambiar foto">
+                            <Edit2 size={12} />
+                            <input type="file" accept="image/*" onChange={handleImagenChange} className="hidden" />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleEliminarImagen}
+                            className="p-1 rounded-md bg-red-500/20 hover:bg-red-500/40 text-red-200 hover:text-white transition-colors"
+                            title="Eliminar foto"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-50/20 transition-colors p-2 text-center gap-1">
+                        <ImageIcon size={18} />
+                        <span className="text-[9px] font-semibold leading-tight">Añadir foto</span>
+                        <input type="file" accept="image/*" onChange={handleImagenChange} className="hidden" />
+                      </label>
+                    )}
+                  </div>
+                </div>
+              </div>
             </Card>
 
             {(producto.ultimaCompraFactura || producto.ultimoProveedorNombre) && (
@@ -554,28 +625,11 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
               </Card>
             )}
 
-            <button
-              type="submit"
-              disabled={guardando}
-              className="btn-primary w-full justify-center py-2.5 text-xs font-bold shadow-md cursor-pointer mt-4"
-            >
-              {guardando ? (
-                <>
-                  <Loader2 size={14} className="animate-spin mr-1.5" />
-                  Guardando cambios...
-                </>
-              ) : (
-                <>
-                  <Check size={14} className="mr-1.5" />
-                  Guardar cambios
-                </>
-              )}
-            </button>
           </form>
         )}
 
         {activeTab === "precios" && (
-          <form onSubmit={handleGuardarPrecios} className="space-y-5 animate-fade-in">
+          <form id="form-precios" onSubmit={handleGuardarPrecios} className="space-y-5 animate-fade-in">
             {/* Referencia Actual */}
             <div className="p-4 rounded-xl border border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between">
               <div>
@@ -712,23 +766,6 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
               </div>
             </Card>
 
-            <button
-              type="submit"
-              disabled={guardando}
-              className="btn-primary w-full justify-center py-2.5 text-xs font-bold shadow-md cursor-pointer mt-4"
-            >
-              {guardando ? (
-                <>
-                  <Loader2 size={14} className="animate-spin mr-1.5" />
-                  Guardando precios...
-                </>
-              ) : (
-                <>
-                  <Check size={14} className="mr-1.5" />
-                  Guardar Precios
-                </>
-              )}
-            </button>
           </form>
         )}
 
@@ -930,7 +967,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
       </div>
 
       {/* Footer */}
-      <div className="p-6 border-t border-[var(--border)] flex justify-end shrink-0">
+      <div className="p-6 border-t border-[var(--border)] flex justify-end items-center gap-3 shrink-0">
         <button
           type="button"
           onClick={onClose}
@@ -938,6 +975,48 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         >
           Cerrar
         </button>
+
+        {activeTab === "detalles" && (
+          <button
+            type="submit"
+            form="form-detalles"
+            disabled={guardando}
+            className="btn-primary px-5 py-2 text-xs font-bold shadow-md cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {guardando ? (
+              <>
+                <Loader2 size={14} className="animate-spin mr-1.5" />
+                Guardando cambios...
+              </>
+            ) : (
+              <>
+                <Check size={14} className="mr-1.5" />
+                Guardar cambios
+              </>
+            )}
+          </button>
+        )}
+
+        {activeTab === "precios" && (
+          <button
+            type="submit"
+            form="form-precios"
+            disabled={guardando}
+            className="btn-primary px-5 py-2 text-xs font-bold shadow-md cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {guardando ? (
+              <>
+                <Loader2 size={14} className="animate-spin mr-1.5" />
+                Guardando precios...
+              </>
+            ) : (
+              <>
+                <Check size={14} className="mr-1.5" />
+                Guardar Precios
+              </>
+            )}
+          </button>
+        )}
       </div>
     </aside>
   </div>,
