@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -20,6 +20,7 @@ import {
 import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden, DatosTaller } from "@/types";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
+import OpcionesItemPopover from "@/components/ordenes/OpcionesItemPopover";
 
 export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: string }) {
   const router = useRouter();
@@ -35,6 +36,7 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [taller, setTaller] = useState<DatosTaller | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [activePopoverItemId, setActivePopoverItemId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -117,29 +119,169 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
 
   const handleDeleteItem = async (itemId?: string) => {
     if (!itemId) return;
+    if (!confirm("¿Eliminar este ítem?")) return;
+    const itemToDelete = items.find((i) => i.id === itemId);
+    if (!itemToDelete) return;
+
     try {
+      if (itemToDelete.compraId) {
+        try {
+          const { deleteDoc, doc } = await import("firebase/firestore");
+          const { db } = await import("@/lib/firebase");
+          await deleteDoc(doc(db, "compras", itemToDelete.compraId));
+        } catch (err) {
+          console.error("Error al eliminar compra asociada a item externo:", err);
+        }
+      }
       await deleteItemOrden(presupuestoId, itemId);
       setItems(items.filter(i => i.id !== itemId));
+      toast.success("Ítem eliminado");
     } catch (error) {
       console.error(error);
       toast.error("Error al eliminar");
     }
   };
 
-  const handleUpdateItem = async (itemId: string, fieldName: keyof ItemOrden, value: any) => {
+  const syncExternoItemWithCompra = async (item: ItemOrden, updatedFields: Partial<ItemOrden>) => {
+    const finalItem = { ...item, ...updatedFields };
+    
+    if (finalItem.tipo !== "externo") {
+      if (finalItem.compraId) {
+        try {
+          const { deleteDoc, doc } = await import("firebase/firestore");
+          const { db } = await import("@/lib/firebase");
+          await deleteDoc(doc(db, "compras", finalItem.compraId));
+          await updateItemOrden(presupuestoId, finalItem.id!, {
+            compraId: "",
+            proveedorExterno: "",
+            costoExterno: 0,
+            pagadoExterno: false,
+            metodoPagoExterno: "",
+            bancoExterno: "",
+            referenciaExterno: "",
+            notasPagoExterno: "",
+            fechaPagoExterno: "",
+            fechaAcreditacionExterno: "",
+            estadoAcreditacionExterno: null as any,
+          });
+        } catch (error) {
+          console.error("Error al eliminar compra vinculada a item externo:", error);
+        }
+      }
+      return;
+    }
+
+    if (!finalItem.costoExterno) {
+      return;
+    }
+
+    try {
+      const { doc, setDoc, addDoc, collection } = await import("firebase/firestore");
+      const { db } = await import("@/lib/firebase");
+
+      const compraData: any = {
+        estadoAutorizacion: "AUTORIZADO",
+        numeroAutorizacion: "AUT-" + Date.now(),
+        fechaAutorizacion: new Date().toLocaleDateString(),
+        proveedorRazonSocial: finalItem.proveedorExterno?.trim() || "Proveedor Externo",
+        proveedorRuc: "EXTERNO",
+        claveAcceso: "EXT-" + finalItem.id,
+        establecimiento: "001",
+        puntoEmision: "001",
+        secuencial: String(Date.now()).slice(-9),
+        numeroFactura: `OT-${String(orden?.numeroCotizacion ?? orden?.numero ?? 0).padStart(4, "0")}-${finalItem.id?.slice(-4)}`,
+        fechaEmision: new Date().toISOString().split("T")[0],
+        compradorRazonSocial: taller?.razonSocial || "Taller",
+        compradorIdentificacion: taller?.ruc || "Taller RUC",
+        totalSinImpuestos: finalItem.costoExterno * finalItem.cantidad,
+        totalDescuento: 0,
+        importeTotal: finalItem.costoExterno * finalItem.cantidad,
+        moneda: "USD",
+        items: [{
+          codigo: "EXT",
+          descripcion: `Servicio externo: ${finalItem.descripcion}`,
+          cantidad: finalItem.cantidad,
+          precioUnitario: finalItem.costoExterno,
+          descuento: 0,
+          subtotalSinImpuesto: finalItem.costoExterno * finalItem.cantidad,
+          impuesto: 0,
+          total: finalItem.costoExterno * finalItem.cantidad,
+        }],
+        pagosProveedor: finalItem.pagadoExterno ? [{
+          monto: finalItem.costoExterno * finalItem.cantidad,
+          metodoPago: finalItem.metodoPagoExterno || "efectivo",
+          fecha: finalItem.fechaPagoExterno || new Date().toISOString().split("T")[0],
+          createdAt: new Date(),
+          ...(finalItem.bancoExterno ? { banco: finalItem.bancoExterno } : {}),
+          ...(finalItem.referenciaExterno ? { referencia: finalItem.referenciaExterno } : {}),
+          ...(finalItem.notasPagoExterno ? { notas: finalItem.notasPagoExterno } : {}),
+          ...(finalItem.fechaAcreditacionExterno ? { fechaAcreditacion: finalItem.fechaAcreditacionExterno } : {}),
+          ...(finalItem.estadoAcreditacionExterno ? { estadoAcreditacion: finalItem.estadoAcreditacionExterno } : {}),
+        }] : [],
+        totalPagadoProveedor: finalItem.pagadoExterno ? finalItem.costoExterno * finalItem.cantidad : 0,
+        saldoProveedor: finalItem.pagadoExterno ? 0 : finalItem.costoExterno * finalItem.cantidad,
+        estadoPagoProveedor: finalItem.pagadoExterno ? "pagado" : "pendiente",
+        inventarioSincronizado: false,
+        updatedAt: new Date(),
+      };
+
+      if (finalItem.compraId) {
+        await setDoc(doc(db, "compras", finalItem.compraId), compraData, { merge: true });
+      } else {
+        compraData.createdAt = new Date();
+        const docRef = await addDoc(collection(db, "compras"), compraData);
+        await updateItemOrden(presupuestoId, finalItem.id!, {
+          compraId: docRef.id
+        });
+        setItems(prev => prev.map(i => i.id === finalItem.id ? { ...i, compraId: docRef.id } : i));
+      }
+    } catch (error) {
+      console.error("Error al sincronizar item externo con compra:", error);
+    }
+  };
+
+  const handleUpdateItemFields = async (itemId: string, updates: Partial<ItemOrden>) => {
     if (!itemId) return;
     try {
-      const itemToUpdate = items.find(i => i.id === itemId);
-      if (!itemToUpdate) return;
-      const updatedItem = { ...itemToUpdate, [fieldName]: value };
-      updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
-      
-      await updateItemOrden(presupuestoId, itemId, { [fieldName]: value, subtotal: updatedItem.subtotal });
-      setItems(items.map(it => it.id === itemId ? updatedItem : it));
-    } catch (error) {
-      console.error(error);
-      toast.error("Error al actualizar");
+      let freshItem: ItemOrden | undefined;
+
+      // Actualizar UI inmediatamente con el estado anterior más actualizado
+      setItems((prev) => {
+        const itemToUpdate = prev.find((i) => i.id === itemId);
+        if (!itemToUpdate) return prev;
+        const updatedItem = { ...itemToUpdate, ...updates };
+        updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+        freshItem = updatedItem;
+        return prev.map((it) => (it.id === itemId ? updatedItem : it));
+      });
+
+      // Si no logramos obtener el freshItem desde prev (muy raro pero posible), usamos el de items actual
+      const resolvedItem = freshItem || (() => {
+        const itemToUpdate = items.find((i) => i.id === itemId);
+        if (!itemToUpdate) return null;
+        const updatedItem = { ...itemToUpdate, ...updates };
+        updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+        return updatedItem;
+      })();
+
+      if (!resolvedItem) return;
+
+      await updateItemOrden(presupuestoId, itemId, {
+        ...updates,
+        subtotal: resolvedItem.subtotal,
+      });
+
+      // Sincronizar item externo con compras en segundo plano usando el resolvedItem completo
+      void syncExternoItemWithCompra(resolvedItem, {});
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al actualizar item");
+      void loadData();
     }
+  };
+
+  const handleUpdateItem = async (itemId: string, fieldName: keyof ItemOrden, value: any) => {
+    await handleUpdateItemFields(itemId, { [fieldName]: value });
   };
 
   const handleDownloadPDF = async () => {
@@ -408,7 +550,7 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
             </div>
 
             {/* Items Table */}
-            <div className="flex-1 border border-[var(--border)] rounded-xl bg-white dark:bg-[var(--bg-card)] overflow-hidden flex flex-col">
+            <div className="border border-[var(--border)] rounded-xl bg-white dark:bg-[var(--bg-card)] overflow-visible">
               <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold text-[var(--text-muted)] uppercase border-b border-[var(--border)]">
                 <div className="col-span-4">Descripción</div>
                 <div className="col-span-2 text-center">Cant</div>
@@ -418,9 +560,9 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
                 <div className="col-span-2 text-right">Total</div>
               </div>
               
-              <div className="flex-1 overflow-y-auto">
+              <div className="overflow-visible">
                 {items.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)] p-8 text-center">
+                  <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)] p-8 text-center">
                     <p className="text-sm">No hay ítems en el presupuesto.</p>
                     <p className="text-xs">Busca un producto o servicio arriba para agregarlo.</p>
                   </div>
@@ -468,14 +610,36 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
                       </div>
                       <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
                       <div className="col-span-1 text-center text-xs">0</div>
-                      <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2">
+                      <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
                         ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                        <button
+                          type="button"
+                          onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                          className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                            activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                          }`}
+                          title="Opciones de ítem"
+                        >
+                          <MoreVertical size={14} />
+                        </button>
                         <button 
                           onClick={() => handleDeleteItem(item.id)}
-                          className="text-[var(--text-muted)] hover:text-red-500"
+                          className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
+                          title="Eliminar ítem"
                         >
                           <Trash2 size={14} />
                         </button>
+
+                        {activePopoverItemId === item.id && (
+                          <OpcionesItemPopover
+                            item={item}
+                            onClose={() => setActivePopoverItemId(null)}
+                            onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                            onLocalUpdate={(updates) => {
+                              setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                            }}
+                          />
+                        )}
                       </div>
                     </div>
                   ))

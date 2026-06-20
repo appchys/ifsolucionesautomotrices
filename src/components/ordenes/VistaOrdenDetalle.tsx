@@ -73,6 +73,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
+import OpcionesItemPopover from "@/components/ordenes/OpcionesItemPopover";
 import ModalInspeccion from "@/components/recepcion/ModalInspeccion";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
@@ -355,7 +356,14 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
             compraId: "",
             proveedorExterno: "",
             costoExterno: 0,
-            pagadoExterno: false
+            pagadoExterno: false,
+            metodoPagoExterno: "",
+            bancoExterno: "",
+            referenciaExterno: "",
+            notasPagoExterno: "",
+            fechaPagoExterno: "",
+            fechaAcreditacionExterno: "",
+            estadoAcreditacionExterno: null as any,
           });
         } catch (error) {
           console.error("Error al eliminar compra vinculada a item externo:", error);
@@ -364,8 +372,8 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       return;
     }
 
-    // Si es externo pero no tiene costo o taller, no guardamos aún en compras
-    if (!finalItem.costoExterno || !finalItem.proveedorExterno) {
+    // Si es externo pero no tiene costo, no guardamos aún en compras
+    if (!finalItem.costoExterno) {
       return;
     }
 
@@ -377,7 +385,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
         estadoAutorizacion: "AUTORIZADO",
         numeroAutorizacion: "AUT-" + Date.now(),
         fechaAutorizacion: new Date().toLocaleDateString(),
-        proveedorRazonSocial: finalItem.proveedorExterno,
+        proveedorRazonSocial: finalItem.proveedorExterno?.trim() || "Proveedor Externo",
         proveedorRuc: "EXTERNO",
         claveAcceso: "EXT-" + finalItem.id,
         establecimiento: "001",
@@ -403,8 +411,14 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
         }],
         pagosProveedor: finalItem.pagadoExterno ? [{
           monto: finalItem.costoExterno * finalItem.cantidad,
-          metodoPago: "efectivo",
-          fecha: new Date().toISOString().split("T")[0],
+          metodoPago: finalItem.metodoPagoExterno || "efectivo",
+          fecha: finalItem.fechaPagoExterno || new Date().toISOString().split("T")[0],
+          createdAt: new Date(),
+          ...(finalItem.bancoExterno ? { banco: finalItem.bancoExterno } : {}),
+          ...(finalItem.referenciaExterno ? { referencia: finalItem.referenciaExterno } : {}),
+          ...(finalItem.notasPagoExterno ? { notas: finalItem.notasPagoExterno } : {}),
+          ...(finalItem.fechaAcreditacionExterno ? { fechaAcreditacion: finalItem.fechaAcreditacionExterno } : {}),
+          ...(finalItem.estadoAcreditacionExterno ? { estadoAcreditacion: finalItem.estadoAcreditacionExterno } : {}),
         }] : [],
         totalPagadoProveedor: finalItem.pagadoExterno ? finalItem.costoExterno * finalItem.cantidad : 0,
         saldoProveedor: finalItem.pagadoExterno ? 0 : finalItem.costoExterno * finalItem.cantidad,
@@ -433,24 +447,38 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
     // Si es un item temporal, no permitir su actualización hasta que se guarde en Firestore
     if (itemId.startsWith("temp-")) return;
 
-    const itemToUpdate = items.find((i) => i.id === itemId);
-    if (!itemToUpdate) return;
-    const updatedItem = { ...itemToUpdate, ...updates };
-    updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
-
     const previousItems = [...items];
+    let freshItem: ItemOrden | undefined;
 
-    // Actualizar UI inmediatamente
-    setItems((prev) => prev.map((it) => (it.id === itemId ? updatedItem : it)));
+    // Actualizar UI inmediatamente con el estado anterior más actualizado
+    setItems((prev) => {
+      const itemToUpdate = prev.find((i) => i.id === itemId);
+      if (!itemToUpdate) return prev;
+      const updatedItem = { ...itemToUpdate, ...updates };
+      updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+      freshItem = updatedItem;
+      return prev.map((it) => (it.id === itemId ? updatedItem : it));
+    });
+
+    // Si no logramos obtener el freshItem desde prev (muy raro pero posible), usamos el de items actual
+    const resolvedItem = freshItem || (() => {
+      const itemToUpdate = items.find((i) => i.id === itemId);
+      if (!itemToUpdate) return null;
+      const updatedItem = { ...itemToUpdate, ...updates };
+      updatedItem.subtotal = updatedItem.cantidad * updatedItem.precioUnitario;
+      return updatedItem;
+    })();
+
+    if (!resolvedItem) return;
 
     try {
       await updateItemOrden(ordenId, itemId, {
         ...updates,
-        subtotal: updatedItem.subtotal,
+        subtotal: resolvedItem.subtotal,
       });
 
-      // Sincronizar item externo con compras en segundo plano
-      void syncExternoItemWithCompra(itemToUpdate, updates);
+      // Sincronizar item externo con compras en segundo plano usando el resolvedItem completo
+      void syncExternoItemWithCompra(resolvedItem, {});
     } catch (err) {
       console.error(err);
       toast.error("Error al actualizar item");
@@ -1477,141 +1505,14 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
 
                         {/* Popover flotante de 3 puntos */}
                         {activePopoverItemId === item.id && (
-                          <>
-                            <div className="fixed inset-0 z-[120]" onClick={() => setActivePopoverItemId(null)}></div>
-                            <div className="absolute right-10 top-0 z-[130] w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-4 text-left">
-                              {/* TIPO DE ITEM */}
-                              <div className="mb-4">
-                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-2">TIPO DE ITEM</span>
-                                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg">
-                                  {(["servicio", "producto", "externo"] as const).map((t) => (
-                                    <button
-                                      key={t}
-                                      type="button"
-                                      className={`flex-1 text-center py-1 text-xs font-bold rounded-md transition-all capitalize border-0 cursor-pointer ${
-                                        (item.tipo === t || (t === "servicio" && !item.tipo))
-                                          ? "bg-blue-600 text-white shadow-sm"
-                                          : "text-slate-500 dark:text-slate-400 bg-transparent hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
-                                      }`}
-                                      onClick={() => {
-                                        void handleUpdateItemFields(item.id!, { tipo: t });
-                                      }}
-                                    >
-                                      {t === "externo" ? "Externo" : t === "servicio" ? "Servicio" : "Producto"}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Exento de Impuesto */}
-                              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 mb-3">
-                                <div>
-                                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Exento de impuesto</span>
-                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-0.5">IVA 15%</span>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer select-none">
-                                  <input
-                                    type="checkbox"
-                                    checked={item.impuestoAplicable === 0}
-                                    onChange={(e) => {
-                                      const isExent = e.target.checked;
-                                      void handleUpdateItemFields(item.id!, { impuestoAplicable: isExent ? 0 : 15 });
-                                    }}
-                                    className="sr-only peer"
-                                  />
-                                  <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-                                </label>
-                              </div>
-
-                              {/* % IVA */}
-                              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 mb-3">
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">% IVA</span>
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    type="number"
-                                    className="w-16 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
-                                    value={item.impuestoAplicable}
-                                    disabled={item.impuestoAplicable === 0}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value);
-                                      const newItems = items.map(it => it.id === item.id ? { ...it, impuestoAplicable: val } : it);
-                                      setItems(newItems);
-                                    }}
-                                    onBlur={(e) => {
-                                      void handleUpdateItemFields(item.id!, { impuestoAplicable: Number(e.target.value) });
-                                    }}
-                                  />
-                                  <span className="text-xs text-slate-500">%</span>
-                                </div>
-                              </div>
-
-                              {/* OPCIONES DE ITEM EXTERNO (CONDICIONAL) */}
-                              {item.tipo === "externo" && (
-                                <div className="border-t border-slate-100 dark:border-slate-800 pt-3 space-y-3">
-                                  <div>
-                                    <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Taller / Proveedor Externo</label>
-                                    <input
-                                      type="text"
-                                      className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
-                                      placeholder="Ej: Rectificadora Guayaquil"
-                                      value={item.proveedorExterno || ""}
-                                      onChange={(e) => {
-                                        const val = e.target.value;
-                                        const newItems = items.map(it => it.id === item.id ? { ...it, proveedorExterno: val } : it);
-                                        setItems(newItems);
-                                      }}
-                                      onBlur={(e) => {
-                                        void handleUpdateItemFields(item.id!, { proveedorExterno: e.target.value });
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <div className="flex-1">
-                                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">Costo ($)</label>
-                                      <input
-                                        type="number"
-                                        className="w-full border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
-                                        placeholder="0.00"
-                                        value={item.costoExterno || ""}
-                                        onChange={(e) => {
-                                          const val = Number(e.target.value);
-                                          const newItems = items.map(it => it.id === item.id ? { ...it, costoExterno: val } : it);
-                                          setItems(newItems);
-                                        }}
-                                        onBlur={(e) => {
-                                          void handleUpdateItemFields(item.id!, { costoExterno: Number(e.target.value) });
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="flex-1 flex flex-col justify-end">
-                                      <label className="flex items-center gap-1.5 cursor-pointer pb-2 text-xs font-semibold text-slate-700 dark:text-slate-300 select-none">
-                                        <input
-                                          type="checkbox"
-                                          checked={item.pagadoExterno || false}
-                                          onChange={(e) => {
-                                            void handleUpdateItemFields(item.id!, { pagadoExterno: e.target.checked });
-                                          }}
-                                          className="rounded border-slate-300 text-blue-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                                        />
-                                        ¿Pagado?
-                                      </label>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* BOTÓN CERRAR */}
-                              <div className="border-t border-slate-100 dark:border-slate-800 pt-2 mt-3 flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={() => setActivePopoverItemId(null)}
-                                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold border-none cursor-pointer"
-                                >
-                                  Cerrar
-                                </button>
-                              </div>
-                            </div>
-                          </>
+                          <OpcionesItemPopover
+                            item={item}
+                            onClose={() => setActivePopoverItemId(null)}
+                            onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                            onLocalUpdate={(updates) => {
+                              setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                            }}
+                          />
                         )}
                       </td>
                     </tr>

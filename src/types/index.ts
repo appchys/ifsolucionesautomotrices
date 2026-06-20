@@ -184,6 +184,13 @@ export interface ItemOrden {
   costoExterno?: number;
   compraId?: string;
   pagadoExterno?: boolean;
+  metodoPagoExterno?: string;
+  bancoExterno?: string;
+  referenciaExterno?: string;
+  notasPagoExterno?: string;
+  fechaPagoExterno?: string;
+  fechaAcreditacionExterno?: string;
+  estadoAcreditacionExterno?: "pendiente" | "acreditado";
 }
 
 export type AccionInventarioDevolucion = "reingresar_stock" | "merma" | "garantia_proveedor" | "sin_reingreso";
@@ -232,6 +239,8 @@ export interface Pago {
   notas?: string;
   createdAt?: Timestamp;
   registradoPor?: string;
+  fechaAcreditacion?: string;
+  estadoAcreditacion?: "pendiente" | "acreditado";
 }
 
 export interface ResumenPago {
@@ -242,7 +251,7 @@ export interface ResumenPago {
   pagos: Pago[];
 }
 
-export type CompraMetodoPago = "efectivo" | "transferencia" | "tarjeta_debito" | "nota_credito" | "otro";
+export type CompraMetodoPago = "efectivo" | "transferencia" | "tarjeta_debito" | "tarjeta_credito" | "nota_credito" | "otro";
 
 export interface CompraPago {
   monto: number;
@@ -251,6 +260,8 @@ export interface CompraPago {
   referencia?: string;
   notas?: string;
   fecha?: string;
+  fechaAcreditacion?: string;
+  estadoAcreditacion?: "pendiente" | "acreditado";
   createdAt?: Timestamp;
 }
 

@@ -93,6 +93,7 @@ const PAGO_METODO_LABELS: Record<CompraMetodoPago, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
   tarjeta_debito: "Tarjeta de debito",
+  tarjeta_credito: "Tarjeta de credito",
   nota_credito: "Nota de credito",
   otro: "Otro",
 };
@@ -128,6 +129,27 @@ function addToGroup(groups: Record<string, Agrupado>, key: string, monto: number
 
 function money(value: number) {
   return `$${Number(value || 0).toFixed(2)}`;
+}
+
+function isPagoAcreditado(pago: {
+  metodoPago: string;
+  fechaAcreditacion?: string;
+  estadoAcreditacion?: string;
+}) {
+  if (pago.metodoPago !== "tarjeta_credito" && pago.metodoPago !== "tarjeta_debito" && pago.metodoPago !== "tarjeta") {
+    return true;
+  }
+
+  if (pago.estadoAcreditacion === "pendiente") {
+    return false;
+  }
+
+  if (pago.fechaAcreditacion) {
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
+    return todayStr >= pago.fechaAcreditacion;
+  }
+
+  return false;
 }
 
 function getItemSubtotal(item: ItemOrden) {
@@ -410,11 +432,16 @@ export default function ReporteFinancieroPage() {
           documento = ordenObj ? `Orden #${String(ordenObj.numeroOrden ?? ordenObj.numero ?? 0).padStart(4, "0")}` : `Orden #${pago.ordenId.slice(0, 5)}`;
         }
         
+        let metodoLabel = COBRO_METODO_LABELS[pago.metodoPago] ?? pago.metodoPago;
+        if (pago.metodoPago === "tarjeta_credito" || pago.metodoPago === "tarjeta_debito" || pago.metodoPago === "tarjeta") {
+          metodoLabel += isPagoAcreditado(pago) ? " (Acreditado)" : " (Pendiente)";
+        }
+
         return {
           id: pago.id ?? `${pago.ordenId}-${pago.ventaId ?? ""}-${pago.monto}-${pago.referencia ?? ""}`,
           fecha: parseReporteFecha(pago.createdAt),
           metodo: pago.metodoPago,
-          metodoLabel: COBRO_METODO_LABELS[pago.metodoPago] ?? pago.metodoPago,
+          metodoLabel,
           banco,
           referencia: pago.referencia ?? "",
           notas: pago.notas ?? "",
@@ -431,11 +458,15 @@ export default function ReporteFinancieroPage() {
       compras.flatMap((compra) =>
         (compra.pagosProveedor ?? []).map((pago, index) => {
           const banco = pago.metodoPago === "transferencia" ? normalizeBancoTransferencia(pago.banco) : "";
+          let metodoLabel = PAGO_METODO_LABELS[pago.metodoPago] ?? pago.metodoPago;
+          if (pago.metodoPago === "tarjeta_credito" || pago.metodoPago === "tarjeta_debito") {
+            metodoLabel += isPagoAcreditado(pago) ? " (Acreditado)" : " (Pendiente)";
+          }
           return {
             id: `${compra.id ?? compra.claveAcceso}-${index}`,
             fecha: parseReporteFecha(pago.fecha) ?? parseReporteFecha(pago.createdAt) ?? parseReporteFecha(compra.createdAt),
             metodo: pago.metodoPago,
-            metodoLabel: PAGO_METODO_LABELS[pago.metodoPago] ?? pago.metodoPago,
+            metodoLabel,
             banco,
             referencia: pago.referencia ?? "",
             notas: pago.notas ?? "",
@@ -630,16 +661,48 @@ export default function ReporteFinancieroPage() {
     setBancoFiltro("todos");
   };
 
-  const porMetodo = movimientosFiltrados.reduce<Record<string, Agrupado>>((acc, movimiento) => {
-    addToGroup(acc, movimiento.metodoLabel, movimiento.monto);
-    return acc;
-  }, {});
+  const porMetodo = movimientosFiltrados
+    .filter((m) => {
+      if (vista === "cobros") {
+        const orig = cobros.find((c) => c.id === m.id || `${c.ordenId}-${c.ventaId ?? ""}-${c.monto}-${c.referencia ?? ""}` === m.id);
+        return orig ? isPagoAcreditado(orig) : true;
+      }
+      if (vista === "pagos") {
+        const parts = m.id.split("-");
+        const index = parseInt(parts.pop() || "0", 10);
+        const key = parts.join("-");
+        const compraObj = compras.find((c) => (c.id ?? c.claveAcceso) === key);
+        const orig = compraObj?.pagosProveedor?.[index];
+        return orig ? isPagoAcreditado(orig) : true;
+      }
+      return true;
+    })
+    .reduce<Record<string, Agrupado>>((acc, movimiento) => {
+      addToGroup(acc, movimiento.metodoLabel, movimiento.monto);
+      return acc;
+    }, {});
 
-  const porBanco = movimientosFiltrados.reduce<Record<string, Agrupado>>((acc, movimiento) => {
-    if (!movimiento.banco) return acc;
-    addToGroup(acc, movimiento.banco, movimiento.monto);
-    return acc;
-  }, {});
+  const porBanco = movimientosFiltrados
+    .filter((m) => {
+      if (vista === "cobros") {
+        const orig = cobros.find((c) => c.id === m.id || `${c.ordenId}-${c.ventaId ?? ""}-${c.monto}-${c.referencia ?? ""}` === m.id);
+        return orig ? isPagoAcreditado(orig) : true;
+      }
+      if (vista === "pagos") {
+        const parts = m.id.split("-");
+        const index = parseInt(parts.pop() || "0", 10);
+        const key = parts.join("-");
+        const compraObj = compras.find((c) => (c.id ?? c.claveAcceso) === key);
+        const orig = compraObj?.pagosProveedor?.[index];
+        return orig ? isPagoAcreditado(orig) : true;
+      }
+      return true;
+    })
+    .reduce<Record<string, Agrupado>>((acc, movimiento) => {
+      if (!movimiento.banco) return acc;
+      addToGroup(acc, movimiento.banco, movimiento.monto);
+      return acc;
+    }, {});
 
   const periodoRango = getReporteDateRange(periodoFiltro, fechaDesde, fechaHasta);
   const movimientosCobrosPeriodo = movimientosCobros.filter((movimiento) => isDateInRange(movimiento.fecha, periodoRango.desde, periodoRango.hasta));
@@ -650,8 +713,25 @@ export default function ReporteFinancieroPage() {
     isDateInRange(parseReporteFecha(compra.fechaEmision) ?? parseReporteFecha(compra.createdAt), periodoRango.desde, periodoRango.hasta)
   );
   const pagosTecnicosPeriodo = pagosTecnicos.filter((detalle) => isDateInRange(detalle.fecha, periodoRango.desde, periodoRango.hasta));
-  const totalCobrado = movimientosCobrosPeriodo.reduce((sum, movimiento) => sum + movimiento.monto, 0);
-  const totalPagado = movimientosPagosPeriodo.reduce((sum, movimiento) => sum + movimiento.monto, 0);
+  
+  const totalCobrado = movimientosCobrosPeriodo
+    .filter((m) => {
+      const orig = cobros.find((c) => c.id === m.id || `${c.ordenId}-${c.ventaId ?? ""}-${c.monto}-${c.referencia ?? ""}` === m.id);
+      return orig ? isPagoAcreditado(orig) : true;
+    })
+    .reduce((sum, movimiento) => sum + movimiento.monto, 0);
+
+  const totalPagado = movimientosPagosPeriodo
+    .filter((m) => {
+      const parts = m.id.split("-");
+      const index = parseInt(parts.pop() || "0", 10);
+      const key = parts.join("-");
+      const compraObj = compras.find((c) => (c.id ?? c.claveAcceso) === key);
+      const orig = compraObj?.pagosProveedor?.[index];
+      return orig ? isPagoAcreditado(orig) : true;
+    })
+    .reduce((sum, movimiento) => sum + movimiento.monto, 0);
+
   const totalDevuelto = movimientosDevolucionesPeriodo.reduce((sum, movimiento) => sum + movimiento.monto, 0);
   const totalDevueltoProveedor = movimientosDevolucionesProveedorPeriodo.reduce((sum, movimiento) => sum + movimiento.monto, 0);
   const totalComprasFacturado = comprasPeriodo.reduce((sum, compra) => sum + compra.importeTotal, 0);
@@ -659,7 +739,25 @@ export default function ReporteFinancieroPage() {
   const totalPagosTecnicos = pagosTecnicosPeriodo.reduce((sum, detalle) => sum + detalle.pagoTecnico, 0);
   const totalPagosTecnicosFiltrado = pagosTecnicosFiltrados.reduce((sum, detalle) => sum + detalle.pagoTecnico, 0);
   const totalServiciosTecnicosFiltrado = pagosTecnicosFiltrados.reduce((sum, detalle) => sum + detalle.serviciosSubtotal / detalle.tecnicosCount, 0);
-  const totalVista = movimientosFiltrados.reduce((sum, movimiento) => sum + movimiento.monto, 0);
+  
+  const totalVista = movimientosFiltrados
+    .filter((m) => {
+      if (vista === "cobros") {
+        const orig = cobros.find((c) => c.id === m.id || `${c.ordenId}-${c.ventaId ?? ""}-${c.monto}-${c.referencia ?? ""}` === m.id);
+        return orig ? isPagoAcreditado(orig) : true;
+      }
+      if (vista === "pagos") {
+        const parts = m.id.split("-");
+        const index = parseInt(parts.pop() || "0", 10);
+        const key = parts.join("-");
+        const compraObj = compras.find((c) => (c.id ?? c.claveAcceso) === key);
+        const orig = compraObj?.pagosProveedor?.[index];
+        return orig ? isPagoAcreditado(orig) : true;
+      }
+      return true;
+    })
+    .reduce((sum, movimiento) => sum + movimiento.monto, 0);
+
   const metodos = Object.values(porMetodo).sort((a, b) => b.total - a.total);
   const bancos = Object.values(porBanco).sort((a, b) => b.total - a.total);
   const emptyMessage =
