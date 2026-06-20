@@ -33,4 +33,6 @@ La aplicación debe poder usarse en una laptop de pantalla de unas 13 o 14 pulga
 
 Todos los modales deben cerrarse al clicar fuera
 
+No uses emojis, simepre usa iconos
+
 

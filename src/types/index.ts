@@ -303,6 +303,7 @@ export interface Producto {
   nombre: string;
   descripcion?: string;
   categoria?: string;
+  fabricante?: string;
   unidadMedida?: string;
   precioBase: number;
   costoBase: number;

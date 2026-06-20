@@ -20,20 +20,24 @@ import {
   Image as ImageIcon,
   Edit2,
   Trash2,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { Producto, MovimientoStock } from "@/types";
 import {
   updateProducto,
   getMovimientosStockByProducto,
-  getHistorialPrecios,
+  getCompras,
   registrarMovimientoStockManual,
   calcularPrecioVenta,
   getOrdenById,
   uploadInventarioImagen,
+  getProductos,
 } from "@/lib/services";
 import { toast } from "react-hot-toast";
+import { useUIStore } from "@/store";
 
-type Tab = "detalles" | "precios" | "historial_precios" | "historial_stock";
+type Tab = "detalles" | "precios" | "historial_precios" | "proveedores" | "historial_stock";
 
 interface ProductoDetalleSidebarProps {
   producto: Producto;
@@ -48,12 +52,21 @@ type DateLike = {
   seconds?: number;
 };
 
-type HistorialPrecio = {
-  id: string;
-  createdAt?: unknown;
-  costoBase?: number;
-  margenGanancia?: number;
-  precioBase?: number;
+type HistorialCompraItem = {
+  fecha: string;
+  proveedor: string;
+  factura: string;
+  cantidad: number;
+  precioUnitario: number;
+};
+
+type ProveedorProductoItem = {
+  ruc: string;
+  nombre: string;
+  transacciones: number;
+  totalCantidad: number;
+  ultimoCosto: number;
+  ultimaFecha: string;
 };
 
 const formatDate = (dateVal: any) => {
@@ -76,9 +89,10 @@ const formatDate = (dateVal: any) => {
 };
 
 const TAB_ITEMS: Array<{ id: Tab; label: string; icon: ReactNode }> = [
-  { id: "detalles", label: "Detalles", icon: <Info size={13} /> },
+  { id: "detalles", label: "Producto", icon: <Info size={13} /> },
   { id: "precios", label: "Precios", icon: <DollarSign size={13} /> },
-  { id: "historial_precios", label: "Precios hist.", icon: <History size={13} /> },
+  { id: "historial_precios", label: "Costos hist.", icon: <History size={13} /> },
+  { id: "proveedores", label: "Proveedores", icon: <Truck size={13} /> },
   { id: "historial_stock", label: "Stock hist.", icon: <Boxes size={13} /> },
 ];
 
@@ -176,12 +190,29 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
   const [activeTab, setActiveTab] = useState<Tab>("detalles");
   const [cargandoDatos, setCargandoDatos] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { sidebarOpen } = useUIStore();
 
   const [nombre, setNombre] = useState(producto.nombre);
   const [sku, setSku] = useState(producto.sku || "");
   const [categoria, setCategoria] = useState(producto.categoria || "");
+  const [fabricante, setFabricante] = useState(producto.fabricante || "");
   const [unidadMedida, setUnidadMedida] = useState(producto.unidadMedida || "Unidad");
   const [descripcion, setDescripcion] = useState(producto.descripcion || "");
+
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [proveedores, setProveedores] = useState<ProveedorProductoItem[]>([]);
+
+  useEffect(() => {
+    getProductos()
+      .then((prods) => {
+        const cats = Array.from(
+          new Set(prods.map((p) => p.categoria?.trim()).filter(Boolean) as string[])
+        ).sort();
+        setCategorias(cats);
+      })
+      .catch((err) => console.error("Error al cargar categorías:", err));
+  }, []);
   
   const [imagenPreview, setImagenPreview] = useState<string | null>(producto.imagenUrl || null);
   const [archivoImagen, setArchivoImagen] = useState<File | null>(null);
@@ -276,7 +307,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
     setPrecioConIvaInput(conIva.toFixed(2));
   };
 
-  const [historialPrecios, setHistorialPrecios] = useState<HistorialPrecio[]>([]);
+  const [historialCompras, setHistorialCompras] = useState<HistorialCompraItem[]>([]);
   const [movimientosStock, setMovimientosStock] = useState<MovimientoStock[]>([]);
   const [historialError, setHistorialError] = useState<string | null>(null);
   const [stockHistoryError, setStockHistoryError] = useState<string | null>(null);
@@ -300,19 +331,63 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
     if (!producto.id) return;
     let active = true;
 
-    if (activeTab === "historial_precios") {
+    if (activeTab === "historial_precios" || activeTab === "proveedores") {
       void Promise.resolve().then(() => {
         if (active) setHistorialError(null);
       });
       void Promise.resolve().then(() => {
         if (active) setCargandoDatos(true);
       });
-      getHistorialPrecios(producto.id)
-        .then((hist: HistorialPrecio[]) => {
-          if (active) setHistorialPrecios(hist);
+      getCompras()
+        .then((todasLasCompras) => {
+          if (!active) return;
+          const sku = producto.sku?.trim().toUpperCase();
+          if (!sku) {
+            setHistorialCompras([]);
+            setProveedores([]);
+            return;
+          }
+          const history: HistorialCompraItem[] = [];
+          const provMap = new Map<string, ProveedorProductoItem>();
+          todasLasCompras.forEach((compra) => {
+            compra.items.forEach((item) => {
+              if (item.codigo?.trim().toUpperCase() === sku) {
+                const fechaCompra = compra.fechaEmision || compra.fechaAutorizacion || "";
+                history.push({
+                  fecha: fechaCompra,
+                  proveedor: compra.proveedorRazonSocial,
+                  factura: compra.numeroFactura,
+                  cantidad: item.cantidad,
+                  precioUnitario: item.precioUnitario,
+                });
+
+                const ruc = compra.proveedorRuc || "SIN_RUC";
+                const nombreProv = compra.proveedorRazonSocial || "Proveedor Desconocido";
+                const costo = item.precioUnitario;
+                const cant = item.cantidad;
+
+                const prev = provMap.get(ruc);
+                if (prev) {
+                  prev.transacciones += 1;
+                  prev.totalCantidad += cant;
+                } else {
+                  provMap.set(ruc, {
+                    ruc,
+                    nombre: nombreProv,
+                    transacciones: 1,
+                    totalCantidad: cant,
+                    ultimoCosto: costo,
+                    ultimaFecha: fechaCompra,
+                  });
+                }
+              }
+            });
+          });
+          setHistorialCompras(history);
+          setProveedores(Array.from(provMap.values()));
         })
         .catch(() => {
-          if (active) setHistorialError("No se pudo cargar el historial de prices.");
+          if (active) setHistorialError("No se pudo cargar el historial de compras/proveedores.");
         })
         .finally(() => {
           if (active) setCargandoDatos(false);
@@ -402,6 +477,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         unidadMedida: unidadMedida.trim(),
         descripcion: descripcion.trim(),
         imagenUrl: finalImageUrl,
+        fabricante: fabricante.trim(),
       });
 
       setArchivoImagen(null);
@@ -474,10 +550,21 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[900] flex justify-end bg-slate-950/50 backdrop-blur-sm animate-fade-in"
+      className={`fixed inset-0 z-[900] flex justify-end bg-slate-950/50 backdrop-blur-sm animate-fade-in transition-all duration-300 ${
+        isExpanded
+          ? sidebarOpen
+            ? "sidebar-aware-overlay"
+            : "sidebar-aware-overlay-collapsed"
+          : "left-0"
+      }`}
       onClick={onClose}
     >
-      <aside className="h-full w-full max-w-lg bg-[var(--bg-card)] shadow-2xl border-l border-[var(--border)] flex flex-col animate-slide-in" onClick={(e) => e.stopPropagation()}>
+      <aside
+        className={`h-full w-full bg-[var(--bg-card)] shadow-2xl border-l border-[var(--border)] flex flex-col animate-slide-in transition-all duration-300 ${
+          isExpanded ? "max-w-full" : "max-w-lg"
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="p-6 border-b border-[var(--border)] flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -496,13 +583,23 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
               <span>Stock: {stockActual}</span>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all duration-200 border border-slate-200 dark:border-slate-800 cursor-pointer"
-          >
-            <X size={16} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all duration-200 border border-slate-200 dark:border-slate-800 cursor-pointer"
+              title={isExpanded ? "Restaurar tamaño" : "Ampliar"}
+            >
+              {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all duration-200 border border-slate-200 dark:border-slate-800 cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         {/* Tabs Navigation */}
@@ -527,253 +624,315 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {activeTab === "detalles" && (
           <form id="form-detalles" onSubmit={handleGuardarDetalles} className="space-y-5 animate-fade-in">
-            <Card title="Datos básicos">
-              <div className="space-y-4">
-                <div className="form-group">
-                  <label className="label">Nombre *</label>
-                  <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} className="input" required />
-                </div>
+            <div className={isExpanded ? "grid grid-cols-1 lg:grid-cols-3 gap-6 space-y-0 items-start" : "space-y-5"}>
+              <Card title="Datos básicos">
+                <div className={`space-y-4 ${isExpanded ? "grid grid-cols-2 gap-4 space-y-0" : ""}`}>
+                  <div className="form-group">
+                    <label className="label">Nombre *</label>
+                    <input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} className="input" required />
+                  </div>
 
-                <div className="form-group">
-                  <label className="label">SKU *</label>
-                  <input
-                    type="text"
-                    value={sku}
-                    onChange={(e) => setSku(e.target.value.toUpperCase())}
-                    className="input uppercase font-mono"
-                    required
-                  />
-                </div>
+                  <div className="form-group">
+                    <label className="label">SKU *</label>
+                    <input
+                      type="text"
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value.toUpperCase())}
+                      className="input uppercase font-mono"
+                      required
+                    />
+                  </div>
 
-                <div className="grid grid-cols-2 gap-4">
                   <div className="form-group">
                     <label className="label">Categoría</label>
-                    <input type="text" value={categoria} onChange={(e) => setCategoria(e.target.value)} className="input" />
+                    <input
+                      type="text"
+                      value={categoria}
+                      onChange={(e) => setCategoria(e.target.value)}
+                      className="input"
+                      list="categorias-sidebar-list"
+                      placeholder="Selecciona o escribe una categoría"
+                    />
+                    <datalist id="categorias-sidebar-list">
+                      {categorias.map((cat) => (
+                        <option key={cat} value={cat} />
+                      ))}
+                    </datalist>
                   </div>
 
                   <div className="form-group">
                     <label className="label">Unidad de medida</label>
                     <input type="text" value={unidadMedida} onChange={(e) => setUnidadMedida(e.target.value)} className="input" />
                   </div>
-                </div>
-              </div>
-            </Card>
 
-            <Card title="Descripción y Foto">
-              <div className="flex gap-4 items-start">
-                <div className="flex-1 min-w-0">
-                  <textarea
-                    value={descripcion}
-                    onChange={(e) => setDescripcion(e.target.value)}
-                    className="input resize-none w-full"
-                    rows={3}
-                    placeholder="Descripción del artículo"
-                  />
-                </div>
-                <div className="w-20 shrink-0">
-                  <div className="relative group w-20 h-20 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-all duration-200">
-                    {imagenPreview ? (
-                      <>
-                        <img src={imagenPreview} alt="Preview" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
-                          <label className="p-1 rounded-md bg-white/20 hover:bg-white/40 text-white cursor-pointer transition-colors" title="Cambiar foto">
-                            <Edit2 size={12} />
-                            <input type="file" accept="image/*" onChange={handleImagenChange} className="hidden" />
-                          </label>
-                          <button
-                            type="button"
-                            onClick={handleEliminarImagen}
-                            className="p-1 rounded-md bg-red-500/20 hover:bg-red-500/40 text-red-200 hover:text-white transition-colors"
-                            title="Eliminar foto"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-50/20 transition-colors p-2 text-center gap-1">
-                        <ImageIcon size={18} />
-                        <span className="text-[9px] font-semibold leading-tight">Añadir foto</span>
-                        <input type="file" accept="image/*" onChange={handleImagenChange} className="hidden" />
-                      </label>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {(producto.ultimaCompraFactura || producto.ultimoProveedorNombre) && (
-              <Card title="Última compra" action={<Truck size={14} className="text-[var(--text-muted)]" />}>
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
-                    <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Factura</span>
-                    <p className="mt-1 font-semibold text-[var(--text-primary)] font-mono">{producto.ultimaCompraFactura || "-"}</p>
-                  </div>
-                  <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
-                    <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Fecha</span>
-                    <p className="mt-1 font-semibold text-[var(--text-primary)]">{producto.ultimaCompraFecha || "-"}</p>
-                  </div>
-                  <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
-                    <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Proveedor</span>
-                    <p className="mt-1 font-semibold text-[var(--text-primary)] truncate" title={producto.ultimoProveedorNombre}>{producto.ultimoProveedorNombre || "-"}</p>
-                  </div>
-                  <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
-                    <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">RUC</span>
-                    <p className="mt-1 font-semibold text-[var(--text-primary)] font-mono">{producto.ultimoProveedorRuc || "-"}</p>
+                  <div className={`form-group ${isExpanded ? "col-span-2" : ""}`}>
+                    <label className="label">Fabricante</label>
+                    <input
+                      type="text"
+                      value={fabricante}
+                      onChange={(e) => setFabricante(e.target.value)}
+                      className="input"
+                      placeholder="Ej: Bosch, Toyota, etc."
+                    />
                   </div>
                 </div>
               </Card>
-            )}
 
+              <Card title="Descripción y Foto">
+                <div className="flex gap-4 items-start">
+                  <div className="flex-1 min-w-0">
+                    <textarea
+                      value={descripcion}
+                      onChange={(e) => setDescripcion(e.target.value)}
+                      className="input resize-none w-full"
+                      rows={isExpanded ? 7 : 3}
+                      placeholder="Descripción del artículo"
+                    />
+                  </div>
+                  <div className="w-20 shrink-0">
+                    <div className="relative group w-20 h-20 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] overflow-hidden flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-all duration-200">
+                      {imagenPreview ? (
+                        <>
+                          <img src={imagenPreview} alt="Preview" className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                            <label className="p-1 rounded-md bg-white/20 hover:bg-white/40 text-white cursor-pointer transition-colors" title="Cambiar foto">
+                              <Edit2 size={12} />
+                              <input type="file" accept="image/*" onChange={handleImagenChange} className="hidden" />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={handleEliminarImagen}
+                              className="p-1 rounded-md bg-red-500/20 hover:bg-red-500/40 text-red-200 hover:text-white transition-colors"
+                              title="Eliminar foto"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <label className="w-full h-full flex flex-col items-center justify-center cursor-pointer text-[var(--text-muted)] hover:text-blue-500 hover:bg-blue-50/20 transition-colors p-2 text-center gap-1">
+                          <ImageIcon size={18} />
+                          <span className="text-[9px] font-semibold leading-tight">Añadir foto</span>
+                          <input type="file" accept="image/*" onChange={handleImagenChange} className="hidden" />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {(producto.ultimaCompraFactura || producto.ultimoProveedorNombre) && (
+                <Card title="Última compra" action={<Truck size={14} className="text-[var(--text-muted)]" />}>
+                  <div className={`grid gap-3 text-xs ${isExpanded ? "grid-cols-2 lg:grid-cols-1 xl:grid-cols-2" : "grid-cols-2"}`}>
+                    <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
+                      <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Factura</span>
+                      <p className="mt-1 font-semibold text-[var(--text-primary)] font-mono">{producto.ultimaCompraFactura || "-"}</p>
+                    </div>
+                    <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
+                      <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Fecha</span>
+                      <p className="mt-1 font-semibold text-[var(--text-primary)]">{producto.ultimaCompraFecha || "-"}</p>
+                    </div>
+                    <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
+                      <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">Proveedor</span>
+                      <p className="mt-1 font-semibold text-[var(--text-primary)] truncate" title={producto.ultimoProveedorNombre}>{producto.ultimoProveedorNombre || "-"}</p>
+                    </div>
+                    <div className="p-3 rounded-xl border border-[var(--border-light)] bg-[var(--bg-secondary)]">
+                      <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase">RUC</span>
+                      <p className="mt-1 font-semibold text-[var(--text-primary)] font-mono">{producto.ultimoProveedorRuc || "-"}</p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+            </div>
           </form>
         )}
 
         {activeTab === "precios" && (
           <form id="form-precios" onSubmit={handleGuardarPrecios} className="space-y-5 animate-fade-in">
-            {/* Referencia Actual */}
-            <div className="p-4 rounded-xl border border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Valores de Referencia</p>
-                <div className="mt-2 flex items-center gap-4 text-xs font-semibold">
-                  <div>
-                    <span className="text-[var(--text-secondary)]">Costo actual:</span>{" "}
-                    <span className="font-mono font-bold text-[var(--text-primary)]">{formatCurrency(producto.costoBase)}</span>
-                  </div>
-                  <div className="text-slate-300 dark:text-slate-800">|</div>
-                  <div>
-                    <span className="text-[var(--text-secondary)]">Precio actual:</span>{" "}
-                    <span className="font-mono font-bold text-[var(--text-primary)]">{formatCurrency(producto.precioBase)}</span>
+            {!isExpanded && (
+              <div className="p-4 rounded-xl border border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Valores de Referencia</p>
+                  <div className="mt-2 flex items-center gap-4 text-xs font-semibold">
+                    <div>
+                      <span className="text-[var(--text-secondary)]">Costo actual:</span>{" "}
+                      <span className="font-mono font-bold text-[var(--text-primary)]">{formatCurrency(producto.costoBase)}</span>
+                    </div>
+                    <div className="text-slate-300 dark:text-slate-800">|</div>
+                    <div>
+                      <span className="text-[var(--text-secondary)]">Precio actual:</span>{" "}
+                      <span className="font-mono font-bold text-[var(--text-primary)]">{formatCurrency(producto.precioBase)}</span>
+                    </div>
                   </div>
                 </div>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-[var(--border)]">
+                  Precios Activos
+                </span>
               </div>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-[var(--border)]">
-                Precios Activos
-              </span>
-            </div>
+            )}
 
-            {/* Ajuste */}
-            <Card title="Ajustes de Precios">
-              <div className="space-y-4">
-                {/* 1. Precio de compra (último) */}
-                <div className="form-group">
-                  <label className="label">
-                    Precio de compra <span className="text-[10px] text-[var(--text-muted)] font-normal normal-case italic ml-0.5">(último)</span>
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--text-muted)]">$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={costoInput}
-                      onChange={(e) => handleCostoChange(e.target.value)}
-                      className="input pl-8 font-mono font-semibold"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* 2. Margen */}
-                <div className="form-group">
-                  <label className="label">Margen (%)</label>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
+            <div className={isExpanded ? "grid grid-cols-1 md:grid-cols-2 gap-6 space-y-0 items-start" : "space-y-5"}>
+              <Card title="Ajustes de Precios">
+                <div className={`space-y-4 ${isExpanded ? "grid grid-cols-2 gap-4 space-y-0" : ""}`}>
+                  <div className="form-group">
+                    <label className="label">
+                      Precio de compra <span className="text-[10px] text-[var(--text-muted)] font-normal normal-case italic ml-0.5">(último)</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--text-muted)]">$</span>
                       <input
                         type="number"
-                        step="0.1"
-                        value={margenInput}
-                        onChange={(e) => handleMargenChange(e.target.value)}
-                        className="input pr-8 font-mono font-semibold"
+                        step="0.01"
+                        min="0"
+                        value={costoInput}
+                        onChange={(e) => handleCostoChange(e.target.value)}
+                        className="input pl-8 font-mono font-semibold"
                         required
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-muted)]">%</span>
                     </div>
-                    {[25, 40].map((margen) => (
-                      <button
-                        key={margen}
-                        type="button"
-                        onClick={() => handleMargenChange(String(margen))}
-                        className={`btn justify-center w-16 font-semibold text-xs ${Number(margenInput) === margen ? "btn-primary" : "btn-secondary"}`}
-                      >
-                        {margen}%
-                      </button>
-                    ))}
                   </div>
-                </div>
 
-                {/* 3. Precio antes de impuestos */}
-                <div className="form-group">
-                  <label className="label">Precio antes de impuestos ($)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--text-muted)]">$</span>
+                  <div className="form-group">
+                    <label className="label">Margen (%)</label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={margenInput}
+                          onChange={(e) => handleMargenChange(e.target.value)}
+                          className="input pr-8 font-mono font-semibold"
+                          required
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-muted)]">%</span>
+                      </div>
+                      {[25, 40].map((margen) => (
+                        <button
+                          key={margen}
+                          type="button"
+                          onClick={() => handleMargenChange(String(margen))}
+                          className={`btn justify-center w-16 font-semibold text-xs ${Number(margenInput) === margen ? "btn-primary" : "btn-secondary"}`}
+                        >
+                          {margen}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="label">Precio antes de impuestos ($)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--text-muted)]">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={precioSinIvaInput}
+                        onChange={(e) => handlePrecioSinIvaChange(e.target.value)}
+                        className="input pl-8 font-mono font-semibold"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--border)] hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
+                    <div className="min-w-0 pr-3">
+                      <label className="text-xs font-bold text-[var(--text-primary)] block">Aplica IVA (15%)</label>
+                      <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">Determina si se agrega el impuesto al precio de venta final</span>
+                    </div>
                     <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={precioSinIvaInput}
-                      onChange={(e) => handlePrecioSinIvaChange(e.target.value)}
-                      className="input pl-8 font-mono font-semibold"
-                      required
+                      type="checkbox"
+                      checked={aplicaIva}
+                      onChange={(e) => handleAplicaIvaChange(e.target.checked)}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-800 transition-colors cursor-pointer"
                     />
                   </div>
-                </div>
 
-                {/* 4. Indicador de IVA o no */}
-                <div className="flex items-center justify-between p-3 rounded-xl border border-[var(--border)] hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors">
-                  <div className="min-w-0 pr-3">
-                    <label className="text-xs font-bold text-[var(--text-primary)] block">Aplica IVA (15%)</label>
-                    <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">Determina si se agrega el impuesto al precio de venta final</span>
+                  <div className={`form-group ${isExpanded ? "col-span-2" : ""}`}>
+                    <label className="label font-bold text-blue-600 dark:text-blue-400">Precio de venta al público ($)</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--text-muted)]">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={precioConIvaInput}
+                        onChange={(e) => handlePrecioConIvaChange(e.target.value)}
+                        className="input pl-8 font-mono font-bold text-blue-600 dark:text-blue-400"
+                        required
+                      />
+                    </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={aplicaIva}
-                    onChange={(e) => handleAplicaIvaChange(e.target.checked)}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 dark:border-slate-800 transition-colors cursor-pointer"
-                  />
-                </div>
 
-                {/* 5. Precio de venta al público */}
-                <div className="form-group">
-                  <label className="label font-bold text-blue-600 dark:text-blue-400">Precio de venta al público ($)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--text-muted)]">$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={precioConIvaInput}
-                      onChange={(e) => handlePrecioConIvaChange(e.target.value)}
-                      className="input pl-8 font-mono font-bold text-blue-600 dark:text-blue-400"
-                      required
-                    />
+                  {!isExpanded && (
+                    <div className="p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-950/10 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-[var(--text-secondary)]">Margen de ganancia</span>
+                        <div className="text-right">
+                          <p className="font-mono text-xl font-bold text-blue-600 dark:text-blue-400">
+                            {formatCurrency(Number(precioSinIvaInput || 0) - costoBase)}
+                          </p>
+                          <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
+                            Utilidad neta ({margenInput}%)
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {isExpanded && (
+                <div className="space-y-5">
+                  <div className="p-4 rounded-xl border border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider">Valores de Referencia</p>
+                      <div className="mt-2 flex items-center gap-4 text-xs font-semibold">
+                        <div>
+                          <span className="text-[var(--text-secondary)]">Costo actual:</span>{" "}
+                          <span className="font-mono font-bold text-[var(--text-primary)]">{formatCurrency(producto.costoBase)}</span>
+                        </div>
+                        <div className="text-slate-300 dark:text-slate-800">|</div>
+                        <div>
+                          <span className="text-[var(--text-secondary)]">Precio actual:</span>{" "}
+                          <span className="font-mono font-bold text-[var(--text-primary)]">{formatCurrency(producto.precioBase)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300 border border-[var(--border)]">
+                      Precios Activos
+                    </span>
                   </div>
-                </div>
 
-                {/* 6. Margen de ganancia (Previsualización reactiva) */}
-                <div className="p-4 rounded-xl border border-blue-100 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-950/10 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-[var(--text-secondary)]">Margen de ganancia</span>
-                    <div className="text-right">
-                      <p className="font-mono text-xl font-bold text-blue-600 dark:text-blue-400">
+                  <div className="p-6 rounded-xl border border-blue-100 dark:border-blue-900/30 bg-blue-50/30 dark:bg-blue-950/10 space-y-4">
+                    <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wide">Análisis de Utilidad</h4>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-[var(--text-secondary)]">Margen de ganancia (Monto)</span>
+                      <p className="font-mono text-2xl font-extrabold text-blue-600 dark:text-blue-400">
                         {formatCurrency(Number(precioSinIvaInput || 0) - costoBase)}
                       </p>
-                      <p className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
-                        Utilidad neta ({margenInput}%)
+                    </div>
+                    <div className="flex items-center justify-between border-t border-blue-200/30 dark:border-blue-900/30 pt-3">
+                      <span className="text-sm font-semibold text-[var(--text-secondary)]">Porcentaje de Margen</span>
+                      <p className="font-mono text-lg font-bold text-[var(--text-primary)]">
+                        {margenInput}%
                       </p>
+                    </div>
+                    <div className="text-[11px] text-[var(--text-muted)] leading-relaxed border-t border-blue-200/30 dark:border-blue-900/30 pt-3">
+                      Este cálculo representa la utilidad neta estimada basada en el precio antes de impuestos y el costo base de adquisición.
                     </div>
                   </div>
                 </div>
-              </div>
-            </Card>
-
+              )}
+            </div>
           </form>
         )}
 
         {activeTab === "historial_precios" && (
-          <div className="space-y-4 animate-fade-in">
+          <div className={`space-y-4 animate-fade-in ${isExpanded ? "max-w-5xl mx-auto" : ""}`}>
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
-              <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">Historial de Precios</h4>
-              <span className="text-[10px] font-bold text-[var(--text-muted)]">{historialPrecios.length} cambios</span>
+              <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">Compras Registradas del Artículo</h4>
+              <span className="text-[10px] font-bold text-[var(--text-muted)]">{historialCompras.length} transacciones</span>
             </div>
 
             {cargandoDatos ? (
@@ -783,9 +942,9 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
               </div>
             ) : historialError ? (
               <p className="py-4 text-center text-xs text-red-500">{historialError}</p>
-            ) : historialPrecios.length === 0 ? (
+            ) : historialCompras.length === 0 ? (
               <div className="text-center py-8 text-[var(--text-muted)] text-xs">
-                Sin cambios de precio registrados.
+                No se encontraron registros de compra para este artículo.
               </div>
             ) : (
               <div className="max-h-[480px] overflow-auto rounded-xl border border-[var(--border)]">
@@ -793,25 +952,84 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
                   <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900/80 border-b border-[var(--border)] text-[10px] uppercase text-[var(--text-muted)] font-bold">
                     <tr>
                       <th className="px-3 py-2.5">Fecha</th>
-                      <th className="px-3 py-2.5 text-right">Costo</th>
-                      <th className="px-3 py-2.5 text-right">Margen</th>
-                      <th className="px-3 py-2.5 text-right">Precio Púb.</th>
+                      <th className="px-3 py-2.5">Factura / Proveedor</th>
+                      <th className="px-3 py-2.5 text-right">Cant.</th>
+                      <th className="px-3 py-2.5 text-right">Costo Unit.</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)] bg-white dark:bg-[var(--bg-card)]">
-                    {historialPrecios.map((hist) => (
-                      <tr key={hist.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                    {historialCompras.map((hist, idx) => (
+                      <tr key={`${hist.factura}-${idx}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
                         <td className="px-3 py-2.5 text-[10px] font-mono text-[var(--text-secondary)] whitespace-nowrap align-top">
-                          {formatDate(hist.createdAt)}
+                          {hist.fecha}
                         </td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[var(--text-secondary)] align-top">
-                          {formatCurrency(hist.costoBase)}
+                        <td className="px-3 py-2.5 align-top">
+                          <p className="font-semibold text-[var(--text-primary)] leading-tight">{hist.factura}</p>
+                          <p className="text-[10px] text-[var(--text-muted)] mt-0.5 truncate max-w-[180px]">{hist.proveedor}</p>
                         </td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[var(--text-secondary)] align-top">
-                          {hist.margenGanancia ?? "-"}%
+                        <td className="px-3 py-2.5 text-right font-mono font-medium text-[var(--text-secondary)] align-top">
+                          {hist.cantidad}
                         </td>
                         <td className="px-3 py-2.5 text-right font-mono font-bold text-blue-600 dark:text-blue-400 align-top">
-                          {formatCurrency(hist.precioBase)}
+                          {formatCurrency(hist.precioUnitario)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "proveedores" && (
+          <div className={`space-y-4 animate-fade-in ${isExpanded ? "max-w-5xl mx-auto" : ""}`}>
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+              <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">Proveedores del Artículo</h4>
+              <span className="text-[10px] font-bold text-[var(--text-muted)]">{proveedores.length} proveedores</span>
+            </div>
+
+            {cargandoDatos ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 size={24} className="animate-spin text-blue-600 mb-2" />
+                <span className="text-xs text-[var(--text-muted)]">Cargando proveedores...</span>
+              </div>
+            ) : historialError ? (
+              <p className="py-4 text-center text-xs text-red-500">{historialError}</p>
+            ) : proveedores.length === 0 ? (
+              <div className="text-center py-8 text-[var(--text-muted)] text-xs">
+                No se encontraron proveedores registrados para este artículo.
+              </div>
+            ) : (
+              <div className="max-h-[480px] overflow-auto rounded-xl border border-[var(--border)]">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900/80 border-b border-[var(--border)] text-[10px] uppercase text-[var(--text-muted)] font-bold">
+                    <tr>
+                      <th className="px-3 py-2.5">Proveedor</th>
+                      <th className="px-3 py-2.5 text-center">Compras</th>
+                      <th className="px-3 py-2.5 text-right">Cant. Total</th>
+                      <th className="px-3 py-2.5 text-right">Último Costo</th>
+                      <th className="px-3 py-2.5 text-right">Última Compra</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)] bg-white dark:bg-[var(--bg-card)]">
+                    {proveedores.map((prov) => (
+                      <tr key={prov.ruc} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/10">
+                        <td className="px-3 py-2.5 align-top">
+                          <p className="font-semibold text-[var(--text-primary)] leading-tight">{prov.nombre}</p>
+                          <p className="text-[10px] text-[var(--text-muted)] mt-0.5 font-mono">{prov.ruc}</p>
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-mono text-[var(--text-secondary)] align-top">
+                          {prov.transacciones}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-[var(--text-secondary)] align-top">
+                          {prov.totalCantidad}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-blue-600 dark:text-blue-400 align-top">
+                          {formatCurrency(prov.ultimoCosto)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-[var(--text-secondary)] whitespace-nowrap align-top">
+                          {prov.ultimaFecha}
                         </td>
                       </tr>
                     ))}
@@ -823,7 +1041,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         )}
 
         {activeTab === "historial_stock" && (
-          <div className="space-y-4 animate-fade-in">
+          <div className={`space-y-4 animate-fade-in ${isExpanded ? "max-w-5xl mx-auto" : ""}`}>
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
               <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wide">Historial de Stock</h4>
               <div className="flex items-center gap-2">
@@ -840,8 +1058,8 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
 
             {mostrarAjusteStock && (
               <Card title="Ajuste manual de stock">
-                <form onSubmit={handleRegistrarStock} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-2">
+                <form onSubmit={handleRegistrarStock} className={`space-y-4 ${isExpanded ? "grid grid-cols-2 gap-4 space-y-0 items-end" : ""}`}>
+                  <div className={`grid grid-cols-2 gap-2 ${isExpanded ? "col-span-2" : ""}`}>
                     <button
                       type="button"
                       onClick={() => setTipoMovimiento("entrada")}
@@ -877,13 +1095,13 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
                     <textarea
                       value={notaMovimiento}
                       onChange={(e) => setNotaMovimiento(e.target.value)}
-                      className="input resize-none"
-                      rows={2}
+                      className="input resize-none w-full"
+                      rows={1}
                       placeholder="Motivo del ajuste manual"
                     />
                   </div>
 
-                  <button type="submit" disabled={guardando} className="btn-primary w-full justify-center py-2.5 text-xs font-bold shadow-md cursor-pointer">
+                  <button type="submit" disabled={guardando} className={`btn-primary w-full justify-center py-2.5 text-xs font-bold shadow-md cursor-pointer ${isExpanded ? "col-span-2" : ""}`}>
                     {guardando ? (
                       <>
                         <Loader2 size={14} className="animate-spin mr-1.5" />

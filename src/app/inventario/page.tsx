@@ -25,6 +25,7 @@ type InventarioForm = {
   sku?: string;
   stockActual?: number | string;
   categoria?: string;
+  fabricante?: string;
   unidadMedida?: string;
 };
 
@@ -260,6 +261,16 @@ export default function InventarioPage() {
   const [costoBaseForm, setCostoBaseForm] = useState(0);
   const [margenGananciaForm, setMargenGananciaForm] = useState<number>(25);
   const [aplicaIvaForm, setAplicaIvaForm] = useState(true);
+  const [editandoMargenId, setEditandoMargenId] = useState<string | null>(null);
+  const [valorMargenEditando, setValorMargenEditando] = useState<string>("");
+
+  const handleGuardarMargenInline = async (producto: Producto) => {
+    setEditandoMargenId(null);
+    const nuevoMargen = Number(valorMargenEditando);
+    if (Number.isFinite(nuevoMargen) && nuevoMargen >= 0) {
+      await cambiarMargenProducto(producto, nuevoMargen);
+    }
+  };
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<InventarioForm>();
   const precioVentaCalculado = calcularPrecioVenta(costoBaseForm, margenGananciaForm, aplicaIvaForm);
@@ -290,7 +301,7 @@ export default function InventarioPage() {
     setAplicaIvaForm(true);
     reset({
       nombre: "", descripcion: "", precioBase: 0, costoBase: 0, aplicaIva: true, sku: "", stockActual: 0,
-      categoria: "", unidadMedida: "Unidad", margenGanancia: 25,
+      categoria: "", fabricante: "", unidadMedida: "Unidad", margenGanancia: 25,
     });
     setModalOpen(true);
   };
@@ -312,6 +323,7 @@ export default function InventarioPage() {
       sku: isProducto(item) ? item.sku : "",
       stockActual: isProducto(item) ? item.stockActual ?? 0 : 0,
       categoria: isProducto(item) ? item.categoria ?? "" : "",
+      fabricante: isProducto(item) ? item.fabricante ?? "" : "",
       unidadMedida: isProducto(item) ? item.unidadMedida ?? "Unidad" : "Unidad",
     });
     setModalOpen(true);
@@ -347,6 +359,7 @@ export default function InventarioPage() {
           sku: data.sku ?? "",
           stockActual: Math.floor(Number(data.stockActual ?? 0)),
           categoria: data.categoria?.trim() ?? "",
+          fabricante: data.fabricante?.trim() ?? "",
           unidadMedida: data.unidadMedida?.trim() ?? "",
         };
         
@@ -569,51 +582,51 @@ export default function InventarioPage() {
 
   return (
     <AppShell>
-      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="page-title">Productos y Servicios</h1>
-          <p className="page-subtitle">Gestiona tu inventario y catálogo de servicios</p>
+          <h1 className="page-title text-base sm:text-lg">Productos y Servicios</h1>
+          <p className="page-subtitle text-[11px]">Gestiona tu inventario y catálogo de servicios</p>
         </div>
-        <button onClick={abrirModalNuevo} className="btn-primary">
-          <Plus size={18} /> Nuevo {tab === "productos" ? "Producto" : "Servicio"}
+        <button onClick={abrirModalNuevo} className="btn-primary btn-sm">
+          <Plus size={15} /> Nuevo {tab === "productos" ? "Producto" : "Servicio"}
         </button>
       </div>
 
-      <div className="flex border-b border-[var(--border)] mb-6">
+      <div className="flex border-b border-[var(--border)] mb-4">
         <button
-          className={`px-6 py-3 font-semibold text-sm transition-colors border-b-2 ${
+          className={`px-4 py-2 font-semibold text-xs transition-colors border-b-2 ${
             tab === "productos" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           }`}
           onClick={() => cambiarTab("productos")}
         >
-          <div className="flex items-center gap-2">
-            <Package size={16} /> Productos
+          <div className="flex items-center gap-1.5">
+            <Package size={14} /> Productos
           </div>
         </button>
         <button
-          className={`px-6 py-3 font-semibold text-sm transition-colors border-b-2 ${
+          className={`px-4 py-2 font-semibold text-xs transition-colors border-b-2 ${
             tab === "servicios" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
           }`}
           onClick={() => cambiarTab("servicios")}
         >
-          <div className="flex items-center gap-2">
-            <Wrench size={16} /> Servicios
+          <div className="flex items-center gap-1.5">
+            <Wrench size={14} /> Servicios
           </div>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_360px] gap-6 items-start">
+      <div className="w-full">
       <div className="card min-w-0">
         {cargando ? (
           <div className="flex justify-center p-8">
             <Loader2 size={32} className="animate-spin text-[var(--accent)]" />
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             {tab === "productos" && (
-              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_180px_180px] gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_160px_160px] gap-2 mb-1">
                 <div className="relative">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                   <input
                     type="search"
                     value={busquedaProducto}
@@ -650,22 +663,22 @@ export default function InventarioPage() {
             <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[760px]">
               <thead>
-                <tr className="border-b border-[var(--border)] text-[var(--text-muted)] text-sm">
-                  <th className="pb-3 px-4 font-semibold">Imagen</th>
-                  {tab === "productos" && <th className="pb-3 px-4 font-semibold">SKU</th>}
-                  <th className="pb-3 px-4 font-semibold">Nombre</th>
-                  <th className="pb-3 px-4 font-semibold">Costo Base</th>
-                  {tab === "productos" && <th className="pb-3 px-4 font-semibold">Margen</th>}
-                  {tab !== "productos" && <th className="pb-3 px-4 font-semibold">IVA</th>}
-                  <th className="pb-3 px-4 font-semibold">Precio P&uacute;blico</th>
-                  {tab === "productos" && <th className="pb-3 px-4 font-semibold">Stock</th>}
-                  <th className="pb-3 px-4 font-semibold text-right">Acciones</th>
+                <tr className="border-b border-[var(--border)] text-[var(--text-muted)] text-[11px] uppercase tracking-wider font-bold">
+                  <th className="py-2 px-3 pb-2 font-bold">Imagen</th>
+                  {tab === "productos" && <th className="py-2 px-3 pb-2 font-bold">SKU</th>}
+                  <th className="py-2 px-3 pb-2 font-bold">Nombre</th>
+                  <th className="py-2 px-3 pb-2 font-bold">Costo</th>
+                  {tab === "productos" && <th className="py-2 px-3 pb-2 font-bold">Margen</th>}
+                  <th className="py-2 px-3 pb-2 font-bold">IVA</th>
+                  <th className="py-2 px-3 pb-2 font-bold text-right">Precio Venta</th>
+                  {tab === "productos" && <th className="py-2 px-3 pb-2 font-bold">Stock</th>}
+                  <th className="py-2 px-3 pb-2 font-bold text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {itemsMostrados.length === 0 ? (
                   <tr>
-                    <td colSpan={tab === "productos" ? 8 : 6} className="text-center py-8 text-[var(--text-muted)]">
+                    <td colSpan={tab === "productos" ? 9 : 6} className="text-center py-8 text-[var(--text-muted)]">
                       {tab === "productos" && (busquedaProducto || filtroCategoria || filtroUnidad)
                         ? "No hay productos que coincidan con la busqueda o filtros."
                         : `No hay ${tab} registrados.`}
@@ -675,8 +688,8 @@ export default function InventarioPage() {
                   productosAgrupados.map((grupo) => (
                     <Fragment key={grupo.categoria}>
                       <tr className="bg-[var(--bg-secondary)] border-y border-[var(--border)]">
-                        <td colSpan={8} className="py-2.5 px-4">
-                          <div className="flex items-center justify-between gap-3">
+                        <td colSpan={9} className="py-1.5 px-3 font-semibold text-xs">
+                          <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <Tag size={14} className="text-[var(--accent)] shrink-0" />
                               <span className="text-xs font-bold uppercase tracking-wide text-[var(--text-primary)] truncate">
@@ -696,69 +709,83 @@ export default function InventarioPage() {
                         return (
                         <tr
                           key={itemId || `${grupo.categoria}-${item.nombre}`}
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => setItemSeleccionado(item)}
-                          onPointerUp={(e) => {
-                            if ((e.target as HTMLElement).closest("button")) return;
-                            setItemSeleccionado(item);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setItemSeleccionado(item);
-                            }
-                          }}
-                          className={`border-b border-[var(--border)] last:border-0 transition-colors cursor-pointer ${
+                          className={`border-b border-[var(--border)] last:border-0 transition-colors ${
                             isSelected
-                              ? "bg-[rgba(37,99,235,0.08)] ring-1 ring-inset ring-[var(--accent)]"
+                              ? "bg-[rgba(37,99,235,0.08)]"
                               : "hover:bg-[var(--bg-body)]"
                           }`}
                         >
-                          <td className="py-3 px-4">
+                          <td className="py-1.5 px-3">
                             {item.imagenUrl ? (
-                              <img src={item.imagenUrl} alt={item.nombre} className="w-10 h-10 object-cover rounded-md bg-[var(--bg-card)] border border-[var(--border)]" />
+                              <img src={item.imagenUrl} alt={item.nombre} className="w-8 h-8 object-cover rounded-md bg-[var(--bg-card)] border border-[var(--border)]" />
                             ) : (
-                              <div className="w-10 h-10 rounded-md bg-[var(--bg-body)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]">
-                                <ImageIcon size={16} />
+                              <div className="w-8 h-8 rounded-md bg-[var(--bg-body)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]">
+                                <ImageIcon size={14} />
                               </div>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-sm">{producto.sku}</td>
-                          <td className="py-3 px-4 text-sm">
+                          <td className="py-1.5 px-3 text-xs font-mono">{producto.sku}</td>
+                          <td className="py-1.5 px-3 text-xs">
                             <span className="font-semibold text-[var(--text-primary)]">{item.nombre}</span>
-                            {item.descripcion && <span className="text-[var(--text-muted)] ml-2 truncate max-w-[200px] inline-block align-bottom">{item.descripcion}</span>}
+                            {item.descripcion && <span className="text-[var(--text-muted)] ml-1.5 truncate max-w-[150px] inline-block align-bottom text-[11px]">{item.descripcion}</span>}
                           </td>
-                          <td className="py-3 px-4 text-sm">${Number(item.costoBase).toFixed(2)}</td>
-                          <td className="py-3 px-4">
+                          <td className="py-1.5 px-3 text-xs font-mono">${Number(item.costoBase).toFixed(2)}</td>
+                          <td className="py-1.5 px-3">
+                            {editandoMargenId === itemId ? (
+                              <input
+                                type="number"
+                                step="0.1"
+                                min="0"
+                                value={valorMargenEditando}
+                                onChange={(e) => setValorMargenEditando(e.target.value)}
+                                onBlur={() => handleGuardarMargenInline(producto)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    handleGuardarMargenInline(producto);
+                                  } else if (e.key === "Escape") {
+                                    setEditandoMargenId(null);
+                                  }
+                                }}
+                                className="input py-0.5 px-1 w-12 text-[11px] text-center font-mono font-semibold"
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={togglingMargen.has(itemId)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditandoMargenId(itemId);
+                                  setValorMargenEditando(String(resolverMargenProducto(producto)));
+                                }}
+                                className="text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-all cursor-pointer bg-[rgba(59,130,246,0.1)] text-blue-500 hover:bg-[rgba(59,130,246,0.2)] disabled:opacity-50 disabled:cursor-wait font-mono"
+                              >
+                                {togglingMargen.has(itemId) ? '...' : `${resolverMargenProducto(producto)}%`}
+                              </button>
+                            )}
+                          </td>
+                          <td className="py-1.5 px-3">
                             <button
                               type="button"
-                              disabled={togglingMargen.has(itemId)}
+                              disabled={togglingIva.has(itemId)}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const actual = resolverMargenProducto(producto);
-                                const nuevo = actual === 25 ? 40 : 25;
-                                cambiarMargenProducto(producto, nuevo);
+                                toggleIva(item);
                               }}
-                              className={`text-xs px-2 py-1 rounded-full font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait ${
-                                resolverMargenProducto(producto) === 40
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait ${
+                                item.aplicaIva
                                   ? 'bg-[rgba(16,185,129,0.1)] text-emerald-500 hover:bg-[rgba(16,185,129,0.2)]'
-                                  : 'bg-[rgba(59,130,246,0.1)] text-blue-500 hover:bg-[rgba(59,130,246,0.2)]'
+                                  : 'bg-[var(--bg-body)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'
                               }`}
                             >
-                              {togglingMargen.has(itemId) ? '...' : `${resolverMargenProducto(producto)}%`}
+                              {togglingIva.has(itemId) ? '...' : item.aplicaIva ? 'Con IVA' : 'Sin IVA'}
                             </button>
                           </td>
-                          <td className="py-3 px-4 text-sm font-bold text-[var(--text-primary)] whitespace-nowrap text-right">
+                          <td className="py-1.5 px-3 text-xs font-bold text-[var(--text-primary)] whitespace-nowrap text-right font-mono">
                             ${Number(item.precioBase).toFixed(2)}
-                            {item.aplicaIva && (
-  <span
-    className="inline-block w-2 h-2 rounded-full bg-emerald-500 ml-2 -mr-2 cursor-help"
-    title="Este producto registra IVA"
-  />
-)}
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-1.5 px-3">
                             <div className="flex items-center gap-2">
                               <span
                                 role="button"
@@ -773,32 +800,32 @@ export default function InventarioPage() {
                                     abrirModalStock(producto);
                                   }
                                 }}
-                                className="text-sm font-semibold text-[var(--text-primary)] min-w-8 cursor-pointer"
+                                className="text-xs font-semibold text-[var(--text-primary)] min-w-8 cursor-pointer font-mono"
                               >
                                 {Math.floor(Number(producto.stockActual ?? 0))}
                               </span>
-
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
+                          <td className="py-1.5 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  abrirModalEditar(item);
+                                  setItemSeleccionado(item);
                                 }}
-                                className="p-2 rounded-lg bg-[var(--bg-body)] hover:bg-[var(--bg-hover)] text-[var(--accent)] transition-colors"
+                                className="p-1 rounded-md bg-[var(--bg-body)] hover:bg-[var(--bg-hover)] text-[var(--accent)] transition-colors"
+                                title="Ver detalles y editar"
                               >
-                                <Edit2 size={14} />
+                                <Edit2 size={12} />
                               </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   eliminarItem(itemId, true);
                                 }}
-                                className="p-2 rounded-lg bg-[var(--bg-body)] hover:bg-red-500 hover:text-white text-red-500 transition-colors"
+                                className="p-1 rounded-md bg-[var(--bg-body)] hover:bg-red-500 hover:text-white text-red-500 transition-colors"
                               >
-                                <Trash2 size={14} />
+                                <Trash2 size={12} />
                               </button>
                             </div>
                           </td>
@@ -833,21 +860,21 @@ export default function InventarioPage() {
                           : "hover:bg-[var(--bg-body)]"
                       }`}
                     >
-                      <td className="py-3 px-4">
+                      <td className="py-1.5 px-3">
                         {item.imagenUrl ? (
-                          <img src={item.imagenUrl} alt={item.nombre} className="w-10 h-10 object-cover rounded-md bg-[var(--bg-card)] border border-[var(--border)]" />
+                          <img src={item.imagenUrl} alt={item.nombre} className="w-8 h-8 object-cover rounded-md bg-[var(--bg-card)] border border-[var(--border)]" />
                         ) : (
-                          <div className="w-10 h-10 rounded-md bg-[var(--bg-body)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]">
-                            <ImageIcon size={16} />
+                          <div className="w-8 h-8 rounded-md bg-[var(--bg-body)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]">
+                            <ImageIcon size={14} />
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-sm">
+                      <td className="py-1.5 px-3 text-xs">
                         <span className="font-semibold text-[var(--text-primary)]">{item.nombre}</span>
-                        {item.descripcion && <span className="text-[var(--text-muted)] ml-2 truncate max-w-[200px] inline-block align-bottom">{item.descripcion}</span>}
+                        {item.descripcion && <span className="text-[var(--text-muted)] ml-1.5 truncate max-w-[150px] inline-block align-bottom text-[11px]">{item.descripcion}</span>}
                       </td>
-                      <td className="py-3 px-4 text-sm">${Number(item.costoBase).toFixed(2)}</td>
-                      <td className="py-3 px-4">
+                      <td className="py-1.5 px-3 text-xs font-mono">${Number(item.costoBase).toFixed(2)}</td>
+                      <td className="py-1.5 px-3">
                         <button
                           type="button"
                           disabled={togglingIva.has(itemId)}
@@ -855,7 +882,7 @@ export default function InventarioPage() {
                             e.stopPropagation();
                             toggleIva(item);
                           }}
-                          className={`text-xs px-2 py-1 rounded-full font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait ${
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium transition-all cursor-pointer disabled:opacity-50 disabled:cursor-wait ${
                             item.aplicaIva
                               ? 'bg-[rgba(16,185,129,0.1)] text-emerald-500 hover:bg-[rgba(16,185,129,0.2)]'
                               : 'bg-[var(--bg-body)] text-[var(--text-muted)] hover:bg-[var(--bg-hover)]'
@@ -864,34 +891,28 @@ export default function InventarioPage() {
                           {togglingIva.has(itemId) ? '...' : item.aplicaIva ? 'Con IVA' : 'Sin IVA'}
                         </button>
                       </td>
-                      <td className="py-3 px-4 text-sm font-bold text-[var(--text-primary)] whitespace-nowrap text-right">
+                      <td className="py-1.5 px-3 text-xs font-bold text-[var(--text-primary)] whitespace-nowrap text-right font-mono">
                         ${Number(item.precioBase).toFixed(2)}
-                        {item.aplicaIva && (
-  <span
-    className="inline-block w-2 h-2 rounded-full bg-emerald-500 ml-2 -mr-2 cursor-help"
-    title="Este producto registra IVA"
-  />
-)}
                       </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="py-1.5 px-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               abrirModalEditar(item);
                             }}
-                            className="p-2 rounded-lg bg-[var(--bg-body)] hover:bg-[var(--bg-hover)] text-[var(--accent)] transition-colors"
+                            className="p-1 rounded-md bg-[var(--bg-body)] hover:bg-[var(--bg-hover)] text-[var(--accent)] transition-colors"
                           >
-                            <Edit2 size={14} />
+                            <Edit2 size={12} />
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               eliminarItem(itemId, false);
                             }}
-                            className="p-2 rounded-lg bg-[var(--bg-body)] hover:bg-red-500 hover:text-white text-red-500 transition-colors"
+                            className="p-1 rounded-md bg-[var(--bg-body)] hover:bg-red-500 hover:text-white text-red-500 transition-colors"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={12} />
                           </button>
                         </div>
                       </td>
@@ -905,20 +926,10 @@ export default function InventarioPage() {
           </div>
         )}
       </div>
-
-        <div className="hidden lg:block sticky top-24 h-[calc(100vh-8rem)]">
-          {(!itemSeleccionado || !isProducto(itemSeleccionado)) && (
-            <ProductoDetalle
-              item={itemSeleccionado}
-              onClose={() => setItemSeleccionado(null)}
-              onEdit={abrirModalEditar}
-            />
-          )}
-        </div>
       </div>
 
       {itemSeleccionado && !isProducto(itemSeleccionado) && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-[900]">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setItemSeleccionado(null)} />
           <div className="absolute right-0 top-0 h-full w-full max-w-[420px] p-3">
             <ProductoDetalle
@@ -987,36 +998,41 @@ export default function InventarioPage() {
           )}
 
           {tab === "productos" && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="form-group">
-                <label className="label">Categor&iacute;a</label>
-                <input
-                  className="input"
-                  list="categorias-producto"
-                  placeholder="Escribe o selecciona"
-                  {...register("categoria")}
-                />
-                <datalist id="categorias-producto">
-                  {categoriasProducto.map((categoria) => (
-                    <option key={categoria} value={categoria} />
-                  ))}
-                </datalist>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="form-group">
+                  <label className="label">Categor&iacute;a</label>
+                  <input
+                    className="input"
+                    list="categorias-producto"
+                    placeholder="Escribe o selecciona"
+                    {...register("categoria")}
+                  />
+                  <datalist id="categorias-producto">
+                    {categoriasProducto.map((categoria) => (
+                      <option key={categoria} value={categoria} />
+                    ))}
+                  </datalist>
+                </div>
+                <div className="form-group">
+                  <label className="label">Unidad de medida</label>
+                  <input className="input" list="unidades-producto" {...register("unidadMedida")} />
+                  <datalist id="unidades-producto">
+                    {Array.from(new Set([...PRODUCT_UNITS, ...unidadesProducto])).map((unidad) => (
+                      <option key={unidad} value={unidad} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
               <div className="form-group">
-                <label className="label">Unidad de medida</label>
-                <input className="input" list="unidades-producto" {...register("unidadMedida")} />
-                <datalist id="unidades-producto">
-                  {Array.from(new Set([...PRODUCT_UNITS, ...unidadesProducto])).map((unidad) => (
-                    <option key={unidad} value={unidad} />
-                  ))}
-                </datalist>
+                <label className="label">Fabricante</label>
+                <input className="input" placeholder="Ej: Bosch, Toyota, etc." {...register("fabricante")} />
               </div>
-            </div>
+            </>
           )}
 
           {tab === "productos" ? (
             <div className="space-y-4">
-              <input type="hidden" {...register("margenGanancia")} />
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="form-group">
                   <label className="label">Costo Base *</label>
@@ -1049,24 +1065,20 @@ export default function InventarioPage() {
               </div>
 
               <div className="form-group">
-                <label className="label">Margen de ganancia</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[25, 40].map((margen) => (
-                    <button
-                      key={margen}
-                      type="button"
-                      onClick={() => {
-                        const nextMargen = margen as 25 | 40;
-                        setMargenGananciaForm(nextMargen);
-                        setValue("margenGanancia", nextMargen, { shouldDirty: true });
-                      }}
-                      className={`btn justify-center ${
-                        margenGananciaForm === margen ? "btn-primary" : "btn-secondary"
-                      }`}
-                    >
-                      {margen}%
-                    </button>
-                  ))}
+                <label className="label">Margen de ganancia (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    className={`input pr-8 font-mono ${errors.margenGanancia ? "border-red-500" : ""}`}
+                    {...register("margenGanancia", {
+                      required: true,
+                      min: 0,
+                      onChange: (event) => setMargenGananciaForm(Number(event.target.value || 0)),
+                    })}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-muted)]">%</span>
                 </div>
               </div>
             </div>
