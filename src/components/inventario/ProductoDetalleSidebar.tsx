@@ -450,8 +450,21 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
     };
   }, [activeTab, producto.id]);
 
-  const handleGuardarDetalles = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const hasChanges =
+    nombre.trim() !== (producto.nombre || "").trim() ||
+    sku.trim().toUpperCase() !== (producto.sku || "").trim().toUpperCase() ||
+    categoria.trim() !== (producto.categoria || "").trim() ||
+    fabricante.trim() !== (producto.fabricante || "").trim() ||
+    unidadMedida.trim() !== (producto.unidadMedida || "Unidad").trim() ||
+    descripcion.trim() !== (producto.descripcion || "").trim() ||
+    archivoImagen !== null ||
+    (Boolean(producto.imagenUrl) && eliminarImagen) ||
+    Number(costoBase) !== Number(producto.costoBase || 0) ||
+    Number(margenGanancia) !== Number(producto.margenGanancia ?? 25) ||
+    Boolean(aplicaIva) !== Boolean(producto.aplicaIva);
+
+  const handleGuardarGlobal = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!producto.id) return;
     if (!nombre.trim() || !sku.trim()) {
       toast.error("Nombre y SKU son obligatorios");
@@ -470,7 +483,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         finalImageUrl = await uploadInventarioImagen(producto.id, archivoImagen, "producto");
       }
 
-      await updateProducto(producto.id, {
+      const updates: Partial<Producto> = {
         nombre: nombre.trim(),
         sku: sku.trim().toUpperCase(),
         categoria: categoria.trim(),
@@ -478,11 +491,16 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         descripcion: descripcion.trim(),
         imagenUrl: finalImageUrl,
         fabricante: fabricante.trim(),
-      });
+        costoBase: Number(costoBase),
+        margenGanancia: Number(margenGanancia),
+        aplicaIva: Boolean(aplicaIva),
+      };
+
+      await updateProducto(producto.id, updates);
 
       setArchivoImagen(null);
       setEliminarImagen(false);
-      toast.success("Detalles actualizados");
+      toast.success("Producto actualizado con éxito");
       onUpdate();
     } catch (error) {
       console.error(error);
@@ -492,23 +510,13 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
     }
   };
 
-  const handleGuardarPrecios = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!producto.id) return;
-
-    setGuardando(true);
-    try {
-      await updateProducto(producto.id, {
-        costoBase: Number(costoBase),
-        margenGanancia: Number(margenGanancia),
-        aplicaIva: Boolean(aplicaIva),
-      });
-      toast.success("Precios actualizados");
-      onUpdate();
-    } catch {
-      toast.error("Error al guardar precios");
-    } finally {
-      setGuardando(false);
+  const handleClose = () => {
+    if (hasChanges) {
+      if (confirm("Tienes cambios sin guardar. ¿Estás seguro de que deseas cerrar y descartar los cambios?")) {
+        onClose();
+      }
+    } else {
+      onClose();
     }
   };
 
@@ -557,7 +565,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
             : "sidebar-aware-overlay-collapsed"
           : "left-0"
       }`}
-      onClick={onClose}
+      onClick={handleClose}
     >
       <aside
         className={`h-full w-full bg-[var(--bg-card)] shadow-2xl border-l border-[var(--border)] flex flex-col animate-slide-in transition-all duration-300 ${
@@ -594,7 +602,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all duration-200 border border-slate-200 dark:border-slate-800 cursor-pointer"
             >
               <X size={16} />
@@ -623,7 +631,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
         {activeTab === "detalles" && (
-          <form id="form-detalles" onSubmit={handleGuardarDetalles} className="space-y-5 animate-fade-in">
+          <form id="form-detalles" onSubmit={handleGuardarGlobal} className="space-y-5 animate-fade-in">
             <div className={isExpanded ? "grid grid-cols-1 lg:grid-cols-3 gap-6 space-y-0 items-start" : "space-y-5"}>
               <Card title="Datos básicos">
                 <div className={`space-y-4 ${isExpanded ? "grid grid-cols-2 gap-4 space-y-0" : ""}`}>
@@ -748,7 +756,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         )}
 
         {activeTab === "precios" && (
-          <form id="form-precios" onSubmit={handleGuardarPrecios} className="space-y-5 animate-fade-in">
+          <form id="form-precios" onSubmit={handleGuardarGlobal} className="space-y-5 animate-fade-in">
             {!isExpanded && (
               <div className="p-4 rounded-xl border border-[var(--border)] bg-slate-50/50 dark:bg-slate-900/10 flex items-center justify-between">
                 <div>
@@ -1188,49 +1196,28 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
       <div className="p-6 border-t border-[var(--border)] flex justify-end items-center gap-3 shrink-0">
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleClose}
           className="px-5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-all duration-200 cursor-pointer"
         >
           Cerrar
         </button>
 
-        {activeTab === "detalles" && (
+        {hasChanges && (
           <button
-            type="submit"
-            form="form-detalles"
+            type="button"
+            onClick={() => handleGuardarGlobal()}
             disabled={guardando}
-            className="btn-primary px-5 py-2 text-xs font-bold shadow-md cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary px-5 py-2 text-xs font-bold shadow-md cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed animate-fade-in"
           >
             {guardando ? (
               <>
                 <Loader2 size={14} className="animate-spin mr-1.5" />
-                Guardando cambios...
+                Guardando...
               </>
             ) : (
               <>
                 <Check size={14} className="mr-1.5" />
                 Guardar cambios
-              </>
-            )}
-          </button>
-        )}
-
-        {activeTab === "precios" && (
-          <button
-            type="submit"
-            form="form-precios"
-            disabled={guardando}
-            className="btn-primary px-5 py-2 text-xs font-bold shadow-md cursor-pointer flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {guardando ? (
-              <>
-                <Loader2 size={14} className="animate-spin mr-1.5" />
-                Guardando precios...
-              </>
-            ) : (
-              <>
-                <Check size={14} className="mr-1.5" />
-                Guardar Precios
               </>
             )}
           </button>
