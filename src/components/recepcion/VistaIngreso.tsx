@@ -801,9 +801,14 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                   </div>
                   <div className="flex flex-col">
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300">1. Ingreso</span>
-                    <Link href={`/ingresos/${orden.id}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
-                      Ver detalle de ingreso
-                    </Link>
+                    <span className="text-[10px] text-[var(--text-muted)] font-medium mt-0.5">
+                      {(() => {
+                        const dateObj = orden.createdAt?.toDate ? orden.createdAt.toDate() : (orden.createdAt ? new Date(orden.createdAt as any) : null);
+                        return dateObj 
+                          ? `${dateObj.toLocaleDateString('es-EC', { day: '2-digit', month: '2-digit', year: 'numeric' })} - ${dateObj.toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit', hour12: true })}`
+                          : '—';
+                      })()}
+                    </span>
                   </div>
                 </div>
 
