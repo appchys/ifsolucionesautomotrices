@@ -44,6 +44,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
   const [presupuestoId, setPresupuestoId] = useState<string | null>(null);
+  const [presupuesto, setPresupuesto] = useState<OrdenTrabajo | null>(null);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
   const [tecnicosAsignados, setTecnicosAsignados] = useState<AppUser[]>([]);
   const [isTecnicosPopoverOpen, setIsTecnicosPopoverOpen] = useState(false);
@@ -101,6 +102,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       const numeroIngreso = ordenData.numeroIngreso ?? ordenData.numero ?? 0;
       const pres = await getPresupuestoPorIngreso(numeroIngreso, ordenData.vehiculoId);
       setPresupuestoId(pres?.id || null);
+      setPresupuesto(pres || null);
 
       // Settear estados locales
       setTecnicoId(ordenData.tecnicoId || (ordenData.personalAsignado?.[0]?.uid) || "");
@@ -859,7 +861,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                         </span>
                         {completado ? (
                           <Link href={`/presupuestos/${presupuestoId}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
-                            Ver presupuesto
+                            {presupuesto ? `#PRE-${String(presupuesto.numeroCotizacion || presupuesto.numero || 0).padStart(4, "0")}` : "Ver presupuesto"}
                           </Link>
                         ) : (
                           <button 
@@ -893,7 +895,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                         </span>
                         {completado ? (
                           <Link href={`/ordenes/detalle?id=${orden.id}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
-                            Ver orden detallada
+                            #ORD-{String(orden.numeroOrden).padStart(5, "0")}
                           </Link>
                         ) : (
                           <button 
