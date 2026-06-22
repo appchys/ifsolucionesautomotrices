@@ -428,7 +428,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
 
   if (loading || !orden || !cliente || !vehiculo) {
     return (
-      <AppShell hideHeader>
+      <AppShell hideHeader noPadding>
         <div className="flex items-center justify-center h-full">
           <Loader2 size={40} className="animate-spin text-blue-500" />
         </div>
@@ -437,175 +437,55 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   }
 
   return (
-    <AppShell hideHeader>
+    <AppShell hideHeader noPadding>
       <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 2rem)" }}>
 
         {/* Header Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-4 mb-4 flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <Link href="/ingresos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors">
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 py-3 mb-5 shadow-sm">
+          <div className="flex items-center gap-3">
+            <Link href="/ingresos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center">
               <ChevronLeft size={20} />
             </Link>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              Ingreso <span className="font-mono text-blue-600">#{String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}</span>
+            <h1 className="text-lg font-extrabold flex items-center gap-2">
+              Ingreso <span className="text-blue-600 font-mono">#{String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}</span>
               {orden.numeroOrden && <span className="ml-2 badge bg-green-50 text-green-700 text-xs">ORD-{String(orden.numeroOrden).padStart(5, "0")}</span>}
             </h1>
             {saving && <Loader2 size={16} className="animate-spin text-[var(--text-muted)]" />}
           </div>
 
-          <div className="flex-1 max-w-xl hidden lg:flex items-center justify-center gap-8 text-sm">
-            <Link href={`/ingresos/${orden.id}`} className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="w-6 h-6 rounded-full bg-green-100 flex items-center justify-center border border-green-600 text-xs">✓</div>
-              <span>Ingreso</span>
-            </Link>
-            <div className="w-12 h-px bg-[var(--border)]"></div>
-            
-            {/* Inspección step */}
-            {(() => {
-              const inspeccionCompletada = danos.length > 0 || fotos.length > 0 || observaciones.length > 0;
-              const content = (
-                <>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${inspeccionCompletada ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
-                    {inspeccionCompletada ? '✓' : '2'}
-                  </div>
-                  <span>Inspección</span>
-                </>
-              );
-
-              if (inspeccionCompletada) {
-                return (
-                  <button 
-                    onClick={() => setIsModalInspeccionOpen(true)}
-                    className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity border-none bg-transparent outline-none p-0"
-                    title="Ver inspección"
-                  >
-                    {content}
-                  </button>
-                );
-              }
-
-              return (
-                <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
-                  {content}
-                  <button 
-                    onClick={() => setIsModalInspeccionOpen(true)}
-                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 flex items-center gap-0.5 hover:underline cursor-pointer border-none bg-transparent p-0 outline-none"
-                  >
-                    <Plus size={10} /> Registrar
-                  </button>
-                </div>
-              );
-            })()}
-
-            <div className="w-12 h-px bg-[var(--border)]"></div>
-            {/* Presupuesto step */}
-            {(() => {
-              const tienePresupuesto = !!presupuestoId;
-              const content = (
-                <>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${tienePresupuesto ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
-                    {tienePresupuesto ? '✓' : '3'}
-                  </div>
-                  <span>Presupuesto</span>
-                </>
-              );
-
-              if (tienePresupuesto) {
-                return (
-                  <Link 
-                    href={`/presupuestos/${presupuestoId}`}
-                    className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity no-underline"
-                    title="Ver presupuesto"
-                  >
-                    {content}
-                  </Link>
-                );
-              }
-
-              return (
-                <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
-                  {content}
-                  <button 
-                    onClick={handleCrearPresupuesto}
-                    disabled={creatingPresupuesto || saving}
-                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 flex items-center gap-0.5 hover:underline cursor-pointer border-none bg-transparent p-0 outline-none disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
-                  >
-                    {creatingPresupuesto ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Crear
-                  </button>
-                </div>
-              );
-            })()}
-            
-            <div className="w-12 h-px bg-[var(--border)]"></div>
-            {/* Orden step */}
-            {(() => {
-              const tieneOrden = !!orden?.numeroOrden;
-              const content = (
-                <>
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${tieneOrden ? 'bg-green-100 border border-green-600' : 'border border-[var(--border)]'}`}>
-                    {tieneOrden ? '✓' : '4'}
-                  </div>
-                  <span>Orden</span>
-                </>
-              );
-
-              if (tieneOrden) {
-                return (
-                  <Link 
-                    href={`/ordenes/detalle?id=${orden.id}`}
-                    className="flex flex-col items-center gap-1 text-green-600 font-semibold cursor-pointer hover:opacity-80 transition-opacity no-underline"
-                    title="Ver orden"
-                  >
-                    {content}
-                  </Link>
-                );
-              }
-
-              return (
-                <div className="flex flex-col items-center gap-1 text-[var(--text-muted)]">
-                  {content}
-                  <button 
-                    onClick={handleCrearOrden}
-                    disabled={creatingOrden || saving}
-                    className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 flex items-center gap-0.5 hover:underline cursor-pointer border-none bg-transparent p-0 outline-none disabled:opacity-50 disabled:no-underline disabled:cursor-not-allowed"
-                  >
-                    {creatingOrden ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Crear
-                  </button>
-                </div>
-              );
-            })()}
-          </div>
-
           <div className="flex items-center gap-3">
             <button 
-              className="btn font-semibold text-orange-600 border-orange-200 hover:bg-orange-50 bg-white"
+              className="bg-white hover:bg-orange-50 border border-orange-200 text-orange-600 font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors"
               onClick={() => setIsRetirarModalOpen(true)}
               disabled={saving}
             >
                Retirar vehículo
             </button>
             <button 
-              className="btn font-semibold bg-white border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)]" 
+              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors" 
               onClick={handleCrearPresupuesto}
               disabled={creatingPresupuesto || saving}
             >
-               {creatingPresupuesto ? <Loader2 size={16} className="animate-spin" /> : presupuestoId ? "Ver presupuesto" : "Crear presupuesto"}
+               {creatingPresupuesto ? <Loader2 size={12} className="animate-spin" /> : presupuestoId ? "Ver presupuesto" : "Crear presupuesto"}
             </button>
-            <button className="btn font-semibold bg-white border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)]" onClick={handleSave}>
+            <button 
+              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors" 
+              onClick={handleSave}
+            >
                Guardar
             </button>
             <button 
-              className="btn-primary"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors"
               onClick={handleCrearOrden}
               disabled={creatingOrden || saving}
             >
-              {creatingOrden ? <Loader2 size={16} className="animate-spin" /> : orden?.numeroOrden ? `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}` : "+ Crear orden"}
+              {creatingOrden ? <Loader2 size={12} className="animate-spin" /> : orden?.numeroOrden ? `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}` : "+ Crear orden"}
             </button>
 
             {/* Botón de Descargar PDF (Solo ícono) */}
             <button 
               type="button"
-              className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center text-slate-700 hover:text-blue-600"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
               onClick={handleDownloadPDF}
               disabled={generatingPdf || loading}
               title="Descargar PDF"
@@ -613,14 +493,14 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               {generatingPdf ? (
                 <Loader2 size={16} className="animate-spin text-blue-600" />
               ) : (
-                <FileDown size={18} />
+                <FileDown size={16} />
               )}
             </button>
 
             {/* Botón de Imprimir PDF (Solo ícono) */}
             <button 
               type="button"
-              className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center text-slate-700 hover:text-blue-600"
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
               onClick={handlePrintPDF}
               disabled={generatingPdf || loading}
               title="Imprimir"
@@ -628,7 +508,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               {generatingPdf ? (
                 <Loader2 size={16} className="animate-spin text-blue-600" />
               ) : (
-                <Printer size={18} />
+                <Printer size={16} />
               )}
             </button>
 
@@ -636,7 +516,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
             <div className="relative">
               <button 
                 type="button"
-                className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center"
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 title="Más acciones"
               >
@@ -662,7 +542,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
         </div>
 
         {/* 3 Columns Layout */}
-        <div className="flex flex-1 gap-6 overflow-hidden">
+        <div className="flex flex-1 gap-6 overflow-hidden px-6 pb-6">
           
           {/* Column 1: Client & Personal */}
           <div className="w-[300px] flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
@@ -907,6 +787,125 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
 
           {/* Column 3: Inspections */}
           <div className="w-[340px] flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar pb-10">
+            {/* Flujo de Recepción (Stepper Vertical) */}
+            <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4">
+              <h3 className="font-bold flex items-center gap-2 text-[var(--text-secondary)] text-xs uppercase tracking-wider">
+                Progreso del Proceso
+              </h3>
+              
+              <div className="relative pl-6 border-l border-slate-200 dark:border-slate-800 ml-2.5 py-1 space-y-5">
+                {/* Paso 1: Ingreso */}
+                <div className="relative">
+                  <div className="absolute -left-[33px] top-0 w-4 h-4 rounded-full bg-green-100 dark:bg-green-950 border border-green-600 flex items-center justify-center text-green-700 dark:text-green-400 text-[9px] font-extrabold">
+                    ✓
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">1. Ingreso</span>
+                    <Link href={`/ingresos/${orden.id}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
+                      Ver detalle de ingreso
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Paso 2: Inspección */}
+                {(() => {
+                  const completado = danos.length > 0 || fotos.length > 0 || observaciones.length > 0;
+                  return (
+                    <div className="relative">
+                      <div className={`absolute -left-[33px] top-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold border ${
+                        completado 
+                          ? 'bg-green-100 dark:bg-green-950 border-green-600 text-green-700 dark:text-green-400' 
+                          : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-400'
+                      }`}>
+                        {completado ? '✓' : '2'}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={`text-xs font-bold ${completado ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'}`}>
+                          2. Inspección Visual
+                        </span>
+                        <button 
+                          onClick={() => setIsModalInspeccionOpen(true)}
+                          className={`text-[10px] font-semibold mt-0.5 text-left border-none bg-transparent p-0 outline-none cursor-pointer hover:underline ${
+                            completado ? 'text-green-600 hover:text-green-700' : 'text-blue-500 hover:text-blue-600'
+                          }`}
+                        >
+                          {completado ? 'Ver / Editar inspección' : '+ Registrar inspección'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Paso 3: Presupuesto */}
+                {(() => {
+                  const completado = !!presupuestoId;
+                  return (
+                    <div className="relative">
+                      <div className={`absolute -left-[33px] top-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold border ${
+                        completado 
+                          ? 'bg-green-100 dark:bg-green-950 border-green-600 text-green-700 dark:text-green-400' 
+                          : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-400'
+                      }`}>
+                        {completado ? '✓' : '3'}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={`text-xs font-bold ${completado ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'}`}>
+                          3. Presupuesto
+                        </span>
+                        {completado ? (
+                          <Link href={`/presupuestos/${presupuestoId}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
+                            Ver presupuesto
+                          </Link>
+                        ) : (
+                          <button 
+                            onClick={handleCrearPresupuesto}
+                            disabled={creatingPresupuesto || saving}
+                            className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 text-left border-none bg-transparent p-0 outline-none cursor-pointer hover:underline disabled:opacity-50"
+                          >
+                            {creatingPresupuesto ? 'Creando...' : '+ Crear presupuesto'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Paso 4: Orden de Trabajo */}
+                {(() => {
+                  const completado = !!orden?.numeroOrden;
+                  return (
+                    <div className="relative">
+                      <div className={`absolute -left-[33px] top-0 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-extrabold border ${
+                        completado 
+                          ? 'bg-green-100 dark:bg-green-950 border-green-600 text-green-700 dark:text-green-400' 
+                          : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-400'
+                      }`}>
+                        {completado ? '✓' : '4'}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className={`text-xs font-bold ${completado ? 'text-slate-700 dark:text-slate-300' : 'text-slate-400'}`}>
+                          4. Orden de Trabajo
+                        </span>
+                        {completado ? (
+                          <Link href={`/ordenes/detalle?id=${orden.id}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
+                            Ver orden detallada
+                          </Link>
+                        ) : (
+                          <button 
+                            onClick={handleCrearOrden}
+                            disabled={creatingOrden || saving}
+                            className="text-[10px] text-blue-500 hover:text-blue-600 font-bold mt-0.5 text-left border-none bg-transparent p-0 outline-none cursor-pointer hover:underline disabled:opacity-50"
+                          >
+                            {creatingOrden ? 'Creando...' : '+ Crear orden de trabajo'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
             <div>
               <h3 className="font-bold flex items-center gap-2 mb-4 text-[var(--text-secondary)]">
                 <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><Eye size={12} /></span>
