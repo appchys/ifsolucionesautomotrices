@@ -16,10 +16,11 @@ function OrdenDetalleContent() {
   if (!id) return null;
 
   return (
-    <AppShell hideHeader>
+    <AppShell hideHeader noPadding>
       <VistaOrdenDetalle ordenId={id} />
     </AppShell>
   );
+
 }
 
 export default function OrdenDetallePage() {

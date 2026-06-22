@@ -127,6 +127,19 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
     void loadData();
   }, [loadData]);
 
+  // Actualizar el título de la pestaña con el número de ingreso
+  useEffect(() => {
+    if (orden) {
+      const numIngreso = String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0");
+      const originalTitle = document.title;
+      document.title = `Ingreso #${numIngreso}`;
+      return () => {
+        document.title = originalTitle;
+      };
+    }
+  }, [orden]);
+
+
   // Guardado automático debounced o manual
   const handleSave = async () => {
     if (!orden) return;
@@ -415,7 +428,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
 
   if (loading || !orden || !cliente || !vehiculo) {
     return (
-      <AppShell>
+      <AppShell hideHeader>
         <div className="flex items-center justify-center h-full">
           <Loader2 size={40} className="animate-spin text-blue-500" />
         </div>
@@ -424,8 +437,9 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   }
 
   return (
-    <AppShell>
-      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 5.5rem)", marginBottom: "-2rem" }}>
+    <AppShell hideHeader>
+      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 2rem)" }}>
+
         {/* Header Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-4 mb-4 flex-shrink-0">
           <div className="flex items-center gap-4">

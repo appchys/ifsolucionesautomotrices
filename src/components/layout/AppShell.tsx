@@ -8,10 +8,12 @@ import Header from "./Header";
 
 export default function AppShell({ 
   children, 
-  hideHeader = false 
+  hideHeader = false,
+  noPadding = false
 }: { 
   children: React.ReactNode;
   hideHeader?: boolean;
+  noPadding?: boolean;
 }) {
   const { user, loading } = useAuthStore();
   const { sidebarOpen } = useUIStore();
@@ -47,10 +49,10 @@ export default function AppShell({
           style={{
             marginTop: hideHeader ? "0px" : "var(--header-height)",
             minHeight: hideHeader ? "100vh" : "calc(100vh - var(--header-height))",
-            paddingTop: hideHeader ? "1rem" : "var(--app-content-gutter-y)",
-            paddingBottom: hideHeader ? "1rem" : "var(--app-content-gutter-y-lg)",
-            paddingLeft: hideHeader ? "1.5rem" : "var(--app-content-gutter-x)",
-            paddingRight: hideHeader ? "1.5rem" : "var(--app-content-gutter-x)",
+            paddingTop: noPadding ? "0px" : (hideHeader ? "1rem" : "var(--app-content-gutter-y)"),
+            paddingBottom: noPadding ? "0px" : (hideHeader ? "1rem" : "var(--app-content-gutter-y-lg)"),
+            paddingLeft: noPadding ? "0px" : (hideHeader ? "1.5rem" : "var(--app-content-gutter-x)"),
+            paddingRight: noPadding ? "0px" : (hideHeader ? "1.5rem" : "var(--app-content-gutter-x)"),
           }}
         >
           <div className="app-page-stack">{children}</div>
@@ -59,3 +61,4 @@ export default function AppShell({
     </div>
   );
 }
+

@@ -85,6 +85,19 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
     void loadData();
   }, [loadData]);
 
+  // Actualizar el título de la pestaña con el número de presupuesto
+  useEffect(() => {
+    if (orden) {
+      const numPre = String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0");
+      const originalTitle = document.title;
+      document.title = `Presupuesto #PRE-${numPre}`;
+      return () => {
+        document.title = originalTitle;
+      };
+    }
+  }, [orden]);
+
+
   const handleSaveField = async (field: Partial<OrdenTrabajo>) => {
     if (!orden) return;
     setSaving(true);

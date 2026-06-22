@@ -284,6 +284,19 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
     void loadData();
   }, [loadData]);
 
+  // Actualizar el título de la pestaña con el número de orden
+  useEffect(() => {
+    if (orden) {
+      const numOt = String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0");
+      const originalTitle = document.title;
+      document.title = `Orden #OT-${numOt}`;
+      return () => {
+        document.title = originalTitle;
+      };
+    }
+  }, [orden]);
+
+
   // Save changes
   const handleSaveField = async (fields: Partial<OrdenTrabajo>) => {
     if (!orden) return;
@@ -900,7 +913,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   return (
     <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 2rem)" }}>
       {/* Top Header Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-3 mb-4 shrink-0 bg-[var(--bg-card)] px-4 py-2 rounded-xl shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 py-3 mb-5 shadow-sm">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.back()}
@@ -1237,7 +1250,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
 
 
       {/* Main 2-Column Grid */}
-      <div className="flex flex-1 gap-6 overflow-hidden min-h-0">
+      <div className="flex flex-1 gap-6 overflow-hidden min-h-0 px-6 pb-6">
         
         {/* Left Column (Items & Form) - Scrollable */}
         <div className="flex-1 flex flex-col gap-5 overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0">
