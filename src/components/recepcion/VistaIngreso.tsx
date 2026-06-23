@@ -14,7 +14,8 @@ import {
   convertirIngresoAOrden,
   deleteOrden,
   getPresupuestoPorIngreso,
-  getDatosTaller
+  getDatosTaller,
+  sendMensajeOrden
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, AppUser, NivelCombustible, ChecklistItem, FotoDiagnostico, DatosTaller } from "@/types";
 import { useAuthStore } from "@/store";
@@ -150,6 +151,9 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
     if (!orden) return;
     setSaving(true);
     try {
+      const teniaInspeccion = (orden.inspeccionVisual?.danos?.length || 0) > 0;
+      const tieneInspeccionAhora = danos.length > 0;
+
       await updateOrden(ingresoId, {
         tecnicoId: tecnicoId || undefined,
         kilometrajeIngreso: km ? Number(km) : 0,
@@ -163,8 +167,27 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
         inspeccionVisual: { danos },
         personalAsignado: tecnicosAsignados,
       });
+
+      // Si antes no tenía inspección y ahora sí, enviamos el mensaje del sistema
+      if (!teniaInspeccion && tieneInspeccionAhora) {
+        await sendMensajeOrden(ingresoId, {
+          autorId: "sistema",
+          autorNombre: "Sistema",
+          autorRole: "admin",
+          texto: `Inspección visual realizada por ${user?.displayName || "un técnico"}.`,
+          sistema: true,
+          accionSistema: "inspeccion" as any,
+          tecnicoAfectadoId: user?.uid || "",
+          tecnicoAfectadoNombre: user?.displayName || "Técnico"
+        }).catch(err => console.error("Error al enviar mensaje de inspección:", err));
+      }
+
       // Actualizar la fecha localmente para que la UI reaccione
-      setOrden(prev => prev ? { ...prev, updatedAt: { toDate: () => new Date() } as any } : null);
+      setOrden(prev => prev ? { 
+        ...prev, 
+        inspeccionVisual: { danos },
+        updatedAt: { toDate: () => new Date() } as any 
+      } : null);
       toast.success("Cambios guardados", { id: "save" });
     } catch (err) {
       console.error(err);

@@ -514,33 +514,45 @@ export default function ChatOrden({
             {group.msgs.map((msg, mi) => {
               if (msg.sistema || msg.autorId === "sistema") {
                 let mensajeTexto = msg.texto;
+                const esInspeccion = msg.accionSistema === "inspeccion";
 
                 // Generar texto personalizado en tiempo real según el usuario logueado
                 if (msg.tecnicoAfectadoId && msg.accionSistema) {
-                  let docName = "ingreso";
-                  if (ordenData) {
-                    if (ordenData.esCotizacion) {
-                      docName = "presupuesto";
-                    } else if (ordenData.numeroOrden) {
-                      docName = "orden";
-                    }
-                  }
-
-                  const esUsuarioAfectado = msg.tecnicoAfectadoId === user?.uid;
-                  if (esUsuarioAfectado) {
-                    mensajeTexto = msg.accionSistema === "asignar"
-                      ? `Se te asignó este ${docName}.`
-                      : `Se te removió de este ${docName}.`;
+                  if (esInspeccion) {
+                    const esUsuarioAfectado = msg.tecnicoAfectadoId === user?.uid;
+                    mensajeTexto = esUsuarioAfectado
+                      ? "Inspección visual realizada por ti."
+                      : `Inspección visual realizada por ${msg.tecnicoAfectadoNombre || "un técnico"}.`;
                   } else {
-                    mensajeTexto = msg.accionSistema === "asignar"
-                      ? `Se asignó a ${msg.tecnicoAfectadoNombre || "un técnico"} a este ${docName}.`
-                      : `Se removió a ${msg.tecnicoAfectadoNombre || "un técnico"} de este ${docName}.`;
+                    let docName = "ingreso";
+                    if (ordenData) {
+                      if (ordenData.esCotizacion) {
+                        docName = "presupuesto";
+                      } else if (ordenData.numeroOrden) {
+                        docName = "orden";
+                      }
+                    }
+
+                    const esUsuarioAfectado = msg.tecnicoAfectadoId === user?.uid;
+                    if (esUsuarioAfectado) {
+                      mensajeTexto = msg.accionSistema === "asignar"
+                        ? `Se te asignó este ${docName}.`
+                        : `Se te removió de este ${docName}.`;
+                    } else {
+                      mensajeTexto = msg.accionSistema === "asignar"
+                        ? `Se asignó a ${msg.tecnicoAfectadoNombre || "un técnico"} a este ${docName}.`
+                        : `Se removió a ${msg.tecnicoAfectadoNombre || "un técnico"} de este ${docName}.`;
+                    }
                   }
                 }
 
+                const bgClass = esInspeccion
+                  ? "bg-[#dcfce7] dark:bg-[#132d17] text-green-800 dark:text-green-200 border-green-100/50 dark:border-green-950/20"
+                  : "bg-[#ffeecd] dark:bg-[#2c2214] text-slate-700 dark:text-amber-200 border-amber-100/50 dark:border-amber-950/20";
+
                 return (
                   <div key={msg.id || mi} className="flex justify-center my-2.5">
-                    <div className="bg-[#ffeecd] dark:bg-[#2c2214] text-slate-700 dark:text-amber-200 text-[10px] font-medium px-3.5 py-1.5 rounded-lg max-w-[85%] text-center shadow-sm border border-amber-100/50 dark:border-amber-950/20 leading-relaxed">
+                    <div className={`${bgClass} text-[10px] font-medium px-3.5 py-1.5 rounded-lg max-w-[85%] text-center shadow-sm border leading-relaxed`}>
                       {mensajeTexto}
                     </div>
                   </div>

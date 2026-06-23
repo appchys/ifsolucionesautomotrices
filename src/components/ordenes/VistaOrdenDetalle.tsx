@@ -22,6 +22,7 @@ import {
   getDatosTaller,
   getProductos,
   getServicios,
+  sendMensajeOrden,
 } from "@/lib/services";
 import {
   OrdenTrabajo,
@@ -305,12 +306,30 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
     if (!orden) return;
     setSaving(true);
     try {
+      const teniaInspeccion = (orden.inspeccionVisual?.danos?.length || 0) > 0;
+      const tieneInspeccionAhora = (fields.inspeccionVisual?.danos?.length || 0) > 0;
+
       const parsedFields = { ...fields };
       if (fields.fechaEntrega && typeof fields.fechaEntrega === "string") {
         parsedFields.fechaEntrega = new Date(fields.fechaEntrega as any) as any;
       }
       await updateOrden(ordenId, parsedFields);
       setOrden((prev) => (prev ? { ...prev, ...parsedFields } : null));
+
+      // Si se acaba de registrar la inspección visual, enviar mensaje del sistema
+      if (fields.inspeccionVisual && !teniaInspeccion && tieneInspeccionAhora) {
+        await sendMensajeOrden(ordenId, {
+          autorId: "sistema",
+          autorNombre: "Sistema",
+          autorRole: "admin",
+          texto: `Inspección visual realizada por ${user?.displayName || "un técnico"}.`,
+          sistema: true,
+          accionSistema: "inspeccion" as any,
+          tecnicoAfectadoId: user?.uid || "",
+          tecnicoAfectadoNombre: user?.displayName || "Técnico"
+        }).catch(err => console.error("Error al enviar mensaje de inspección:", err));
+      }
+
       toast.success("Cambio guardado");
     } catch (err) {
       console.error(err);
