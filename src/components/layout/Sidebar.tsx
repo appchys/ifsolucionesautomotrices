@@ -5,11 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Columns3, Users, Car, CreditCard,
   Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3,
-  FileDown, FileText, Receipt, Menu
+  FileDown, FileText, Receipt, Menu, MessageSquare
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useAuthStore, useUIStore } from "@/store";
+import { useAuthStore, useUIStore, useChatStore } from "@/store";
 import { toast } from "react-hot-toast";
 import { getDatosTaller } from "@/lib/services";
 import type { DatosTaller } from "@/types";
@@ -55,6 +55,7 @@ export default function Sidebar() {
   const router = useRouter();
   const { user, setUser } = useAuthStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { isInboxOpen, toggleInbox, unreadCount } = useChatStore();
   const [datosTaller, setDatosTaller] = useState<DatosTaller | null>(null);
 
   useEffect(() => {
@@ -180,6 +181,48 @@ export default function Sidebar() {
               </div>
             </div>
           )}
+
+          {/* Chat Inbox Button */}
+          {user && (
+            <div className={`mx-3 mb-1 mt-1 transition-all duration-300 ${sidebarOpen ? "px-1" : "px-0"}`}>
+              <button
+                id="sidebar-chat-toggle"
+                onClick={toggleInbox}
+                className={`w-full flex items-center gap-2.5 rounded-xl transition-all duration-200 border-0 cursor-pointer ${
+                  isInboxOpen 
+                    ? "bg-[rgba(37,99,235,0.2)] text-[var(--accent-light)] font-semibold" 
+                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+                } ${sidebarOpen ? "px-3 py-2.5 text-xs" : "px-[7px] py-2.5 justify-center"}`}
+                style={{
+                  background: isInboxOpen ? "rgba(37,99,235,0.18)" : "transparent",
+                  color: isInboxOpen ? "var(--accent-light)" : "var(--text-secondary)",
+                }}
+                title={sidebarOpen ? undefined : "Bandeja de Chats"}
+              >
+                <div className="relative flex items-center justify-center flex-shrink-0">
+                  <MessageSquare size={18} />
+                  {!sidebarOpen && unreadCount > 0 && (
+                    <span 
+                      className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-blue-600 border border-[#111827] shadow-sm animate-pulse-glow"
+                    />
+                  )}
+                </div>
+                <span
+                  className={`transition-all duration-300 whitespace-nowrap text-left flex-1 flex justify-between items-center ${
+                    sidebarOpen ? "opacity-100 max-w-[200px]" : "opacity-0 max-w-0 overflow-hidden pointer-events-none"
+                  }`}
+                >
+                  <span>Bandeja de Chats</span>
+                  {unreadCount > 0 && (
+                    <span className="bg-blue-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-sm ml-1.5 animate-fade-in">
+                      {unreadCount}
+                    </span>
+                  )}
+                </span>
+              </button>
+            </div>
+          )}
+
 
           {/* Nav */}
           <nav className={`flex-1 py-2 flex flex-col gap-1.5 overflow-y-auto transition-all duration-300 ${sidebarOpen ? "px-3" : "px-2"}`}>

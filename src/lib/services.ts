@@ -19,6 +19,7 @@ import {
   QueryConstraint,
   type Transaction,
   Timestamp,
+  collectionGroup,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "./firebase";
@@ -47,6 +48,7 @@ import {
   DevolucionProveedor,
   Venta,
   VentaItem,
+  MensajeOrden,
 } from "@/types";
 
 export function normalizarMargenGanancia(value: unknown): number {
@@ -1826,3 +1828,90 @@ export async function anularVenta(ventaId: string): Promise<void> {
     });
   });
 }
+
+// ─── CHAT DE ORDEN ────────────────────────────────────────────────────────────
+export async function sendMensajeOrden(
+  ordenId: string,
+  mensaje: Omit<MensajeOrden, "id" | "ordenId" | "createdAt">
+): Promise<string> {
+  const docRef = await addDoc(
+    collection(db, "ordenesTrabajo", ordenId, "mensajes"),
+    {
+      ...mensaje,
+      ordenId,
+      createdAt: serverTimestamp(),
+    }
+  );
+  return docRef.id;
+}
+
+export function subscribeMensajesOrden(
+  ordenId: string,
+  callback: (mensajes: MensajeOrden[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(
+    collection(db, "ordenesTrabajo", ordenId, "mensajes"),
+    orderBy("createdAt", "asc")
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(
+        snap.docs.map((d) => ({ id: d.id, ...d.data() } as MensajeOrden))
+      );
+    },
+    onError
+  );
+}
+
+export function subscribeAllMensajes(
+  callback: (mensajes: MensajeOrden[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  // Realizar query sin orderBy para evitar la necesidad de crear un índice composite en Firestore
+  const q = query(collectionGroup(db, "mensajes"));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as MensajeOrden));
+      // Ordenar descendente en memoria
+      msgs.sort((a, b) => {
+        const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0;
+        const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0;
+        return timeB - timeA;
+      });
+      callback(msgs);
+    },
+    onError
+  );
+}
+
+export function subscribeClientes(
+  callback: (clientes: Cliente[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(collection(db, "clientes"));
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Cliente)));
+    },
+    onError
+  );
+}
+
+export function subscribeVehiculos(
+  callback: (vehiculos: Vehiculo[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(collection(db, "vehiculos"));
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Vehiculo)));
+    },
+    onError
+  );
+}
+

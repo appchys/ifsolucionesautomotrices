@@ -82,6 +82,8 @@ import { getMergedChecklist } from "@/lib/checklist";
 import { auth } from "@/lib/firebase";
 import ModalEnviarCorreo from "@/components/ordenes/ModalEnviarCorreo";
 import ModalFirmas from "@/components/ordenes/ModalFirmas";
+import ChatOrden from "@/components/ordenes/ChatOrden";
+import { useChatStore } from "@/store/chatStore";
 
 const ESTADOS: EstadoOrden[] = [
   "Borrador",
@@ -127,6 +129,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   const router = useRouter();
   const { sidebarOpen } = useUIStore();
   const { user } = useAuthStore();
+  const { unreadCount } = useChatStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -1550,20 +1553,28 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
             {(["Vehículo", "Fotos", "Notas", "Diagnóstico", "Informe", "Chat"] as const).map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 text-center py-2.5 text-[10px] font-bold transition-all border-b-2 uppercase tracking-wide ${
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (tab === "Chat") useChatStore.getState().resetUnread();
+                }}
+                className={`flex-1 text-center py-2.5 text-[10px] font-bold transition-all border-b-2 uppercase tracking-wide relative ${
                   activeTab === tab
                     ? "border-blue-600 text-blue-600 bg-white"
                     : "border-transparent text-[var(--text-muted)] hover:text-slate-900"
                 }`}
               >
                 {tab}
+                {tab === "Chat" && unreadCount > 0 && activeTab !== "Chat" && (
+                  <span className="absolute -top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center shadow-sm">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
               </button>
             ))}
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4">
+          <div className={`flex-1 overflow-hidden ${activeTab === "Chat" ? "" : "overflow-y-auto p-4 custom-scrollbar space-y-4"}`}>
             
             {activeTab === "Vehículo" && (
               <div className="space-y-4">
@@ -1856,10 +1867,11 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
             )}
 
             {activeTab === "Chat" && (
-              <div className="space-y-4 py-8 text-center text-slate-400 text-xs">
-                <MessageCircle size={32} className="mx-auto text-slate-300 mb-2" />
-                <p>El chat de comunicación interna se habilitará cuando se asigne un técnico al vehículo.</p>
-              </div>
+              <ChatOrden
+                ordenId={ordenId}
+                personalAsignado={orden.personalAsignado || []}
+                todosLosUsuarios={todosLosUsuarios}
+              />
             )}
           </div>
         </div>

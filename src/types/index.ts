@@ -456,3 +456,18 @@ export interface Venta {
   pagos?: Omit<Pago, "id" | "ordenId">[];
 }
 
+export interface MensajeOrden {
+  id?: string;
+  ordenId: string;
+  autorId: string;
+  autorNombre: string;
+  autorRole: UserRole;
+  autorPhotoURL?: string;
+  texto: string;
+  sistema?: boolean;
+  tecnicoAfectadoId?: string;
+  tecnicoAfectadoNombre?: string;
+  accionSistema?: "asignar" | "remover";
+  createdAt?: Timestamp;
+}
+

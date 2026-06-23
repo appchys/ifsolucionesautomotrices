@@ -5,6 +5,8 @@ import { Loader2 } from "lucide-react";
 import { useAuthStore, useUIStore } from "@/store";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import ChatInbox from "./ChatInbox";
+import ActiveChatPanel from "./ActiveChatPanel";
 
 export default function AppShell({ 
   children, 
@@ -36,8 +38,11 @@ export default function AppShell({
   return (
     <div className="min-h-screen flex" style={{ background: "var(--bg-primary)" }}>
       <Sidebar />
+      <ChatInbox />
+      <ActiveChatPanel />
 
       {/* Main area */}
+
       <div
         className={`flex-1 flex flex-col transition-all duration-300 ${
           sidebarOpen ? "sidebar-displaced" : "sidebar-displaced-collapsed"

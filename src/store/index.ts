@@ -60,3 +60,6 @@ export const useOrdenesStore = create<OrdenesStore>((set) => ({
   setOrdenes: (ordenes) => set({ ordenes }),
   setSelectedOrden: (orden) => set({ selectedOrden: orden }),
 }));
+
+export * from "./chatStore";
+

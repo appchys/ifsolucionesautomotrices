@@ -35,4 +35,4 @@ Todos los modales deben cerrarse al clicar fuera
 
 No uses emojis, simepre usa iconos
 
-
+Recuerda que firestore no acepta undefined como valor

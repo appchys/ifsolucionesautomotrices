@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut } from "lucide-react";
+import { ChevronLeft, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut, MessageSquare } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -25,6 +25,7 @@ import ModalFirmaCliente from "./ModalFirmaCliente";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
 import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
+import ChatOrden from "@/components/ordenes/ChatOrden";
 
 const NIVELES_COMBUSTIBLE: { label: string; value: NivelCombustible; color: string }[] = [
   { label: "E", value: "Vacío", color: "bg-red-500 text-white" },
@@ -46,6 +47,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [presupuestoId, setPresupuestoId] = useState<string | null>(null);
   const [presupuesto, setPresupuesto] = useState<OrdenTrabajo | null>(null);
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
+  const [todosLosUsuarios, setTodosLosUsuarios] = useState<AppUser[]>([]);
   const [tecnicosAsignados, setTecnicosAsignados] = useState<AppUser[]>([]);
   const [isTecnicosPopoverOpen, setIsTecnicosPopoverOpen] = useState(false);
   const [taller, setTaller] = useState<DatosTaller | null>(null);
@@ -90,6 +92,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       }
 
       setTecnicos(tecnicosData.filter(u => u.role === "tecnico" && u.activo));
+      setTodosLosUsuarios(tecnicosData);
       setOrden(ordenData);
       setTaller(tallerData);
 
@@ -1039,6 +1042,24 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                 </button>
               </div>
             </div>
+
+            {/* Sección de Chat */}
+            <div className="border-t border-[var(--border)] pt-4 mt-2 flex flex-col bg-slate-50 dark:bg-slate-900/10 rounded-xl p-3 border">
+              <h3 className="font-bold flex items-center gap-2 mb-3 text-[var(--text-secondary)] text-sm">
+                <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600">
+                  <MessageSquare size={12} />
+                </span>
+                Chat del Ingreso
+              </h3>
+              <div className="h-[380px] bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl overflow-hidden shadow-inner">
+                <ChatOrden
+                  ordenId={ingresoId}
+                  personalAsignado={orden.personalAsignado || []}
+                  todosLosUsuarios={todosLosUsuarios}
+                />
+              </div>
+            </div>
+
           </div>
 
         </div>
