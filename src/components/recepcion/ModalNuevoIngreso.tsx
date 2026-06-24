@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Car, Search, X, Loader2, ArrowLeft, Edit, User, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
@@ -12,6 +12,7 @@ import {
   createVehiculo,
   createOrdenConItems,
   getTiposVehiculo,
+  searchVehiculosByPlacaPrefix,
 } from "@/lib/services";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import { Cliente, Vehiculo, TipoVehiculo } from "@/types";
@@ -58,6 +59,11 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
   const [placaNoEncontrada, setPlacaNoEncontrada] = useState(false);
   const [vehiculosCliente, setVehiculosCliente] = useState<Vehiculo[]>([]);
   const [isCreatingNewVehicle, setIsCreatingNewVehicle] = useState(false);
+  
+  // Sugerencias de placa
+  const [sugerenciasPlaca, setSugerenciasPlaca] = useState<Vehiculo[]>([]);
+  const [mostrarSugerenciasPlaca, setMostrarSugerenciasPlaca] = useState(false);
+  const placaWrapperRef = useRef<HTMLDivElement>(null);
 
   // Edit modal
   const [isEditingCliente, setIsEditingCliente] = useState(false);
@@ -101,12 +107,46 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
 
   const isClienteNew = searchMode === "cliente" && searchCliente.trim().length > 2 && filteredClientes.length === 0 && !selectedCliente;
 
+  // Clic fuera del wrapper de sugerencias para cerrarlas
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (placaWrapperRef.current && !placaWrapperRef.current.contains(event.target as Node)) {
+        setMostrarSugerenciasPlaca(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Buscar sugerencias de placa (cuando es >= 2 caracteres)
+  useEffect(() => {
+    const placa = searchPlaca.trim().toUpperCase();
+    if (placa.length < 2) {
+      setSugerenciasPlaca([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        const vehiculos = await searchVehiculosByPlacaPrefix(placa);
+        setSugerenciasPlaca(vehiculos.slice(0, 6));
+      } catch (error) {
+        console.error(error);
+      }
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [searchPlaca]);
+
   // Search vehicle by placa (works in both modes)
   useEffect(() => {
     const placa = searchPlaca.trim().toUpperCase();
     setPlacaNoEncontrada(false); // Reset on every change
     if (placa.length >= 6) {
       const timer = setTimeout(async () => {
+        if (selectedVehiculo && selectedVehiculo.placa.toUpperCase() === placa) {
+          return;
+        }
         setBuscandoPlaca(true);
         try {
           const vehiculo = await getVehiculoByPlaca(placa);
@@ -139,7 +179,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
       setSelectedVehiculo(null);
       setSelectedCliente(null);
     }
-  }, [searchPlaca, searchMode]);
+  }, [searchPlaca, searchMode, selectedVehiculo]);
 
   // Load vehicles for client when in client mode and client selected
   useEffect(() => {
@@ -356,7 +396,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
       {/* Placa search */}
       <div>
         <label className="text-sm font-semibold mb-1 block">Placa del vehículo</label>
-        <div className="relative flex gap-2">
+        <div className="relative flex gap-2" ref={placaWrapperRef}>
           <div className="relative flex-1">
             <Car size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
@@ -364,9 +404,44 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
               className="input pl-9 w-full uppercase"
               placeholder="EJ: ABCD-12"
               value={searchPlaca}
-              onChange={(e) => setSearchPlaca(e.target.value)}
+              onChange={(e) => {
+                setSearchPlaca(e.target.value);
+                setMostrarSugerenciasPlaca(true);
+              }}
+              onFocus={() => setMostrarSugerenciasPlaca(true)}
               autoFocus
             />
+            {mostrarSugerenciasPlaca && sugerenciasPlaca.length > 0 && (
+              <div className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+                {sugerenciasPlaca.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className="w-full text-left p-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border)] last:border-0 flex flex-col"
+                    onClick={async () => {
+                      setSelectedVehiculo(v);
+                      setSearchPlaca(v.placa);
+                      setMostrarSugerenciasPlaca(false);
+                      setIsCreatingNewVehicle(false);
+                      setPlacaNoEncontrada(false);
+                      if (v.clienteId) {
+                        try {
+                          const c = await getClienteById(v.clienteId);
+                          if (c) setSelectedCliente(c);
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }
+                    }}
+                  >
+                    <span className="font-mono font-bold text-sm">{v.placa}</span>
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {v.marca} {v.modelo} {v.anio}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <button className="btn-primary w-12 flex items-center justify-center rounded-xl p-0 shrink-0 bg-blue-400 hover:bg-blue-500 border-none">
             {buscandoPlaca ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
@@ -676,8 +751,14 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
 
   const footer = getFooterAction();
 
+  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={handleBackdropClick}>
       <div className="bg-white dark:bg-[var(--bg-card)] rounded-2xl w-full max-w-lg shadow-xl flex flex-col max-h-[90vh]">
         
         {/* Header */}

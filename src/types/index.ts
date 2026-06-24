@@ -467,7 +467,8 @@ export interface MensajeOrden {
   sistema?: boolean;
   tecnicoAfectadoId?: string;
   tecnicoAfectadoNombre?: string;
-  accionSistema?: "asignar" | "remover" | "inspeccion";
+  accionSistema?: "asignar" | "remover" | "inspeccion" | "presupuesto" | "orden";
+  presupuestoId?: string;
   createdAt?: Timestamp;
 }
 

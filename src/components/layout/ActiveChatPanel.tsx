@@ -2,16 +2,19 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
-import { X, ClipboardList, FileDown, FileText, Wrench } from "lucide-react";
+import { X, ClipboardList, FileDown, FileText, Wrench, ArrowLeft, ChevronRight, Copy, User, Phone, Mail, ClipboardCheck } from "lucide-react";
 import { useChatStore, useUIStore, useAuthStore } from "@/store";
-import { getUsuarios, updateOrden, uploadOrdenFoto } from "@/lib/services";
+import { getUsuarios, updateOrden, uploadOrdenFoto, getIngresoOrigenDePresupuesto, getPresupuestoPorIngreso } from "@/lib/services";
 import { db } from "@/lib/firebase";
 import { OrdenTrabajo, AppUser, Vehiculo, Cliente, DanoVehiculo, FotoDiagnostico } from "@/types";
 import ChatOrden from "../ordenes/ChatOrden";
 import ModalInspeccion from "../recepcion/ModalInspeccion";
 import { toast } from "react-hot-toast";
 
+import { useRouter } from "next/navigation";
+
 export default function ActiveChatPanel() {
+  const router = useRouter();
   const { user } = useAuthStore();
   const { activeChatId, setActiveChatId, isInboxOpen } = useChatStore();
   const { sidebarOpen } = useUIStore();
@@ -21,6 +24,73 @@ export default function ActiveChatPanel() {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [usuarios, setUsuarios] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Estados para el menú de detalles del chat
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [ingresoIdRel, setIngresoIdRel] = useState<string | null>(null);
+  const [presupuestoIdRel, setPresupuestoIdRel] = useState<string | null>(null);
+  const [ordenIdRel, setOrdenIdRel] = useState<string | null>(null);
+
+  // Cargar IDs de documentos vinculados (Ingreso, Presupuesto, Orden)
+  useEffect(() => {
+    async function cargarRelaciones() {
+      if (!orden) {
+        setIngresoIdRel(null);
+        setPresupuestoIdRel(null);
+        setOrdenIdRel(null);
+        return;
+      }
+
+      if (orden.esCotizacion) {
+        setPresupuestoIdRel(orden.id || null);
+        try {
+          const ingreso = await getIngresoOrigenDePresupuesto(orden);
+          if (ingreso) {
+            setIngresoIdRel(ingreso.id || null);
+            if (ingreso.numeroOrden) {
+              setOrdenIdRel(ingreso.id || null);
+            } else {
+              setOrdenIdRel(null);
+            }
+          } else {
+            setIngresoIdRel(null);
+            setOrdenIdRel(null);
+          }
+        } catch (err) {
+          console.error("Error al cargar ingreso origen:", err);
+          setIngresoIdRel(null);
+          setOrdenIdRel(null);
+        }
+      } else {
+        setIngresoIdRel(orden.id || null);
+        if (orden.numeroOrden) {
+          setOrdenIdRel(orden.id || null);
+        } else {
+          setOrdenIdRel(null);
+        }
+
+        try {
+          const numIngreso = orden.numeroIngreso || orden.numero || 0;
+          const presupuesto = await getPresupuestoPorIngreso(numIngreso, orden.vehiculoId);
+          if (presupuesto) {
+            setPresupuestoIdRel(presupuesto.id || null);
+          } else {
+            setPresupuestoIdRel(null);
+          }
+        } catch (err) {
+          console.error("Error al cargar presupuesto relacionado:", err);
+          setPresupuestoIdRel(null);
+        }
+      }
+    }
+
+    cargarRelaciones();
+  }, [orden]);
+
+  // Si cambia el chat activo, cerramos el menú de detalles
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [activeChatId]);
 
   // Estados locales para el modal de inspección
   const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
@@ -258,11 +328,15 @@ export default function ActiveChatPanel() {
     >
       {/* Header */}
       <div className="chat-inbox-header justify-between flex items-center bg-[var(--bg-primary)] border-b border-[var(--border-light)] px-3 py-2">
-        <div className="flex gap-2.5 items-center min-w-0">
+        <div 
+          onClick={() => setIsMenuOpen(true)}
+          className="flex gap-2.5 items-center min-w-0 flex-1 hover:bg-slate-50 dark:hover:bg-slate-800/40 p-1 rounded-lg cursor-pointer transition-colors"
+          title="Ver detalles del chat"
+        >
           <div className={`p-1.5 rounded-lg shrink-0 ${iconColor}`}>
             <Icon size={14} />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h4 className="text-xs font-bold text-[var(--text-primary)] truncate">
               {title}
             </h4>
@@ -303,6 +377,197 @@ export default function ActiveChatPanel() {
           </div>
         )}
       </div>
+
+      {/* Menú de Detalles del Chat */}
+      {isMenuOpen && (
+        <div className="absolute inset-0 z-20 bg-slate-50 dark:bg-slate-900 flex flex-col animate-in slide-in-from-right duration-200">
+          {/* Header del Menú */}
+          <div className="flex items-center gap-3 bg-[var(--bg-primary)] border-b border-[var(--border-light)] px-3 py-3 select-none">
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen(false)}
+              className="btn-ghost btn-icon hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg p-1.5 cursor-pointer text-slate-600 dark:text-slate-300 border-0"
+              title="Volver al chat"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <h3 className="text-xs font-extrabold text-[var(--text-primary)]">
+              Detalles del Chat
+            </h3>
+          </div>
+
+          {/* Contenido del Menú */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Perfil */}
+            <div className="flex flex-col items-center text-center pb-4 border-b border-slate-200/60 dark:border-slate-800/60">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-extrabold text-lg shadow-md mb-2">
+                {vehiculo ? (vehiculo.placa ? vehiculo.placa.slice(0, 3) : "VEH") : "CH"}
+              </div>
+              <h4 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">
+                {title.split(" - ")[0]}
+              </h4>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                {subtitle}
+              </p>
+            </div>
+
+            {/* Fila de Botones Rápidos */}
+            <div className="grid grid-cols-3 gap-2">
+              {/* Botón Ingreso */}
+              <button
+                type="button"
+                onClick={() => ingresoIdRel && router.push(`/ingresos/${ingresoIdRel}`)}
+                disabled={!ingresoIdRel}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
+                  ingresoIdRel
+                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer active:scale-95 text-indigo-600 dark:text-indigo-400"
+                    : "border-slate-100 dark:border-slate-900 opacity-40 cursor-not-allowed text-slate-400"
+                }`}
+              >
+                <FileDown size={18} />
+                <span className="text-[9px] font-bold mt-1.5 text-slate-700 dark:text-slate-350">
+                  Ingreso
+                </span>
+                {!ingresoIdRel && (
+                  <span className="text-[7px] text-slate-400 font-medium">No disponible</span>
+                )}
+              </button>
+
+              {/* Botón Presupuesto */}
+              <button
+                type="button"
+                onClick={() => presupuestoIdRel && router.push(`/presupuestos/${presupuestoIdRel}`)}
+                disabled={!presupuestoIdRel}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
+                  presupuestoIdRel
+                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer active:scale-95 text-amber-500 dark:text-amber-400"
+                    : "border-slate-100 dark:border-slate-900 opacity-40 cursor-not-allowed text-slate-400"
+                }`}
+              >
+                <FileText size={18} />
+                <span className="text-[9px] font-bold mt-1.5 text-slate-700 dark:text-slate-350">
+                  Presupuesto
+                </span>
+                {!presupuestoIdRel && (
+                  <span className="text-[7px] text-slate-400 font-medium">No creado</span>
+                )}
+              </button>
+
+              {/* Botón Orden */}
+              <button
+                type="button"
+                onClick={() => ordenIdRel && router.push(`/ordenes/detalle?id=${ordenIdRel}`)}
+                disabled={!ordenIdRel}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
+                  ordenIdRel
+                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer active:scale-95 text-emerald-600 dark:text-emerald-400"
+                    : "border-slate-100 dark:border-slate-900 opacity-40 cursor-not-allowed text-slate-400"
+                }`}
+              >
+                <ClipboardList size={18} />
+                <span className="text-[9px] font-bold mt-1.5 text-slate-700 dark:text-slate-350">
+                  Orden
+                </span>
+                {!ordenIdRel && (
+                  <span className="text-[7px] text-slate-400 font-medium">No creada</span>
+                )}
+              </button>
+            </div>
+
+            {/* Lista de Opciones - Grupo 1 */}
+            <div className="bg-white dark:bg-slate-850 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 overflow-hidden shadow-sm">
+              {/* Opción Inspección */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalInspeccionOpen(true);
+                }}
+                className="w-full flex items-center justify-between p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors border-b border-slate-100 dark:border-slate-800/60 text-left border-0"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-7 h-7 bg-green-500/10 rounded-lg flex items-center justify-center text-green-600">
+                    <ClipboardCheck size={14} className="shrink-0" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-800 dark:text-slate-250">
+                      Inspección Visual de Ingreso
+                    </p>
+                    <p className="text-[8px] text-slate-400">Ver y editar daños o fotos del vehículo</p>
+                  </div>
+                </div>
+                <ChevronRight size={12} className="text-slate-400" />
+              </button>
+
+              {/* Opción Copiar ID */}
+              <button
+                type="button"
+                onClick={async () => {
+                  if (activeChatId) {
+                    await navigator.clipboard.writeText(activeChatId);
+                    toast.success("ID de orden copiado al portapapeles");
+                  }
+                }}
+                className="w-full flex items-center justify-between p-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors text-left border-0"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-7 h-7 bg-blue-500/10 rounded-lg flex items-center justify-center text-blue-600">
+                    <Copy size={14} />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-800 dark:text-slate-250">
+                      Copiar ID de la Orden
+                    </p>
+                    <p className="text-[8px] text-slate-400 truncate max-w-[180px]">{activeChatId}</p>
+                  </div>
+                </div>
+                <ChevronRight size={12} className="text-slate-400" />
+              </button>
+            </div>
+
+            {/* Lista de Opciones - Grupo 2 (Cliente) */}
+            {cliente && (
+              <div className="bg-white dark:bg-slate-850 rounded-2xl border border-slate-200/80 dark:border-slate-800/80 overflow-hidden shadow-sm p-4 space-y-3.5">
+                <h5 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                  Información del Cliente
+                </h5>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <User size={13} className="text-slate-400 mt-0.5" />
+                    <div>
+                      <p className="text-[8px] text-slate-400">Nombre</p>
+                      <p className="text-[10px] font-bold text-slate-800 dark:text-slate-250">
+                        {cliente.nombre} {cliente.apellido}
+                      </p>
+                    </div>
+                  </div>
+                  {cliente.telefono && (
+                    <div className="flex items-start gap-3">
+                      <Phone size={13} className="text-slate-400 mt-0.5" />
+                      <div>
+                        <p className="text-[8px] text-slate-400">Teléfono</p>
+                        <p className="text-[10px] font-bold text-slate-800 dark:text-slate-250">
+                          {cliente.telefono}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                  {cliente.email && (
+                    <div className="flex items-start gap-3">
+                      <Mail size={13} className="text-slate-400 mt-0.5" />
+                      <div>
+                        <p className="text-[8px] text-slate-400">Correo Electrónico</p>
+                        <p className="text-[10px] font-bold text-slate-800 dark:text-slate-250 truncate max-w-[200px]">
+                          {cliente.email}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {vehiculo && (
         <ModalInspeccion

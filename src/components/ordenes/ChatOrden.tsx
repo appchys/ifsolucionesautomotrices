@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Users, UserPlus, ClipboardCheck } from "lucide-react";
-import { MensajeOrden, AppUser, UserRole } from "@/types";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { Send, Users, UserPlus, ClipboardCheck, FileText, Info, Edit, User } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { MensajeOrden, AppUser, UserRole, Cliente } from "@/types";
 import { sendMensajeOrden, subscribeMensajesOrden } from "@/lib/services";
 import { useAuthStore } from "@/store";
 import { useChatStore } from "@/store/chatStore";
@@ -20,6 +21,13 @@ interface ChatOrdenProps {
   }[];
   todosLosUsuarios: AppUser[];
   onOpenInspeccion?: () => void;
+  cliente?: Cliente | null;
+  onEditCliente?: () => void;
+  recibidoPor?: {
+    displayName: string;
+    email: string;
+    uid: string;
+  } | null;
 }
 
 /* Genera un "pop" corto usando Web Audio API */
@@ -127,13 +135,25 @@ export default function ChatOrden({
   personalAsignado,
   todosLosUsuarios,
   onOpenInspeccion,
+  cliente,
+  onEditCliente,
+  recibidoPor,
 }: ChatOrdenProps) {
+  const router = useRouter();
   const { user } = useAuthStore();
   const { resetUnread, setActiveOrdenId } = useChatStore();
   const [mensajes, setMensajes] = useState<MensajeOrden[]>([]);
   const [texto, setTexto] = useState("");
   const [sending, setSending] = useState(false);
   const [showAddParticipants, setShowAddParticipants] = useState(false);
+  const [showInfoCliente, setShowInfoCliente] = useState(false);
+  const [selectedParticipants, setSelectedParticipants] = useState<{
+    uid: string;
+    email: string;
+    displayName: string;
+    role: UserRole;
+  }[]>([]);
+  const [savingParticipants, setSavingParticipants] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -142,20 +162,28 @@ export default function ChatOrden({
   const [lecturas, setLecturas] = useState<Record<string, any>>({});
   const [ordenData, setOrdenData] = useState<any>(null);
 
-  // Cerrar selector de participantes al clicar fuera
+  // Cerrar selectores al clicar fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
         setShowAddParticipants(false);
+        setShowInfoCliente(false);
       }
     };
-    if (showAddParticipants) {
+    if (showAddParticipants || showInfoCliente) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showAddParticipants]);
+  }, [showAddParticipants, showInfoCliente]);
+
+  // Inicializar selección local al abrir popover
+  useEffect(() => {
+    if (showAddParticipants) {
+      setSelectedParticipants(personalAsignado || []);
+    }
+  }, [showAddParticipants, personalAsignado]);
 
   const tecnicosDisponibles = todosLosUsuarios.filter(
     (u) => u.role === "tecnico" && u.activo !== false
@@ -163,36 +191,48 @@ export default function ChatOrden({
 
   const participantsList = personalAsignado || [];
 
-  const handleToggleParticipant = async (tecnico: AppUser) => {
-    const isAssigned = participantsList.some((p) => p.uid === tecnico.uid);
-    let nuevos: {
-      uid: string;
-      email: string;
-      displayName: string;
-      role: UserRole;
-    }[];
+  const isChanged = useMemo(() => {
+    const currentUids = new Set((personalAsignado || []).map(p => p.uid));
+    const selectedUids = new Set(selectedParticipants.map(p => p.uid));
+    
+    if (currentUids.size !== selectedUids.size) return true;
+    for (const uid of selectedUids) {
+      if (!currentUids.has(uid)) return true;
+    }
+    return false;
+  }, [personalAsignado, selectedParticipants]);
 
+  const handleToggleParticipantLocal = (tecnico: AppUser) => {
+    const isAssigned = selectedParticipants.some((p) => p.uid === tecnico.uid);
     if (isAssigned) {
-      nuevos = participantsList.filter((p) => p.uid !== tecnico.uid);
+      setSelectedParticipants(selectedParticipants.filter((p) => p.uid !== tecnico.uid));
     } else {
-      nuevos = [
-        ...participantsList,
+      setSelectedParticipants([
+        ...selectedParticipants,
         {
           uid: tecnico.uid,
           email: tecnico.email || "",
           displayName: tecnico.displayName || "",
           role: tecnico.role || "tecnico"
         }
-      ];
+      ]);
     }
+  };
 
+  const handleSaveParticipants = async () => {
+    setSavingParticipants(true);
     try {
-      await updateDoc(doc(db, "ordenesTrabajo", ordenId), {
-        personalAsignado: nuevos
-      });
-      toast.success(isAssigned ? "Técnico removido del chat" : "Técnico asignado al chat");
+      const originalList = personalAsignado || [];
+      const originalUids = new Set(originalList.map(p => p.uid));
+      const selectedUids = new Set(selectedParticipants.map(p => p.uid));
 
-      // Determinar el nombre del tipo de documento para el mensaje
+      const agregados = selectedParticipants.filter(p => !originalUids.has(p.uid));
+      const removidos = originalList.filter(p => !selectedUids.has(p.uid));
+
+      await updateDoc(doc(db, "ordenesTrabajo", ordenId), {
+        personalAsignado: selectedParticipants
+      });
+
       let docName = "ingreso";
       if (ordenData) {
         if (ordenData.esCotizacion) {
@@ -202,24 +242,41 @@ export default function ChatOrden({
         }
       }
 
-      // Mensaje de sistema estilo WhatsApp (fallback neutro en tercera persona)
-      const txt = isAssigned
-        ? `Se removió al técnico ${tecnico.displayName} de este ${docName}.`
-        : `Se asignó al técnico ${tecnico.displayName} a este ${docName}.`;
+      for (const tecnico of agregados) {
+        const txt = `Se asignó al técnico ${tecnico.displayName} a este ${docName}.`;
+        await sendMensajeOrden(ordenId, {
+          autorId: "sistema",
+          autorNombre: "Sistema",
+          autorRole: "admin" as UserRole,
+          texto: txt,
+          sistema: true,
+          tecnicoAfectadoId: tecnico.uid,
+          tecnicoAfectadoNombre: tecnico.displayName,
+          accionSistema: "asignar"
+        });
+      }
 
-      await sendMensajeOrden(ordenId, {
-        autorId: "sistema",
-        autorNombre: "Sistema",
-        autorRole: "admin" as UserRole,
-        texto: txt,
-        sistema: true,
-        tecnicoAfectadoId: tecnico.uid,
-        tecnicoAfectadoNombre: tecnico.displayName,
-        accionSistema: isAssigned ? "remover" : "asignar"
-      });
+      for (const tecnico of removidos) {
+        const txt = `Se removió al técnico ${tecnico.displayName} de este ${docName}.`;
+        await sendMensajeOrden(ordenId, {
+          autorId: "sistema",
+          autorNombre: "Sistema",
+          autorRole: "admin" as UserRole,
+          texto: txt,
+          sistema: true,
+          tecnicoAfectadoId: tecnico.uid,
+          tecnicoAfectadoNombre: tecnico.displayName,
+          accionSistema: "remover"
+        });
+      }
+
+      toast.success("Participantes actualizados");
+      setShowAddParticipants(false);
     } catch (err) {
       console.error("Error al actualizar participantes del chat:", err);
       toast.error("Error al actualizar participantes");
+    } finally {
+      setSavingParticipants(false);
     }
   };
 
@@ -435,22 +492,51 @@ export default function ChatOrden({
   // Participants header
 
   return (
-    <div className="flex flex-col h-full" style={{ minHeight: 0 }}>
-      {/* Participants header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)] bg-slate-50/50 shrink-0">
-        <Users size={13} className="text-slate-400 shrink-0" />
-        <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto hide-scrollbar">
+    <div className="flex flex-col h-full" style={{ minHeight: 0 }} ref={popoverRef}>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)] bg-slate-50 dark:bg-slate-900/40 shrink-0 select-none">
+        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto hide-scrollbar">
+          {/* Recibido por */}
+          {recibidoPor && (() => {
+            const dbUser = todosLosUsuarios.find((u) => u.uid === recibidoPor.uid);
+            const photo = dbUser?.photoURL;
+            return (
+              <div 
+                className="flex items-center gap-1.5 shrink-0 bg-blue-50/80 dark:bg-blue-950/20 border border-blue-200/50 dark:border-blue-900/30 rounded-full pl-0.5 pr-2.5 py-0.5"
+                title={`Recibido por: ${recibidoPor.displayName}`}
+              >
+                <div
+                  className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold uppercase overflow-hidden shrink-0"
+                >
+                  {photo ? (
+                    <img src={photo} alt={recibidoPor.displayName} className="w-full h-full object-cover" />
+                  ) : (
+                    getInitials(recibidoPor.displayName)
+                  )}
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-[10px] font-extrabold text-blue-700 dark:text-blue-400 leading-none">
+                    {recibidoPor.displayName.split(" ")[0]}
+                  </span>
+                  <span className="text-[7px] text-blue-500 font-extrabold uppercase tracking-wider leading-none mt-0.5">
+                    Recibió
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Técnicos Asignados */}
           {participantsList.map((p) => {
             const dbUser = todosLosUsuarios.find((u) => u.uid === p.uid);
             const photo = dbUser?.photoURL;
             return (
               <div
                 key={p.uid}
-                className="flex items-center gap-1.5 shrink-0 bg-white border border-[var(--border)] rounded-full pl-0.5 pr-2 py-0.5"
+                className="flex items-center gap-1.5 shrink-0 bg-white dark:bg-slate-800 border border-[var(--border)] rounded-full pl-0.5 pr-2.5 py-0.5"
                 title={`${p.displayName} (${ROLE_LABELS[p.role] || p.role})`}
               >
                 <div
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold uppercase overflow-hidden shrink-0"
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-bold uppercase overflow-hidden shrink-0"
                   style={{ backgroundColor: getAvatarColor(p.uid) }}
                 >
                   {photo ? (
@@ -463,16 +549,95 @@ export default function ChatOrden({
                     getInitials(p.displayName)
                   )}
                 </div>
-                <span className="text-[10px] font-semibold text-slate-600 truncate max-w-[70px]">
-                  {p.displayName.split(" ")[0]}
-                </span>
+                <div className="flex flex-col text-left">
+                  <span className="text-[10px] font-extrabold text-slate-700 dark:text-slate-200 leading-none">
+                    {p.displayName.split(" ")[0]}
+                  </span>
+                  <span className="text-[7px] text-slate-550 dark:text-slate-400 font-extrabold uppercase tracking-wider leading-none mt-0.5">
+                    Técnico
+                  </span>
+                </div>
               </div>
             );
           })}
-          {participantsList.length === 0 && (
-            <span className="text-[10px] text-slate-400 italic">
-              Sin participantes asignados
+
+          {(!recibidoPor && participantsList.length === 0) && (
+            <span className="text-[11px] text-slate-400 italic">
+              Sin personal asignado
             </span>
+          )}
+        </div>
+
+        {/* Botón de añadir/asignar técnicos a la derecha */}
+        <div className="relative shrink-0 ml-2">
+          <button
+            type="button"
+            onClick={() => setShowAddParticipants(!showAddParticipants)}
+            className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 border border-[var(--border)] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer flex items-center justify-center transition-colors shadow-sm"
+            title="Asignar técnicos"
+          >
+            <UserPlus size={14} />
+          </button>
+          
+          {showAddParticipants && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowAddParticipants(false)}></div>
+              <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 border border-[var(--border)] rounded-xl shadow-xl z-50 p-2 flex flex-col max-h-60 overflow-y-auto custom-scrollbar">
+                <h5 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-[var(--border-light)] mb-1">
+                  Asignar Técnicos
+                </h5>
+                <div className="flex flex-col gap-0.5 text-left text-xs bg-transparent">
+                  {tecnicosDisponibles.map((t) => {
+                    const isAssigned = selectedParticipants.some((p) => p.uid === t.uid);
+                    return (
+                      <button
+                        key={t.uid}
+                        type="button"
+                        onClick={() => handleToggleParticipantLocal(t)}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 text-left border-0 cursor-pointer text-xs bg-transparent"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold uppercase overflow-hidden shrink-0"
+                            style={{ backgroundColor: getAvatarColor(t.uid) }}
+                          >
+                            {t.photoURL ? (
+                              <img src={t.photoURL} alt={t.displayName} className="w-full h-full object-cover" />
+                            ) : (
+                              getInitials(t.displayName)
+                            )}
+                          </div>
+                          <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
+                            {t.displayName}
+                          </span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={isAssigned}
+                          readOnly
+                          className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 pointer-events-none"
+                        />
+                      </button>
+                    );
+                  })}
+                  {tecnicosDisponibles.length === 0 && (
+                    <span className="text-[10px] text-slate-400 italic text-center py-2">
+                      No hay técnicos activos
+                    </span>
+                  )}
+                  {isChanged && (
+                    <button
+                      type="button"
+                      onClick={handleSaveParticipants}
+                      disabled={savingParticipants}
+                      className="mt-2 w-full btn btn-sm bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg justify-center shadow-sm cursor-pointer border-none text-[10px] flex items-center gap-1"
+                    >
+                      {savingParticipants ? "Guardando..." : "Confirmar cambios"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>
@@ -517,7 +682,9 @@ export default function ChatOrden({
               if (msg.sistema || msg.autorId === "sistema") {
                 let mensajeTexto = msg.texto;
                 const esInspeccion = msg.accionSistema === "inspeccion";
-
+                const esPresupuesto = msg.accionSistema === "presupuesto";
+                const esOrden = msg.accionSistema === "orden";
+ 
                 // Generar texto personalizado en tiempo real según el usuario logueado
                 if (msg.tecnicoAfectadoId && msg.accionSistema) {
                   if (esInspeccion) {
@@ -525,6 +692,16 @@ export default function ChatOrden({
                     mensajeTexto = esUsuarioAfectado
                       ? "Inspección visual realizada por ti."
                       : `Inspección visual realizada por ${msg.tecnicoAfectadoNombre || "un técnico"}.`;
+                  } else if (esPresupuesto) {
+                    const esUsuarioAfectado = msg.tecnicoAfectadoId === user?.uid;
+                    mensajeTexto = esUsuarioAfectado
+                      ? "Presupuesto creado por ti."
+                      : `Presupuesto creado por ${msg.tecnicoAfectadoNombre || "un técnico"}.`;
+                  } else if (esOrden) {
+                    const esUsuarioAfectado = msg.tecnicoAfectadoId === user?.uid;
+                    mensajeTexto = esUsuarioAfectado
+                      ? "Orden de trabajo creada por ti."
+                      : `Orden de trabajo creada por ${msg.tecnicoAfectadoNombre || "un técnico"}.`;
                   } else {
                     let docName = "ingreso";
                     if (ordenData) {
@@ -534,7 +711,7 @@ export default function ChatOrden({
                         docName = "orden";
                       }
                     }
-
+ 
                     const esUsuarioAfectado = msg.tecnicoAfectadoId === user?.uid;
                     if (esUsuarioAfectado) {
                       mensajeTexto = msg.accionSistema === "asignar"
@@ -547,11 +724,15 @@ export default function ChatOrden({
                     }
                   }
                 }
-
+ 
                 const bgClass = esInspeccion
                   ? "bg-[#dcfce7] dark:bg-[#132d17] text-green-800 dark:text-green-200 border-green-100/50 dark:border-green-950/20"
+                  : esPresupuesto
+                  ? "bg-[#e0f2fe] dark:bg-[#072942] text-sky-800 dark:text-sky-200 border-sky-100/50 dark:border-sky-950/20"
+                  : esOrden
+                  ? "bg-[#f3e8ff] dark:bg-[#271042] text-purple-800 dark:text-purple-200 border-purple-100/50 dark:border-purple-950/20"
                   : "bg-[#ffeecd] dark:bg-[#2c2214] text-slate-700 dark:text-amber-200 border-amber-100/50 dark:border-amber-950/20";
-
+ 
                 if (esInspeccion) {
                   return (
                     <div key={msg.id || mi} className="flex justify-center my-2.5">
@@ -566,6 +747,47 @@ export default function ChatOrden({
                         }`}
                       >
                         <ClipboardCheck size={12} className="shrink-0 text-green-600 dark:text-green-400" />
+                        <span>{mensajeTexto}</span>
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (esPresupuesto) {
+                  return (
+                    <div key={msg.id || mi} className="flex justify-center my-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (msg.presupuestoId) {
+                            router.push(`/presupuestos/${msg.presupuestoId}`);
+                          }
+                        }}
+                        disabled={!msg.presupuestoId}
+                        className={`${bgClass} flex items-center justify-center gap-1.5 text-[10px] font-medium px-3.5 py-1.5 rounded-lg max-w-[85%] text-center shadow-sm border leading-relaxed transition-all duration-200 ${
+                          msg.presupuestoId
+                            ? "cursor-pointer hover:bg-[#bae6fd] dark:hover:bg-[#0c3e61] hover:scale-[1.02] active:scale-[0.98]"
+                            : ""
+                        }`}
+                      >
+                        <FileText size={12} className="shrink-0 text-sky-600 dark:text-sky-400" />
+                        <span>{mensajeTexto}</span>
+                      </button>
+                    </div>
+                  );
+                }
+
+                if (esOrden) {
+                  return (
+                    <div key={msg.id || mi} className="flex justify-center my-2.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          router.push(`/ordenes/detalle?id=${ordenId}`);
+                        }}
+                        className={`${bgClass} flex items-center justify-center gap-1.5 text-[10px] font-medium px-3.5 py-1.5 rounded-lg max-w-[85%] text-center shadow-sm border leading-relaxed transition-all duration-200 cursor-pointer hover:bg-[#ebd5ff] dark:hover:bg-[#341659] hover:scale-[1.02] active:scale-[0.98]`}
+                      >
+                        <ClipboardCheck size={12} className="shrink-0 text-purple-600 dark:text-purple-400" />
                         <span>{mensajeTexto}</span>
                       </button>
                     </div>
@@ -672,54 +894,7 @@ export default function ChatOrden({
       </div>
 
       {/* Input area */}
-      <div className="shrink-0 border-t border-[var(--border)] bg-slate-50/80 p-2 flex items-end gap-2 relative" ref={popoverRef}>
-        {showAddParticipants && (
-          <div className="absolute bottom-full right-2 mb-2 w-56 bg-white dark:bg-slate-800 border border-[var(--border)] rounded-xl shadow-lg z-50 p-2 flex flex-col max-h-60 overflow-y-auto custom-scrollbar">
-            <h5 className="text-[10px] font-bold text-slate-500 dark:text-slate-400 px-2 py-1 uppercase tracking-wider border-b border-[var(--border-light)] mb-1">
-              Asignar Técnicos
-            </h5>
-            <div className="flex flex-col gap-0.5">
-              {tecnicosDisponibles.map((t) => {
-                const isAssigned = participantsList.some((p) => p.uid === t.uid);
-                return (
-                  <button
-                    key={t.uid}
-                    onClick={() => handleToggleParticipant(t)}
-                    className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/50 text-left border-0 cursor-pointer text-xs bg-transparent"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[8px] font-bold uppercase overflow-hidden shrink-0"
-                        style={{ backgroundColor: getAvatarColor(t.uid) }}
-                      >
-                        {t.photoURL ? (
-                          <img src={t.photoURL} alt={t.displayName} className="w-full h-full object-cover" />
-                        ) : (
-                          getInitials(t.displayName)
-                        )}
-                      </div>
-                      <span className="text-[11px] font-semibold text-[var(--text-primary)] truncate">
-                        {t.displayName}
-                      </span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={isAssigned}
-                      readOnly
-                      className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300 pointer-events-none"
-                    />
-                  </button>
-                );
-              })}
-              {tecnicosDisponibles.length === 0 && (
-                <span className="text-[10px] text-slate-400 italic text-center py-2">
-                  No hay técnicos activos
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
+      <div className="shrink-0 border-t border-[var(--border)] bg-slate-50/80 p-2 flex items-end gap-2 relative">
         <textarea
           className="flex-1 resize-none border border-[var(--border)] rounded-xl px-3 py-2 text-xs bg-white dark:bg-slate-900 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400/20 text-[var(--text-primary)] placeholder:text-slate-400"
           placeholder="Escribe un mensaje..."
@@ -739,15 +914,7 @@ export default function ChatOrden({
           >
             <Send size={14} />
           </button>
-        ) : (
-          <button
-            onClick={() => setShowAddParticipants(!showAddParticipants)}
-            className="w-8 h-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shrink-0 transition-colors border-0 cursor-pointer shadow-sm"
-            title="Añadir participantes (técnicos)"
-          >
-            <UserPlus size={14} />
-          </button>
-        )}
+        ) : null}
       </div>
     </div>
   );

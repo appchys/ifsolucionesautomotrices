@@ -286,6 +286,7 @@ export async function updateCliente(id: string, data: Partial<Cliente>): Promise
   }
 
   await updateDoc(doc(db, "clientes", id), { ...payload, updatedAt: serverTimestamp() });
+  delete cacheClientes[id];
 }
 
 export async function deleteCliente(id: string): Promise<void> {
@@ -350,6 +351,23 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   };
 }
 
+const cacheClientes: { [id: string]: Cliente } = {};
+const cacheVehiculos: { [id: string]: Vehiculo } = {};
+
+export async function getClienteByIdCached(id: string): Promise<Cliente | null> {
+  if (cacheClientes[id]) return cacheClientes[id];
+  const c = await getClienteById(id);
+  if (c) cacheClientes[id] = c;
+  return c;
+}
+
+export async function getVehiculoByIdCached(id: string): Promise<Vehiculo | null> {
+  if (cacheVehiculos[id]) return cacheVehiculos[id];
+  const v = await getVehiculoById(id);
+  if (v) cacheVehiculos[id] = v;
+  return v;
+}
+
 export function subscribeIngresosRecientes(
   callback: (ordenes: OrdenTrabajo[]) => void,
   onError?: (error: Error) => void
@@ -362,13 +380,27 @@ export function subscribeIngresosRecientes(
   );
   return onSnapshot(
     q,
-    (snap) => {
-      callback(
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo))
-          .filter((orden) => !orden.archivado)
-          .slice(0, 8)
+    async (snap) => {
+      const ordenesRaw = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo))
+        .filter((orden) => !orden.archivado)
+        .slice(0, 8);
+
+      const ordenesHidratadas = await Promise.all(
+        ordenesRaw.map(async (orden) => {
+          const [cliente, vehiculo] = await Promise.all([
+            orden.clienteId ? getClienteByIdCached(orden.clienteId) : Promise.resolve(null),
+            orden.vehiculoId ? getVehiculoByIdCached(orden.vehiculoId) : Promise.resolve(null),
+          ]);
+          return {
+            ...orden,
+            cliente: cliente ?? undefined,
+            vehiculo: vehiculo ?? undefined,
+          };
+        })
       );
+
+      callback(ordenesHidratadas);
     },
     onError
   );
@@ -421,6 +453,7 @@ export async function createVehiculo(data: Omit<Vehiculo, "id">): Promise<string
 
 export async function updateVehiculo(id: string, data: Partial<Vehiculo>): Promise<void> {
   await updateDoc(doc(db, "vehiculos", id), { ...data, updatedAt: serverTimestamp() });
+  delete cacheVehiculos[id];
 }
 
 // ─── ÓRDENES DE TRABAJO ───────────────────────────────────────────────────────

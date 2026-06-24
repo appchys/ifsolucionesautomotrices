@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -83,6 +83,18 @@ export default function DashboardPage() {
       unsub();
     };
   }, []);
+
+  const grupos: { [key: string]: OrdenTrabajo[] } = {};
+  recientes.forEach((orden) => {
+    const date = toDate(orden.createdAt);
+    const key = date ? format(date, "yyyy-MM-dd") : "Sin fecha";
+    if (!grupos[key]) {
+      grupos[key] = [];
+    }
+    grupos[key].push(orden);
+  });
+
+  const keysOrdenadas = Object.keys(grupos).sort((a, b) => b.localeCompare(a));
 
   const stats = [
     {
@@ -181,7 +193,6 @@ export default function DashboardPage() {
               <thead>
                 <tr className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
                   <th>N. Ingreso</th>
-                  <th>Fecha</th>
                   <th>Cliente</th>
                   <th className="hidden md:table-cell">Vehiculo</th>
                   <th className="hidden md:table-cell">Placa</th>
@@ -192,64 +203,86 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {recientes.map((orden) => {
-                  const inspeccionOk = hasInspeccion(orden);
-                  const tienePresupuesto = Boolean(orden.presupuestoConfirmadoPorCliente);
-                  const tieneOrden = !!orden.numeroOrden;
-                  const numeroIngreso = orden.numeroIngreso ?? orden.numero;
+                {keysOrdenadas.map((key) => {
+                  const ordenesGrupo = grupos[key];
+                  let labelFecha = key;
+                  if (key !== "Sin fecha") {
+                    const dateObj = new Date(key + "T00:00:00");
+                    const hoy = format(new Date(), "yyyy-MM-dd");
+                    const ayer = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
+                    if (key === hoy) {
+                      labelFecha = "Hoy";
+                    } else if (key === ayer) {
+                      labelFecha = "Ayer";
+                    } else {
+                      labelFecha = format(dateObj, "EEEE, d 'de' MMMM", { locale: es });
+                      labelFecha = labelFecha.charAt(0).toUpperCase() + labelFecha.slice(1);
+                    }
+                  }
 
                   return (
-                    <tr
-                      key={orden.id}
-                      onClick={() => router.push(`/ingresos/${orden.id}`)}
-                      className="cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
-                    >
-                      <td>
-                        <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
-                          #ING-{String(numeroIngreso ?? 0).padStart(5, "0")}
-                        </span>
-                      </td>
-                      <td className="text-sm text-[var(--text-secondary)]">
-                        {toDate(orden.createdAt)
-                          ? format(toDate(orden.createdAt)!, "dd-MMM", { locale: es })
-                          : "-"}
-                      </td>
-                      <td style={{ color: "var(--text-primary)" }}>
-                        {orden.cliente ? `${orden.cliente.nombre} ${orden.cliente.apellido}` : "-"}
-                      </td>
-                      <td className="hidden md:table-cell text-[var(--text-secondary)]">
-                        {orden.vehiculo ? `${orden.vehiculo.marca} ${orden.vehiculo.modelo}` : "-"}
-                      </td>
-                      <td className="hidden md:table-cell">
-                        <span className="font-mono text-sm font-medium">{orden.vehiculo?.placa ?? "-"}</span>
-                      </td>
-                      <td className="text-center hidden sm:table-cell">
-                        <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
-                          inspeccionOk ? "bg-green-500 border-green-500" : "border-gray-300 dark:border-gray-600"
-                        }`} />
-                      </td>
-                      <td className="text-center hidden sm:table-cell">
-                        <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
-                          tienePresupuesto ? "bg-green-500 border-green-500" : "border-gray-300 dark:border-gray-600"
-                        }`} />
-                      </td>
-                      <td className="text-center hidden sm:table-cell">
-                        <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
-                          tieneOrden ? "bg-green-500 border-green-500" : "border-gray-300 dark:border-gray-600"
-                        }`} />
-                      </td>
-                      <td className="text-right">
-                        {tieneOrden ? (
-                          <span className="badge bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                            ORD-{String(orden.numeroOrden).padStart(5, "0")}
-                          </span>
-                        ) : (
-                          <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-                            Recibido
-                          </span>
-                        )}
-                      </td>
-                    </tr>
+                    <Fragment key={key}>
+                      <tr className="bg-[var(--bg-hover)]/30 border-y border-[var(--border-color)]">
+                        <td colSpan={8} className="py-2 px-4 text-xs font-semibold text-[var(--text-secondary)]">
+                          {labelFecha}
+                        </td>
+                      </tr>
+                      {ordenesGrupo.map((orden) => {
+                        const inspeccionOk = hasInspeccion(orden);
+                        const tienePresupuesto = Boolean(orden.presupuestoConfirmadoPorCliente);
+                        const tieneOrden = !!orden.numeroOrden;
+                        const numeroIngreso = orden.numeroIngreso ?? orden.numero;
+
+                        return (
+                          <tr
+                            key={orden.id}
+                            onClick={() => router.push(`/ingresos/${orden.id}`)}
+                            className="cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
+                          >
+                            <td>
+                              <span className="font-mono font-semibold text-blue-600 dark:text-blue-400">
+                                #ING-{String(numeroIngreso ?? 0).padStart(5, "0")}
+                              </span>
+                            </td>
+                            <td style={{ color: "var(--text-primary)" }}>
+                              {orden.cliente ? `${orden.cliente.nombre} ${orden.cliente.apellido}` : "-"}
+                            </td>
+                            <td className="hidden md:table-cell text-[var(--text-secondary)]">
+                              {orden.vehiculo ? `${orden.vehiculo.marca} ${orden.vehiculo.modelo}` : "-"}
+                            </td>
+                            <td className="hidden md:table-cell">
+                              <span className="font-mono text-sm font-medium">{orden.vehiculo?.placa ?? "-"}</span>
+                            </td>
+                            <td className="text-center hidden sm:table-cell">
+                              <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
+                                inspeccionOk ? "bg-green-500 border-green-500" : "border-gray-300 dark:border-gray-600"
+                              }`} />
+                            </td>
+                            <td className="text-center hidden sm:table-cell">
+                              <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
+                                tienePresupuesto ? "bg-green-500 border-green-500" : "border-gray-300 dark:border-gray-600"
+                              }`} />
+                            </td>
+                            <td className="text-center hidden sm:table-cell">
+                              <div className={`w-4 h-4 rounded-full border-2 mx-auto ${
+                                tieneOrden ? "bg-green-500 border-green-500" : "border-gray-300 dark:border-gray-600"
+                              }`} />
+                            </td>
+                            <td className="text-right">
+                              {tieneOrden ? (
+                                <span className="badge bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                                  ORD-{String(orden.numeroOrden).padStart(5, "0")}
+                                </span>
+                              ) : (
+                                <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                                  Recibido
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
                   );
                 })}
               </tbody>

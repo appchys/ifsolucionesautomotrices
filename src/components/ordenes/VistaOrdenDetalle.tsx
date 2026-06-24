@@ -80,7 +80,8 @@ import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
 import { useAuthStore, useUIStore } from "@/store";
 import { getMergedChecklist } from "@/lib/checklist";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
 import ModalEnviarCorreo from "@/components/ordenes/ModalEnviarCorreo";
 import ModalFirmas from "@/components/ordenes/ModalFirmas";
 import ChatOrden from "@/components/ordenes/ChatOrden";
@@ -287,6 +288,18 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Escuchar cambios en la orden en tiempo real para reflejar asignación de técnicos, firmas, etc.
+  useEffect(() => {
+    if (!ordenId) return;
+    const unsub = onSnapshot(doc(db, "ordenesTrabajo", ordenId), (snap) => {
+      if (snap.exists()) {
+        const ordenData = { id: snap.id, ...snap.data() } as OrdenTrabajo;
+        setOrden(ordenData);
+      }
+    });
+    return unsub;
+  }, [ordenId]);
 
   // Actualizar el título de la pestaña con el número de orden
   useEffect(() => {

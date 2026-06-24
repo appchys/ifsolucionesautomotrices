@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut, MessageSquare } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut, MessageSquare, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -27,6 +27,8 @@ import ClienteModal from "@/components/clientes/ClienteModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
 import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
 import ChatOrden from "@/components/ordenes/ChatOrden";
+import { db } from "@/lib/firebase";
+import { doc, onSnapshot } from "firebase/firestore";
 
 const NIVELES_COMBUSTIBLE: { label: string; value: NivelCombustible; color: string }[] = [
   { label: "E", value: "Vacío", color: "bg-red-500 text-white" },
@@ -35,6 +37,35 @@ const NIVELES_COMBUSTIBLE: { label: string; value: NivelCombustible; color: stri
   { label: "3/4", value: "3/4", color: "bg-emerald-400 text-white" },
   { label: "F", value: "Lleno", color: "bg-emerald-600 text-white" },
 ];
+
+const AVATAR_COLORS: string[] = [
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+  "#06b6d4",
+  "#f97316",
+];
+
+function getAvatarColor(uid: string): string {
+  let hash = 0;
+  for (let i = 0; i < uid.length; i++) {
+    hash = uid.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
 
 export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const router = useRouter();
@@ -50,6 +81,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [tecnicos, setTecnicos] = useState<AppUser[]>([]);
   const [todosLosUsuarios, setTodosLosUsuarios] = useState<AppUser[]>([]);
   const [tecnicosAsignados, setTecnicosAsignados] = useState<AppUser[]>([]);
+  const [tempTecnicosAsignados, setTempTecnicosAsignados] = useState<AppUser[]>([]);
   const [isTecnicosPopoverOpen, setIsTecnicosPopoverOpen] = useState(false);
   const [taller, setTaller] = useState<DatosTaller | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
@@ -74,6 +106,8 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRetirarModalOpen, setIsRetirarModalOpen] = useState(false);
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
+  const [isClienteExpanded, setIsClienteExpanded] = useState(false);
+  const [isVehiculoExpanded, setIsVehiculoExpanded] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -132,6 +166,19 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  // Escuchar cambios en la orden en tiempo real para reflejar asignación de técnicos, firmas, etc.
+  useEffect(() => {
+    if (!ingresoId) return;
+    const unsub = onSnapshot(doc(db, "ordenesTrabajo", ingresoId), (snap) => {
+      if (snap.exists()) {
+        const ordenData = { id: snap.id, ...snap.data() } as OrdenTrabajo;
+        setOrden(ordenData);
+        setTecnicosAsignados((ordenData.personalAsignado as AppUser[]) || []);
+      }
+    });
+    return unsub;
+  }, [ingresoId]);
 
   // Actualizar el título de la pestaña con el número de ingreso
   useEffect(() => {
@@ -219,6 +266,20 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       }, []);
       
       toast.success("Presupuesto creado con éxito");
+      
+      // Enviar mensaje del sistema al chat
+      await sendMensajeOrden(ingresoId, {
+        autorId: "sistema",
+        autorNombre: "Sistema",
+        autorRole: "admin",
+        texto: `Presupuesto creado por ${user?.displayName || "un técnico"}.`,
+        sistema: true,
+        accionSistema: "presupuesto",
+        tecnicoAfectadoId: user?.uid || "",
+        tecnicoAfectadoNombre: user?.displayName || "Técnico",
+        presupuestoId: nuevoPresupuestoId
+      }).catch(err => console.error("Error al enviar mensaje de presupuesto:", err));
+
       router.push(`/presupuestos/${nuevoPresupuestoId}`);
     } catch (error) {
       console.error(error);
@@ -239,6 +300,19 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
     try {
       const numOrden = await convertirIngresoAOrden(orden.id);
       toast.success(`Orden #ORD-${String(numOrden).padStart(5, "0")} creada`);
+      
+      // Enviar mensaje del sistema al chat
+      await sendMensajeOrden(orden.id, {
+        autorId: "sistema",
+        autorNombre: "Sistema",
+        autorRole: "admin",
+        texto: `Orden de trabajo creada por ${user?.displayName || "un técnico"}.`,
+        sistema: true,
+        accionSistema: "orden",
+        tecnicoAfectadoId: user?.uid || "",
+        tecnicoAfectadoNombre: user?.displayName || "Técnico"
+      }).catch(err => console.error("Error al enviar mensaje de orden de trabajo:", err));
+
       void loadData();
     } catch (error) {
       console.error(error);
@@ -306,7 +380,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       const { pdf } = await import("@react-pdf/renderer");
       const ComprobanteIngresoPDF = (await import("./ComprobanteIngresoPDF")).default;
 
-      const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ") || "Sin asignar";
+      const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ");
 
       const blob = await pdf(
         <ComprobanteIngresoPDF
@@ -345,7 +419,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       const { pdf } = await import("@react-pdf/renderer");
       const ComprobanteIngresoPDF = (await import("./ComprobanteIngresoPDF")).default;
 
-      const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ") || "Sin asignar";
+      const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ");
 
       const blob = await pdf(
         <ComprobanteIngresoPDF
@@ -390,8 +464,15 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
       nuevos = [...tecnicosAsignados, tecnico];
     }
     setTecnicosAsignados(nuevos);
-    // Auto-save
     updateOrden(ingresoId, { personalAsignado: nuevos }).catch(console.error);
+  };
+
+  const toggleTempTecnico = (tecnico: AppUser) => {
+    setTempTecnicosAsignados(prev =>
+      prev.some(t => t.uid === tecnico.uid)
+        ? prev.filter(t => t.uid !== tecnico.uid)
+        : [...prev, tecnico]
+    );
   };
 
   const toggleChecklistItem = (index: number) => {
@@ -572,136 +653,151 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
         {/* 3 Columns Layout */}
         <div className="flex flex-1 gap-6 overflow-hidden px-6 pb-6">
           
-          {/* Column 1: Client & Personal */}
-          <div className="w-[300px] flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
-            <div>
-              <h3 className="font-bold flex items-center justify-between mb-4 text-[var(--text-secondary)]">
-                <div className="flex items-center gap-2">
-                  <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><User size={12} /></span>
-                  Información del cliente
-                </div>
-                <button 
-                  onClick={() => setIsClienteModalOpen(true)} 
-                  className="p-1 hover:bg-slate-200 rounded text-blue-600 transition-colors"
-                  title="Editar cliente"
-                >
-                  <Edit size={14} />
-                </button>
-              </h3>
-              <div className="card">
-                <div className="flex gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase">
-                    {(cliente.nombre?.[0] || "")}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm truncate">{cliente.nombre} {cliente.apellido}</p>
-                    <p className="text-xs text-[var(--text-muted)] truncate">{cliente.identificacion?.length === 13 ? "Empresa" : "Persona"}</p>
-                  </div>
-                </div>
-                <div className="text-sm space-y-2 text-[var(--text-secondary)]">
-                  <p className="truncate">Tel: {cliente.telefono || "—"}</p>
-                  <p className="truncate">Email: {cliente.email || "—"}</p>
-                  <p className="truncate">Cédula/RUC: {cliente.identificacion || "—"}</p>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-bold flex items-center gap-2 mb-4 text-[var(--text-secondary)]">
-                <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><Users size={12} /></span>
-                Personal asociado
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 block">Recibido por</label>
-                  <div className="card p-3 flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-xs font-bold uppercase shrink-0">
-                      {user?.displayName?.[0] || user?.email?.[0] || "U"}
-                    </div>
-                    <span className="text-sm font-semibold truncate">{user?.displayName || user?.email}</span>
+          {/* Column 1: Cliente Tarjeta + Chat */}
+          <div className="w-[340px] flex flex-col h-full gap-4 overflow-hidden shrink-0">
+            {/* Tarjeta de Cliente */}
+            {cliente && (
+              <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <User size={12} className="text-blue-500 shrink-0" />
+                    Cliente
+                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    <button 
+                      onClick={() => setIsClienteModalOpen(true)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      title="Editar cliente"
+                    >
+                      <Edit size={14} />
+                    </button>
+                    <button
+                      onClick={() => setIsClienteExpanded(!isClienteExpanded)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      title={isClienteExpanded ? "Comprimir" : "Expandir"}
+                    >
+                      {isClienteExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
                   </div>
                 </div>
-                <div className="relative">
-                  <label className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2 block">Técnicos Asignados</label>
-                  
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {tecnicosAsignados.length === 0 && (
-                      <span className="text-sm text-[var(--text-muted)] italic">Sin asignar</span>
-                    )}
-                    {tecnicosAsignados.map(t => (
-                      <div key={t.uid} className="flex items-center gap-1 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-semibold">
-                        <span>{t.displayName || t.email}</span>
-                        <button 
-                          onClick={() => toggleTecnico(t)}
-                          className="hover:bg-blue-200 rounded-full p-0.5"
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0 uppercase text-xs border border-blue-200/50">
+                    {getInitials(cliente.nombre + " " + (cliente.apellido || ""))}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-white truncate">
+                      {cliente.nombre} {cliente.apellido || ""}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                      <span className="text-[10px] text-slate-550 dark:text-slate-400 truncate font-mono">
+                        Tel: {cliente.telefono || "—"}
+                      </span>
+                      {cliente.telefono && (
+                        <a
+                          href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center text-emerald-500 hover:text-emerald-600 transition-colors shrink-0"
+                          title="Enviar WhatsApp"
                         >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
+                          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.039 2.875 1.184 3.074.145.198 2.038 3.111 4.938 4.362.69.298 1.23.476 1.653.61.692.22 1.32.19 1.815.116.551-.082 1.758-.718 2.008-1.411.25-.693.25-1.288.175-1.411-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.746.953 3.71 1.458 5.704 1.459h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                          </svg>
+                        </a>
+                      )}
+                    </div>
                   </div>
-
-                  <button 
-                    className="btn btn-sm bg-white border border-[var(--border)] w-full justify-center shadow-sm"
-                    onClick={() => setIsTecnicosPopoverOpen(!isTecnicosPopoverOpen)}
-                  >
-                    + Asignar técnico
-                  </button>
-
-                  {isTecnicosPopoverOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setIsTecnicosPopoverOpen(false)}></div>
-                      <div className="absolute z-50 top-full mt-2 w-full bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
-                        {tecnicos.length === 0 ? (
-                          <div className="p-3 text-center text-sm text-[var(--text-muted)]">No hay técnicos disponibles</div>
-                        ) : (
-                          tecnicos.map(t => {
-                            const isSelected = tecnicosAsignados.some(asignado => asignado.uid === t.uid);
-                            return (
-                              <button
-                                key={t.uid}
-                                className={`w-full text-left p-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border)] last:border-0 flex items-center justify-between text-sm ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
-                                onClick={() => toggleTecnico(t)}
-                              >
-                                <span>{t.displayName || t.email}</span>
-                                {isSelected && <span className="text-blue-600 font-bold">✓</span>}
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </>
-                  )}
                 </div>
+
+                {isClienteExpanded && (
+                  <div className="grid grid-cols-1 gap-1.5 pt-2 border-t border-[var(--border-light)] text-[11px] text-slate-655 dark:text-slate-350 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">CI/RUC:</span>
+                      <span>{cliente.identificacion || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">Email:</span>
+                      <span className="truncate">{cliente.email || "—"}</span>
+                    </div>
+                  </div>
+                )}
               </div>
+            )}
+
+            {/* Chat Container */}
+            <div className="flex-1 min-h-0 flex flex-col border border-[var(--border)] rounded-xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+              <ChatOrden
+                ordenId={ingresoId}
+                personalAsignado={orden.personalAsignado || []}
+                todosLosUsuarios={todosLosUsuarios}
+                onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
+                cliente={null}
+                recibidoPor={user}
+              />
             </div>
           </div>
 
           {/* Column 2: Vehicle details */}
           <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar border-x border-[var(--border)] px-6">
-            <h3 className="font-bold flex items-center justify-between mb-2 text-[var(--text-secondary)]">
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><Car size={12} /></span>
-                Vehículo
-              </div>
-              <button 
-                onClick={() => setIsVehiculoModalOpen(true)} 
-                className="p-1 hover:bg-slate-200 rounded text-blue-600 transition-colors"
-                title="Editar vehículo"
-              >
-                <Edit size={14} />
-              </button>
-            </h3>
-            <div className="card flex items-center gap-4">
-              <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
-                <Car size={24} className="text-slate-500" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-bold text-lg">{vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}</h4>
-                <div className="badge badge-gray font-mono uppercase">{vehiculo.placa}</div>
-              </div>
-            </div>
+            {/* Tarjeta de Vehículo */}
+            {vehiculo && (
+              <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <Car size={12} className="text-blue-500 shrink-0" />
+                    Vehículo
+                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    <button 
+                      onClick={() => setIsVehiculoModalOpen(true)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      title="Editar vehículo"
+                    >
+                      <Edit size={14} />
+                    </button>
+                    <button
+                      onClick={() => setIsVehiculoExpanded(!isVehiculoExpanded)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      title={isVehiculoExpanded ? "Comprimir" : "Expandir"}
+                    >
+                      {isVehiculoExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
+                </div>
+                
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0 uppercase text-xs border border-blue-200/50">
+                    <Car size={20} className="text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-bold text-sm text-slate-800 dark:text-white truncate">
+                      {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
+                    </h4>
+                    <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                      <span className="text-[10px] text-slate-555 dark:text-slate-400 font-mono uppercase bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
+                        {vehiculo.placa}
+                      </span>
+                    </div>
+                  </div>
+                </div>
 
+                {isVehiculoExpanded && (
+                  <div className="grid grid-cols-1 gap-1.5 pt-2 border-t border-[var(--border-light)] text-[11px] text-slate-655 dark:text-slate-350 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">Color:</span>
+                      <span>{vehiculo.color || "—"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-semibold text-slate-500 dark:text-slate-400 shrink-0">VIN / Chasis:</span>
+                      <span className="truncate">{vehiculo.vin || "—"}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Campos de la orden */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-bold text-[var(--text-muted)] flex items-center gap-1 mb-2">Kilometraje</label>
@@ -715,43 +811,43 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-[var(--text-muted)] flex items-center gap-1 mb-2">Nivel de combustible</label>
-                <div className="flex rounded-lg overflow-hidden border border-[var(--border)] h-[42px] bg-slate-100 dark:bg-slate-800">
-                  {NIVELES_COMBUSTIBLE.map((nivel, index) => {
-                    const selectedIndex = NIVELES_COMBUSTIBLE.findIndex(n => n.value === nivelCombustible);
-                    const selectedColor = selectedIndex !== -1 ? NIVELES_COMBUSTIBLE[selectedIndex].color : "";
-                    const isFilled = index <= selectedIndex;
-                    return (
-                      <button
-                        key={nivel.value}
-                        className={`flex-1 font-bold text-xs transition-colors ${isFilled ? selectedColor : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"}`}
-                        onClick={() => {
-                          setNivelCombustible(nivel.value);
-                          setTimeout(handleSave, 100);
-                        }}
-                      >
-                        {nivel.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                <label className="text-xs font-bold text-[var(--text-muted)] mb-2 block">Tipo de Servicio</label>
+                <select 
+                  className="input w-full"
+                  value={tipoServicio}
+                  onChange={(e) => {
+                    setTipoServicio(e.target.value as OrdenTrabajo["tipoServicio"]);
+                    setTimeout(handleSave, 100);
+                  }}
+                >
+                  <option value="Mantenimiento">Mantenimiento</option>
+                  <option value="Reparación">Reparación</option>
+                  <option value="Garantía">Garantía</option>
+                </select>
               </div>
             </div>
 
             <div>
-              <label className="text-xs font-bold text-[var(--text-muted)] mb-2 block">Tipo de Servicio</label>
-              <select 
-                className="input w-full"
-                value={tipoServicio}
-                onChange={(e) => {
-                  setTipoServicio(e.target.value as OrdenTrabajo["tipoServicio"]);
-                  setTimeout(handleSave, 100);
-                }}
-              >
-                <option value="Mantenimiento">Mantenimiento</option>
-                <option value="Reparación">Reparación</option>
-                <option value="Garantía">Garantía</option>
-              </select>
+              <label className="text-xs font-bold text-[var(--text-muted)] flex items-center gap-1 mb-2">Nivel de combustible</label>
+              <div className="flex rounded-lg overflow-hidden border border-[var(--border)] h-[42px] bg-slate-100 dark:bg-slate-800">
+                {NIVELES_COMBUSTIBLE.map((nivel, index) => {
+                  const selectedIndex = NIVELES_COMBUSTIBLE.findIndex(n => n.value === nivelCombustible);
+                  const selectedColor = selectedIndex !== -1 ? NIVELES_COMBUSTIBLE[selectedIndex].color : "";
+                  const isFilled = index <= selectedIndex;
+                  return (
+                    <button
+                      key={nivel.value}
+                      className={`flex-1 font-bold text-xs transition-colors ${isFilled ? selectedColor : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"}`}
+                      onClick={() => {
+                        setNivelCombustible(nivel.value);
+                        setTimeout(handleSave, 100);
+                      }}
+                    >
+                      {nivel.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div>
@@ -776,9 +872,10 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               />
             </div>
 
-            <div>
-              <label className="text-xs font-bold text-[var(--text-muted)] mb-2 block flex items-center justify-between">
-                <span>Inventario de vehículo</span>
+            {/* Inventario de vehículo */}
+            <div className="flex flex-col">
+              <label className="text-xs font-bold text-[var(--text-muted)] mb-2 block">
+                Inventario de vehículo
               </label>
               <div className="grid grid-cols-2 border border-[var(--border)] rounded-xl overflow-hidden bg-white dark:bg-[var(--bg-card)]">
                 {checklist.map((item, index) => {
@@ -790,12 +887,12 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                     <label 
                       key={index} 
                       className={`p-3 flex items-center gap-3 text-sm hover:bg-[var(--bg-hover)] cursor-pointer select-none transition-colors ${
-                        isLeft ? "border-r" : ""
-                      } ${hasBottomBorder ? "border-b" : ""} border-[var(--border)]`}
+                        isLeft ? "border-r border-[var(--border)]" : ""
+                      } ${hasBottomBorder ? "border-b border-[var(--border)]" : ""} border-[var(--border)]`}
                     >
                       <input 
                         type="checkbox" 
-                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" 
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" 
                         checked={item.checked}
                         onChange={() => {
                           toggleChecklistItem(index);
@@ -940,30 +1037,6 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
             </div>
 
             <div>
-              <h3 className="font-bold flex items-center gap-2 mb-4 text-[var(--text-secondary)]">
-                <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><Eye size={12} /></span>
-                Inspección técnica {danos.length > 0 ? `(${danos.length} daños)` : ''}
-              </h3>
-              <button 
-                className="btn w-full justify-center bg-white border border-[var(--border)] shadow-sm flex-col py-2 h-auto"
-                onClick={() => setIsModalInspeccionOpen(true)}
-              >
-                {(danos.length > 0 || fotos.length > 0 || observaciones.length > 0) ? (
-                  <>
-                    <span>Ver / Editar inspección</span>
-                    {orden?.updatedAt && typeof orden.updatedAt.toDate === 'function' && (
-                      <span className="text-xs text-[var(--text-muted)] font-normal mt-0.5">
-                        Actualizada el: {orden.updatedAt.toDate().toLocaleDateString()} a las {orden.updatedAt.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  "Registrar inspección"
-                )}
-              </button>
-            </div>
-
-            <div>
               <h3 className="font-bold flex items-center justify-between mb-4 text-[var(--text-secondary)]">
                 <span className="flex items-center gap-2">
                   <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><Camera size={12} /></span>
@@ -1004,13 +1077,10 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
             </div>
 
             <div>
-              <h3 className="font-bold flex items-center gap-2 mb-4 text-[var(--text-secondary)]">
-                <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><PenTool size={12} /></span>
-                Diagnóstico y/o conclusión
-              </h3>
+              <label className="text-xs font-bold text-[var(--text-muted)] mb-2 block">Diagnóstico y/o conclusión</label>
               <textarea 
-                className="input w-full min-h-[150px] bg-white text-sm" 
-                placeholder="Escribe aquí el diagnóstico final del vehículo tras las inspecciones realizadas (ejemplo: causa del problema identificado y detalles técnicos)"
+                className="input w-full h-[155px]" 
+                placeholder="Escribe aquí el diagnóstico final del vehículo tras las inspecciones realizadas"
                 value={diagnostico}
                 onChange={(e) => setDiagnostico(e.target.value)}
                 onBlur={handleSave}
@@ -1063,24 +1133,6 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                   <Mail size={14} className="text-slate-400" />
                   Solicitar firma a {cliente.email || "cliente"}
                 </button>
-              </div>
-            </div>
-
-            {/* Sección de Chat */}
-            <div className="border-t border-[var(--border)] pt-4 mt-2 flex flex-col bg-slate-50 dark:bg-slate-900/10 rounded-xl p-3 border">
-              <h3 className="font-bold flex items-center gap-2 mb-3 text-[var(--text-secondary)] text-sm">
-                <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600">
-                  <MessageSquare size={12} />
-                </span>
-                Chat del Ingreso
-              </h3>
-              <div className="h-[380px] bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl overflow-hidden shadow-inner">
-                <ChatOrden
-                  ordenId={ingresoId}
-                  personalAsignado={orden.personalAsignado || []}
-                  todosLosUsuarios={todosLosUsuarios}
-                  onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
-                />
               </div>
             </div>
 
