@@ -1079,6 +1079,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                   ordenId={ingresoId}
                   personalAsignado={orden.personalAsignado || []}
                   todosLosUsuarios={todosLosUsuarios}
+                  onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
                 />
               </div>
             </div>

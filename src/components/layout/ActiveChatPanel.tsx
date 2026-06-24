@@ -4,10 +4,12 @@ import { useEffect, useState, useMemo } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { X, ClipboardList, FileDown, FileText, Wrench } from "lucide-react";
 import { useChatStore, useUIStore, useAuthStore } from "@/store";
-import { getUsuarios } from "@/lib/services";
+import { getUsuarios, updateOrden, uploadOrdenFoto } from "@/lib/services";
 import { db } from "@/lib/firebase";
-import { OrdenTrabajo, AppUser, Vehiculo, Cliente } from "@/types";
+import { OrdenTrabajo, AppUser, Vehiculo, Cliente, DanoVehiculo, FotoDiagnostico } from "@/types";
 import ChatOrden from "../ordenes/ChatOrden";
+import ModalInspeccion from "../recepcion/ModalInspeccion";
+import { toast } from "react-hot-toast";
 
 export default function ActiveChatPanel() {
   const { user } = useAuthStore();
@@ -19,6 +21,83 @@ export default function ActiveChatPanel() {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [usuarios, setUsuarios] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Estados locales para el modal de inspección
+  const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
+  const [danos, setDanos] = useState<DanoVehiculo[]>([]);
+  const [observaciones, setObservaciones] = useState("");
+  const [fotos, setFotos] = useState<FotoDiagnostico[]>([]);
+
+  // Sincronizar estados locales de la inspección cuando cambia la orden
+  useEffect(() => {
+    if (orden) {
+      setDanos(orden.inspeccionVisual?.danos || []);
+      setObservaciones(orden.notasInternas || "");
+      setFotos((orden.fotoUrls || []).map((url) => ({ url, descripcion: "" })));
+    }
+  }, [orden]);
+
+  const handleSaveInspeccion = async () => {
+    if (!activeChatId) return;
+    try {
+      await updateOrden(activeChatId, {
+        inspeccionVisual: {
+          ...orden?.inspeccionVisual,
+          danos: danos
+        },
+        notasInternas: observaciones,
+        fotoUrls: fotos.map((f) => f.url)
+      });
+      toast.success("Inspección guardada correctamente");
+      setIsModalInspeccionOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al guardar inspección");
+    }
+  };
+
+  const handleUploadFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0 || !activeChatId) return;
+
+    const toastId = toast.loading("Subiendo foto...");
+    try {
+      const urls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const url = await uploadOrdenFoto(activeChatId, files[i]);
+        urls.push(url);
+      }
+      const existingUrls = orden?.fotoUrls || [];
+      const updatedUrls = [...existingUrls, ...urls];
+      await updateOrden(activeChatId, { fotoUrls: updatedUrls });
+      setFotos(updatedUrls.map((url) => ({ url, descripcion: "" })));
+      toast.success("Foto(s) agregada(s)", { id: toastId });
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al subir foto", { id: toastId });
+    }
+  };
+
+  const handleUpdateFoto = (url: string, descripcion: string) => {
+    setFotos((prev) =>
+      prev.map((f) => (f.url === url ? { ...f, descripcion } : f))
+    );
+  };
+
+  const handleRemoveFoto = async (index: number) => {
+    if (!confirm("¿Seguro que deseas eliminar esta foto?")) return;
+    if (!activeChatId) return;
+    try {
+      const urls = [...(orden?.fotoUrls || [])];
+      urls.splice(index, 1);
+      await updateOrden(activeChatId, { fotoUrls: urls });
+      setFotos(urls.map((url) => ({ url, descripcion: "" })));
+      toast.success("Foto eliminada");
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar foto");
+    }
+  };
 
   // Cargar usuarios al montar
   useEffect(() => {
@@ -215,6 +294,7 @@ export default function ActiveChatPanel() {
             ordenId={activeChatId}
             personalAsignado={orden.personalAsignado || []}
             todosLosUsuarios={usuarios}
+            onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center text-slate-500 px-4">
@@ -223,6 +303,23 @@ export default function ActiveChatPanel() {
           </div>
         )}
       </div>
+
+      {vehiculo && (
+        <ModalInspeccion
+          isOpen={isModalInspeccionOpen}
+          onClose={() => setIsModalInspeccionOpen(false)}
+          vehiculo={vehiculo}
+          danos={danos}
+          onChangeDanos={setDanos}
+          onSave={handleSaveInspeccion}
+          fotos={fotos}
+          onUploadFoto={handleUploadFoto}
+          onUpdateFoto={handleUpdateFoto}
+          onRemoveFoto={handleRemoveFoto}
+          observaciones={observaciones}
+          onChangeObservaciones={setObservaciones}
+        />
+      )}
     </div>
   );
 }

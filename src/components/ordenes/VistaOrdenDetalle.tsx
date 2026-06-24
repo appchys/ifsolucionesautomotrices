@@ -1890,6 +1890,7 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
                 ordenId={ordenId}
                 personalAsignado={orden.personalAsignado || []}
                 todosLosUsuarios={todosLosUsuarios}
+                onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
               />
             )}
           </div>

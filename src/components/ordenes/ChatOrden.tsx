@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Users, UserPlus } from "lucide-react";
+import { Send, Users, UserPlus, ClipboardCheck } from "lucide-react";
 import { MensajeOrden, AppUser, UserRole } from "@/types";
 import { sendMensajeOrden, subscribeMensajesOrden } from "@/lib/services";
 import { useAuthStore } from "@/store";
@@ -19,6 +19,7 @@ interface ChatOrdenProps {
     role: UserRole;
   }[];
   todosLosUsuarios: AppUser[];
+  onOpenInspeccion?: () => void;
 }
 
 /* Genera un "pop" corto usando Web Audio API */
@@ -125,6 +126,7 @@ export default function ChatOrden({
   ordenId,
   personalAsignado,
   todosLosUsuarios,
+  onOpenInspeccion,
 }: ChatOrdenProps) {
   const { user } = useAuthStore();
   const { resetUnread, setActiveOrdenId } = useChatStore();
@@ -549,6 +551,26 @@ export default function ChatOrden({
                 const bgClass = esInspeccion
                   ? "bg-[#dcfce7] dark:bg-[#132d17] text-green-800 dark:text-green-200 border-green-100/50 dark:border-green-950/20"
                   : "bg-[#ffeecd] dark:bg-[#2c2214] text-slate-700 dark:text-amber-200 border-amber-100/50 dark:border-amber-950/20";
+
+                if (esInspeccion) {
+                  return (
+                    <div key={msg.id || mi} className="flex justify-center my-2.5">
+                      <button
+                        type="button"
+                        onClick={onOpenInspeccion}
+                        disabled={!onOpenInspeccion}
+                        className={`${bgClass} flex items-center justify-center gap-1.5 text-[10px] font-medium px-3.5 py-1.5 rounded-lg max-w-[85%] text-center shadow-sm border leading-relaxed transition-all duration-200 ${
+                          onOpenInspeccion
+                            ? "cursor-pointer hover:bg-[#c6f6d5] dark:hover:bg-[#1a3a1f] hover:scale-[1.02] active:scale-[0.98]"
+                            : ""
+                        }`}
+                      >
+                        <ClipboardCheck size={12} className="shrink-0 text-green-600 dark:text-green-400" />
+                        <span>{mensajeTexto}</span>
+                      </button>
+                    </div>
+                  );
+                }
 
                 return (
                   <div key={msg.id || mi} className="flex justify-center my-2.5">
