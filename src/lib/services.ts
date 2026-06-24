@@ -3,6 +3,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  getCountFromServer,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -295,6 +296,82 @@ export async function deleteCliente(id: string): Promise<void> {
 export async function getVehiculos(): Promise<Vehiculo[]> {
   const snap = await getDocs(query(collection(db, "vehiculos"), orderBy("placa")));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Vehiculo));
+}
+
+async function getCollectionCount(...constraints: QueryConstraint[]): Promise<number> {
+  const q = constraints.length
+    ? query(collection(db, "ordenesTrabajo"), ...constraints)
+    : collection(db, "ordenesTrabajo");
+  const snap = await getCountFromServer(q);
+  return snap.data().count;
+}
+
+async function getTopLevelCollectionCount(collectionName: string): Promise<number> {
+  const snap = await getCountFromServer(collection(db, collectionName));
+  return snap.data().count;
+}
+
+export interface DashboardStats {
+  ingresos: number;
+  ingresosPendientes: number;
+  ordenesActivas: number;
+  ordenesFinalizadas: number;
+  clientes: number;
+  vehiculos: number;
+}
+
+export async function getDashboardStats(): Promise<DashboardStats> {
+  const activeStates: EstadoOrden[] = [
+    "Esperando Repuestos",
+    "Esperando Aprobación",
+    "En Reparación",
+    "Completada",
+    "Listo para Entrega",
+  ];
+
+  const [ingresos, pendientesDiagnostico, pendientesBorrador, ordenesActivas, ordenesFinalizadas, clientes, vehiculos] =
+    await Promise.all([
+      getCollectionCount(where("esCotizacion", "==", false)),
+      getCollectionCount(where("esCotizacion", "==", false), where("estado", "==", "En Diagnóstico")),
+      getCollectionCount(where("esCotizacion", "==", false), where("estado", "==", "Borrador")),
+      getCollectionCount(where("numeroOrden", ">", 0), where("estado", "in", activeStates)),
+      getCollectionCount(where("estado", "==", "Entregada")),
+      getTopLevelCollectionCount("clientes"),
+      getTopLevelCollectionCount("vehiculos"),
+    ]);
+
+  return {
+    ingresos,
+    ingresosPendientes: pendientesDiagnostico + pendientesBorrador,
+    ordenesActivas,
+    ordenesFinalizadas,
+    clientes,
+    vehiculos,
+  };
+}
+
+export function subscribeIngresosRecientes(
+  callback: (ordenes: OrdenTrabajo[]) => void,
+  onError?: (error: Error) => void
+): () => void {
+  const q = query(
+    collection(db, "ordenesTrabajo"),
+    where("esCotizacion", "==", false),
+    orderBy("createdAt", "desc"),
+    limit(12)
+  );
+  return onSnapshot(
+    q,
+    (snap) => {
+      callback(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo))
+          .filter((orden) => !orden.archivado)
+          .slice(0, 8)
+      );
+    },
+    onError
+  );
 }
 
 export async function getVehiculosByCliente(clienteId: string): Promise<Vehiculo[]> {
