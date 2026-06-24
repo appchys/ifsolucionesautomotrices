@@ -22,7 +22,7 @@ import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
 import OpcionesItemPopover from "@/components/ordenes/OpcionesItemPopover";
 
-export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: string }) {
+export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: { presupuestoId: string; isSidebar?: boolean }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -414,6 +414,13 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
   };
 
   if (loading || !orden || !cliente || !vehiculo) {
+    if (isSidebar) {
+      return (
+        <div className="flex items-center justify-center h-full p-6 bg-slate-50 dark:bg-slate-900">
+          <Loader2 size={32} className="animate-spin text-blue-500" />
+        </div>
+      );
+    }
     return (
       <AppShell>
         <div className="flex items-center justify-center h-full">
@@ -429,12 +436,12 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
   const iva = items.reduce((acc, it) => acc + ((it.precioUnitario * it.cantidad) * (it.impuestoAplicable / 100)), 0);
   const total = base + iva;
 
-  return (
-    <AppShell>
-      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 8.5rem)" }}>
-        {/* Header Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] pb-3 mb-4 flex-shrink-0">
-          <div className="flex items-center gap-4">
+  const mainContent = (
+    <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50 dark:bg-slate-900" : ""}`} style={isSidebar ? undefined : { height: "calc(100vh - 8.5rem)" }}>
+      {/* Header Bar */}
+      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-2 mb-3 flex-shrink-0 ${isSidebar ? "px-4 pt-2" : ""}`}>
+        <div className="flex items-center gap-2">
+          {!isSidebar && (
             <button 
               onClick={() => router.back()} 
               className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors border-none bg-transparent cursor-pointer text-inherit flex items-center justify-center"
@@ -442,9 +449,11 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
             >
               <ChevronLeft size={20} />
             </button>
-            <h1 className="text-xl font-bold flex items-center gap-2">
-              Presupuesto <span className="text-blue-600">#PRE-{String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0")}</span>
-            </h1>
+          )}
+          <h1 className={`${isSidebar ? "text-sm" : "text-xl"} font-bold flex items-center gap-1.5`}>
+            Presupuesto <span className="text-blue-600 font-mono">#PRE-{String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0")}</span>
+          </h1>
+          {!isSidebar && (
             <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-[var(--border)]">
                <span>Creación</span>
                <span className="font-semibold text-[var(--text-primary)]">
@@ -452,85 +461,83 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
                </span>
                <Calendar size={14} className="ml-1" />
             </div>
-            {saving && <Loader2 size={16} className="animate-spin text-[var(--text-muted)]" />}
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Actions icons */}
-            <div className="flex items-center gap-1 mr-2 text-[var(--text-secondary)]">
-              <button 
-                type="button"
-                className="btn-icon text-slate-700 hover:text-blue-600 disabled:opacity-50" 
-                onClick={handlePrintPDF}
-                disabled={generatingPdf || loading}
-                title="Imprimir"
-              >
-                {generatingPdf ? (
-                  <Loader2 size={18} className="animate-spin text-blue-600" />
-                ) : (
-                  <Printer size={18} />
-                )}
-              </button>
-              <button 
-                type="button"
-                className="btn-icon text-slate-700 hover:text-blue-600 disabled:opacity-50"
-                onClick={handleDownloadPDF}
-                disabled={generatingPdf || loading}
-                title="Descargar PDF"
-              >
-                {generatingPdf ? (
-                  <Loader2 size={18} className="animate-spin text-blue-600" />
-                ) : (
-                  <FileDown size={18} />
-                )}
-              </button>
-              <button className="btn-icon"><Mail size={18} /></button>
-              <button className="btn-icon"><MessageSquare size={18} /></button>
-              <button className="btn-icon"><Calendar size={18} /></button>
-            </div>
-            <button className="btn bg-white border border-[var(--border)] shadow-sm font-semibold">
-               ✉ Solicitar aprobación
-            </button>
-            <button 
-              className="btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50"
-              onClick={handleAprobar}
-              disabled={saving || orden.presupuestoConfirmadoPorCliente}
-            >
-               {saving ? <Loader2 size={16} className="animate-spin" /> : orden.presupuestoConfirmadoPorCliente ? "✓ Aprobado" : "✓ Aprobar"}
-            </button>
-            <div className="relative">
-              <button 
-                type="button"
-                className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-10 w-10 justify-center"
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                title="Más acciones"
-              >
-                <MoreHorizontal size={16} />
-              </button>
-              {isMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={handleEliminarPresupuesto}
-                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
-                    >
-                      <Trash2 size={14} />
-                      Eliminar presupuesto
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          )}
+          {saving && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
         </div>
 
-        {/* 2 Columns Layout */}
-        <div className="flex flex-1 gap-6 overflow-hidden">
-          
-          {/* Left Column: Items */}
-          <div className="flex-1 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar border-r border-[var(--border)]">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Actions icons */}
+          <div className="flex items-center gap-1 text-[var(--text-secondary)]">
+            <button 
+              type="button"
+              className="p-1 text-slate-700 dark:text-slate-350 hover:text-blue-600 disabled:opacity-50 bg-transparent border-0 cursor-pointer" 
+              onClick={handlePrintPDF}
+              disabled={generatingPdf || loading}
+              title="Imprimir"
+            >
+              {generatingPdf ? (
+                <Loader2 size={16} className="animate-spin text-blue-600" />
+              ) : (
+                <Printer size={16} />
+              )}
+            </button>
+            <button 
+              type="button"
+              className="p-1 text-slate-700 dark:text-slate-350 hover:text-blue-600 disabled:opacity-50 bg-transparent border-0 cursor-pointer"
+              onClick={handleDownloadPDF}
+              disabled={generatingPdf || loading}
+              title="Descargar PDF"
+            >
+              {generatingPdf ? (
+                <Loader2 size={16} className="animate-spin text-blue-600" />
+              ) : (
+                <FileDown size={16} />
+              )}
+            </button>
+          </div>
+          <button className={`btn bg-white border border-[var(--border)] shadow-sm font-semibold ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5 text-xs"}`}>
+             ✉ Solicitar
+          </button>
+          <button 
+            className={`btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50 ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5 text-xs"}`}
+            onClick={handleAprobar}
+            disabled={saving || orden.presupuestoConfirmadoPorCliente}
+          >
+             {saving ? <Loader2 size={12} className="animate-spin" /> : orden.presupuestoConfirmadoPorCliente ? "✓ Aprobado" : "✓ Aprobar"}
+          </button>
+          <div className="relative">
+            <button 
+              type="button"
+              className="btn bg-white border border-[var(--border)] shadow-sm hover:bg-[var(--bg-hover)] btn-icon h-8 w-8 justify-center"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              title="Más acciones"
+            >
+              <MoreHorizontal size={14} />
+            </button>
+            {isMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
+                <div className="absolute right-0 mt-2 w-42 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={handleEliminarPresupuesto}
+                    className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                  >
+                    <Trash2 size={12} />
+                    Eliminar presupuesto
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Columns Layout */}
+      <div className={`flex-1 ${isSidebar ? "flex flex-col gap-4 px-4 pb-4 overflow-y-auto custom-scrollbar" : "flex gap-6 overflow-hidden px-6"}`}>
+        
+        {/* Left Column: Items */}
+        <div className={`${isSidebar ? "w-full shrink-0" : "flex-1 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar border-r border-[var(--border)]"}`}>
             {/* Client Card */}
             <div className="flex gap-4 items-center mb-2">
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase">
@@ -685,10 +692,10 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
               </div>
             </div>
 
-          </div>
+        </div>
 
-          {/* Right Column: Sidebar */}
-          <div className="w-[340px] flex flex-col overflow-hidden pb-4">
+        {/* Right Column: Sidebar */}
+        <div className={`${isSidebar ? "w-full shrink-0 pt-4 border-t border-[var(--border)]" : "w-[340px] flex flex-col overflow-hidden pb-4"}`}>
             
             {/* Tabs */}
             <div className="flex border-b border-[var(--border)] mb-4 overflow-x-auto custom-scrollbar shrink-0">
@@ -785,17 +792,36 @@ export default function VistaPresupuesto({ presupuestoId }: { presupuestoId: str
               </button>
             </div>
 
-          </div>
         </div>
-
       </div>
-      
+
+    </div>
+  );
+
+  const modales = (
+    <>
       {isCatalogOpen && (
         <AgregarItemModal 
           onClose={() => setIsCatalogOpen(false)}
           onAdd={handleAddItem}
         />
       )}
+    </>
+  );
+
+  if (isSidebar) {
+    return (
+      <>
+        {mainContent}
+        {modales}
+      </>
+    );
+  }
+
+  return (
+    <AppShell>
+      {mainContent}
+      {modales}
     </AppShell>
   );
 }

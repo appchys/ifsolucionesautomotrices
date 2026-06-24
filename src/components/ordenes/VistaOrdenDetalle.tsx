@@ -125,9 +125,10 @@ const ESTADO_DOT_COLORS: Record<EstadoOrden, string> = {
 
 interface VistaOrdenDetalleProps {
   ordenId: string;
+  isSidebar?: boolean;
 }
 
-export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
+export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaOrdenDetalleProps) {
   const router = useRouter();
   const { sidebarOpen } = useUIStore();
   const { user } = useAuthStore();
@@ -928,6 +929,13 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   };
 
   if (loading || !orden || !cliente || !vehiculo) {
+    if (isSidebar) {
+      return (
+        <div className="flex items-center justify-center h-full p-6 bg-slate-50 dark:bg-slate-900">
+          <Loader2 size={32} className="animate-spin text-blue-500" />
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <Loader2 size={40} className="animate-spin text-blue-500 mb-4" />
@@ -946,19 +954,21 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
   const advisorPhoto = dbAdvisorUser?.photoURL || (advisorUser as any)?.photoURL;
 
   return (
-    <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 2rem)" }}>
+    <div className="flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900" style={isSidebar ? { height: "100%" } : { height: "calc(100vh - 2rem)" }}>
       {/* Top Header Navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 py-3 mb-5 shadow-sm">
+      <div className={`flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] shadow-sm ${isSidebar ? "px-4 py-2.5 mb-3" : "px-6 py-3 mb-5"}`}>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center"
-            title="Volver"
-          >
-            <ChevronLeft size={20} />
-          </button>
+          {!isSidebar && (
+            <button
+              onClick={() => router.back()}
+              className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center"
+              title="Volver"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          )}
           <div>
-            <h1 className="text-lg font-extrabold flex items-center gap-2">
+            <h1 className={`${isSidebar ? "text-sm" : "text-lg"} font-extrabold flex items-center gap-2`}>
               Orden <span className="text-blue-600 font-mono">#OT-{String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0")}</span>
             </h1>
             <div className="mt-0.5 leading-none flex">
@@ -998,132 +1008,136 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
           </div>
           
           {/* Creation and Delivery Dates */}
-          <div className="flex items-center gap-3 text-xs border-l border-[var(--border)] pl-4">
-            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-md border border-[var(--border)]">
-              <span className="text-[var(--text-muted)] font-medium">Creación</span>
-              <input
-                type="date"
-                className="bg-transparent border-0 font-semibold p-0 text-xs w-28 text-[var(--text-primary)] focus:ring-0 outline-none"
-                value={fechaCreacion}
-                onChange={(e) => {
-                  setFechaCreacion(e.target.value);
-                  handleSaveField({ createdAt: new Date(e.target.value) as any });
-                }}
-              />
+          {!isSidebar && (
+            <div className="flex items-center gap-3 text-xs border-l border-[var(--border)] pl-4">
+              <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-md border border-[var(--border)]">
+                <span className="text-[var(--text-muted)] font-medium">Creación</span>
+                <input
+                  type="date"
+                  className="bg-transparent border-0 font-semibold p-0 text-xs w-28 text-[var(--text-primary)] focus:ring-0 outline-none"
+                  value={fechaCreacion}
+                  onChange={(e) => {
+                    setFechaCreacion(e.target.value);
+                    handleSaveField({ createdAt: new Date(e.target.value) as any });
+                  }}
+                />
+              </div>
+              
+              <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-md border border-[var(--border)]">
+                <span className="text-[var(--text-muted)] font-medium">Entrega</span>
+                <input
+                  type="date"
+                  className="bg-transparent border-0 font-semibold p-0 text-xs w-28 text-[var(--text-primary)] focus:ring-0 outline-none"
+                  value={fechaEntrega}
+                  onChange={(e) => {
+                    setFechaEntrega(e.target.value);
+                    handleSaveField({ fechaEntrega: e.target.value as any });
+                  }}
+                />
+              </div>
             </div>
-            
-            <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-md border border-[var(--border)]">
-              <span className="text-[var(--text-muted)] font-medium">Entrega</span>
-              <input
-                type="date"
-                className="bg-transparent border-0 font-semibold p-0 text-xs w-28 text-[var(--text-primary)] focus:ring-0 outline-none"
-                value={fechaEntrega}
-                onChange={(e) => {
-                  setFechaEntrega(e.target.value);
-                  handleSaveField({ fechaEntrega: e.target.value as any });
-                }}
-              />
-            </div>
-          </div>
+          )}
 
           {/* Technician Select Popover */}
-          <div className="relative border-l border-[var(--border)] pl-4">
-            <button
-              type="button"
-              onClick={() => setIsTecnicoPopoverOpen(!isTecnicoPopoverOpen)}
-              className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border-0 rounded-full text-xs font-bold px-3 py-1.5 cursor-pointer outline-none transition-colors"
-            >
-              <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-700 dark:text-blue-300 font-extrabold uppercase text-[10px] overflow-hidden shrink-0">
-                {firstTechPhoto ? (
-                  <img src={firstTechPhoto} alt={firstTech?.displayName} className="w-full h-full object-cover" />
-                ) : (
-                  firstTech?.displayName?.substring(0, 2) || "—"
-                )}
-              </div>
-              <span className="text-[var(--text-primary)] max-w-[120px] truncate">
-                {firstTech?.displayName || "Sin técnico"}{otherTechsCount > 0 ? ` +${otherTechsCount}` : ""}
-              </span>
-              <ChevronDown size={14} className="text-slate-500 shrink-0" />
-            </button>
+          {!isSidebar && (
+            <div className="relative border-l border-[var(--border)] pl-4">
+              <button
+                type="button"
+                onClick={() => setIsTecnicoPopoverOpen(!isTecnicoPopoverOpen)}
+                className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border-0 rounded-full text-xs font-bold px-3 py-1.5 cursor-pointer outline-none transition-colors"
+              >
+                <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center text-blue-700 dark:text-blue-300 font-extrabold uppercase text-[10px] overflow-hidden shrink-0">
+                  {firstTechPhoto ? (
+                    <img src={firstTechPhoto} alt={firstTech?.displayName} className="w-full h-full object-cover" />
+                  ) : (
+                    firstTech?.displayName?.substring(0, 2) || "—"
+                  )}
+                </div>
+                <span className="text-[var(--text-primary)] max-w-[120px] truncate">
+                  {firstTech?.displayName || "Sin técnico"}{otherTechsCount > 0 ? ` +${otherTechsCount}` : ""}
+                </span>
+                <ChevronDown size={14} className="text-slate-500 shrink-0" />
+              </button>
 
-            {isTecnicoPopoverOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsTecnicoPopoverOpen(false)}></div>
-                <div className="absolute left-0 mt-2 w-80 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl z-20 p-4 flex flex-col gap-4">
-                  {/* ATENDIDO POR */}
-                  <div>
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Atendido Por</span>
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-orange-100 dark:bg-orange-950/30 flex items-center justify-center text-orange-700 dark:text-orange-300 font-bold uppercase text-xs overflow-hidden shrink-0">
-                        {advisorPhoto ? (
-                          <img src={advisorPhoto} alt={advisorUser?.displayName} className="w-full h-full object-cover" />
-                        ) : (
-                          advisorUser?.displayName?.substring(0, 2) || "U"
-                        )}
+              {isTecnicoPopoverOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsTecnicoPopoverOpen(false)}></div>
+                  <div className="absolute left-0 mt-2 w-80 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl shadow-xl z-20 p-4 flex flex-col gap-4">
+                    {/* ATENDIDO POR */}
+                    <div>
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Atendido Por</span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-orange-100 dark:bg-orange-950/30 flex items-center justify-center text-orange-700 dark:text-orange-300 font-bold uppercase text-xs overflow-hidden shrink-0">
+                          {advisorPhoto ? (
+                            <img src={advisorPhoto} alt={advisorUser?.displayName} className="w-full h-full object-cover" />
+                          ) : (
+                            advisorUser?.displayName?.substring(0, 2) || "U"
+                          )}
+                        </div>
+                        <div>
+                          <p className="font-extrabold text-xs text-[var(--text-primary)]">{advisorUser?.displayName || "Asesor"}</p>
+                          <p className="text-[10px] text-slate-400 font-medium capitalize">
+                            {advisorUser?.role === "recepcion" ? "Recepción" : advisorUser?.role === "asesor_servicio" ? "Asesor de Servicio" : advisorUser?.role || "Asesor"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-extrabold text-xs text-[var(--text-primary)]">{advisorUser?.displayName || "Asesor"}</p>
-                        <p className="text-[10px] text-slate-400 font-medium capitalize">
-                          {advisorUser?.role === "recepcion" ? "Recepción" : advisorUser?.role === "asesor_servicio" ? "Asesor de Servicio" : advisorUser?.role || "Asesor"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <hr className="border-slate-100 dark:border-slate-800" />
-                  
-                  {/* TÉCNICOS */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Técnicos</span>
-                      <span className="text-[10px] text-slate-400 font-semibold">
-                        {assignedTechs.length} asignado{assignedTechs.length !== 1 ? "s" : ""}
-                      </span>
                     </div>
                     
-                    <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
-                      {tecnicos.map((t) => {
-                        const isAssigned = (orden.personalAsignado || []).some((u) => u.uid === t.uid);
-                        return (
-                          <label
-                            key={t.uid}
-                            className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer text-xs transition-colors"
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase overflow-hidden shrink-0">
-                                {t.photoURL ? (
-                                  <img src={t.photoURL} alt={t.displayName} className="w-full h-full object-cover" />
-                                ) : (
-                                  t.displayName?.substring(0, 2) || "T"
-                                )}
+                    <hr className="border-slate-100 dark:border-slate-800" />
+                    
+                    {/* TÉCNICOS */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Técnicos</span>
+                        <span className="text-[10px] text-slate-400 font-semibold">
+                          {assignedTechs.length} asignado{assignedTechs.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                        {tecnicos.map((t) => {
+                          const isAssigned = (orden.personalAsignado || []).some((u) => u.uid === t.uid);
+                          return (
+                            <label
+                              key={t.uid}
+                              className="flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer text-xs transition-colors"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase overflow-hidden shrink-0">
+                                  {t.photoURL ? (
+                                    <img src={t.photoURL} alt={t.displayName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    t.displayName?.substring(0, 2) || "T"
+                                  )}
+                                </div>
+                                <span className="font-semibold text-[var(--text-primary)]">{t.displayName}</span>
                               </div>
-                              <span className="font-semibold text-[var(--text-primary)]">{t.displayName}</span>
-                            </div>
-                            <input
-                              type="checkbox"
-                              checked={isAssigned}
-                              onChange={() => handleTogglePersonalAsignado(t)}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-0 w-4 h-4 cursor-pointer"
-                            />
-                          </label>
-                        );
-                      })}
+                              <input
+                                type="checkbox"
+                                checked={isAssigned}
+                                onChange={() => handleTogglePersonalAsignado(t)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-0 w-4 h-4 cursor-pointer"
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
+                    
+                    <hr className="border-slate-100 dark:border-slate-800" />
+                    
+                    <button
+                      type="button"
+                      onClick={() => setIsTecnicoPopoverOpen(false)}
+                      className="w-full py-1.5 text-center text-xs font-bold text-blue-600 hover:text-blue-700 bg-transparent border-0 cursor-pointer transition-colors"
+                    >
+                      Cerrar
+                    </button>
                   </div>
-                  
-                  <hr className="border-slate-100 dark:border-slate-800" />
-                  
-                  <button
-                    type="button"
-                    onClick={() => setIsTecnicoPopoverOpen(false)}
-                    className="w-full py-1.5 text-center text-xs font-bold text-blue-600 hover:text-blue-700 bg-transparent border-0 cursor-pointer transition-colors"
-                  >
-                    Cerrar
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Top actions & Payment */}
@@ -1228,7 +1242,9 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
             >
               <Mail size={16} />
             </button>
-            <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Chat"><MessageCircle size={16} /></button>
+            {!isSidebar && (
+              <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Chat"><MessageCircle size={16} /></button>
+            )}
           </div>
 
           {/* Estado Selector Personalizado */}
@@ -1285,10 +1301,10 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
 
 
       {/* Main 2-Column Grid */}
-      <div className="flex flex-1 gap-6 overflow-hidden min-h-0 px-6 pb-6">
+      <div className={`flex flex-1 gap-6 min-h-0 ${isSidebar ? "flex-col overflow-y-auto px-4 pb-4 custom-scrollbar" : "overflow-hidden px-6 pb-6"}`}>
         
-        {/* Left Column (Items & Form) - Scrollable */}
-        <div className="flex-1 flex flex-col gap-5 overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0">
+        {/* Left Column (Items & Form) */}
+        <div className={`${isSidebar ? "w-full shrink-0" : "flex-1 flex flex-col gap-5 overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0"}`}>
           
 
 
@@ -1579,10 +1595,12 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
         </div>
 
         {/* Right Column (Sidebar Tabs) */}
-        <div className="w-[340px] border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0">
+        <div className={`${isSidebar ? "w-full min-h-[450px]" : "w-[340px]"} border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0`}>
           {/* Tabs bar */}
           <div className="flex border-b border-[var(--border)] bg-slate-50/50 shrink-0">
-            {(["Vehículo", "Fotos", "Notas", "Diagnóstico", "Informe", "Chat"] as const).map((tab) => (
+            {(["Vehículo", "Fotos", "Notas", "Diagnóstico", "Informe", "Chat"] as const)
+              .filter((tab) => !(isSidebar && tab === "Chat"))
+              .map((tab) => (
               <button
                 key={tab}
                 onClick={() => {
@@ -1911,18 +1929,20 @@ export default function VistaOrdenDetalle({ ordenId }: VistaOrdenDetalleProps) {
       </div>
 
       {/* Footer bar */}
-      <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap justify-between items-center bg-[var(--bg-card)] px-4 py-2 shrink-0 rounded-xl shadow-sm gap-4">
+      <div className={`mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap justify-between items-center bg-[var(--bg-card)] py-2 shrink-0 rounded-xl shadow-sm gap-4 ${isSidebar ? "px-3 text-xs" : "px-4"}`}>
         {/* Progress bar */}
-        <div className="flex items-center gap-2.5 w-60 text-xs">
-          <span className="font-extrabold text-[var(--text-secondary)]">Progreso</span>
-          <div className="flex-1 progress-bar h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div className="progress-fill h-full bg-blue-600" style={{ width: "0%" }}></div>
+        {!isSidebar && (
+          <div className="flex items-center gap-2.5 w-60 text-xs">
+            <span className="font-extrabold text-[var(--text-secondary)]">Progreso</span>
+            <div className="flex-1 progress-bar h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div className="progress-fill h-full bg-blue-600" style={{ width: "0%" }}></div>
+            </div>
+            <span className="font-extrabold text-[var(--text-secondary)]">0%</span>
           </div>
-          <span className="font-extrabold text-[var(--text-secondary)]">0%</span>
-        </div>
+        )}
 
         {/* Totals panel compact */}
-        <div className="flex items-center gap-6 text-xs font-semibold">
+        <div className={`flex items-center text-xs font-semibold ${isSidebar ? "gap-3" : "gap-6"}`}>
           <div>
             <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Subtotal</span>
             <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>

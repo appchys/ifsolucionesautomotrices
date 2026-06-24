@@ -67,7 +67,7 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
+export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingresoId: string; isSidebar?: boolean }) {
   const router = useRouter();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(true);
@@ -536,6 +536,13 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
   };
 
   if (loading || !orden || !cliente || !vehiculo) {
+    if (isSidebar) {
+      return (
+        <div className="flex items-center justify-center h-full p-6 bg-slate-50 dark:bg-slate-900">
+          <Loader2 size={32} className="animate-spin text-blue-500" />
+        </div>
+      );
+    }
     return (
       <AppShell hideHeader noPadding>
         <div className="flex items-center justify-center h-full">
@@ -545,116 +552,117 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
     );
   }
 
-  return (
-    <AppShell hideHeader noPadding>
-      <div className="flex flex-col overflow-hidden" style={{ height: "calc(100vh - 2rem)" }}>
+  const mainContent = (
+    <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50 dark:bg-slate-900" : "h-screen"}`}>
 
-        {/* Header Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 py-3 mb-5 shadow-sm">
-          <div className="flex items-center gap-3">
+      {/* Header Bar */}
+      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] ${isSidebar ? "px-4 py-2 mb-2" : "px-6 py-3 mb-3"} shadow-sm`}>
+        <div className="flex items-center gap-2">
+          {!isSidebar && (
             <Link href="/ingresos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center">
               <ChevronLeft size={20} />
             </Link>
-            <h1 className="text-lg font-extrabold flex items-center gap-2">
-              Ingreso <span className="text-blue-600 font-mono">#{String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}</span>
-              {orden.numeroOrden && <span className="ml-2 badge bg-green-50 text-green-700 text-xs">ORD-{String(orden.numeroOrden).padStart(5, "0")}</span>}
-            </h1>
-            {saving && <Loader2 size={16} className="animate-spin text-[var(--text-muted)]" />}
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button 
-              className="bg-white hover:bg-orange-50 border border-orange-200 text-orange-600 font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors"
-              onClick={() => setIsRetirarModalOpen(true)}
-              disabled={saving}
-            >
-               Retirar vehículo
-            </button>
-            <button 
-              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors" 
-              onClick={handleCrearPresupuesto}
-              disabled={creatingPresupuesto || saving}
-            >
-               {creatingPresupuesto ? <Loader2 size={12} className="animate-spin" /> : presupuestoId ? "Ver presupuesto" : "Crear presupuesto"}
-            </button>
-            <button 
-              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors" 
-              onClick={handleSave}
-            >
-               Guardar
-            </button>
-            <button 
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer outline-none transition-colors"
-              onClick={handleCrearOrden}
-              disabled={creatingOrden || saving}
-            >
-              {creatingOrden ? <Loader2 size={12} className="animate-spin" /> : orden?.numeroOrden ? `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}` : "+ Crear orden"}
-            </button>
-
-            {/* Botón de Descargar PDF (Solo ícono) */}
-            <button 
-              type="button"
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
-              onClick={handleDownloadPDF}
-              disabled={generatingPdf || loading}
-              title="Descargar PDF"
-            >
-              {generatingPdf ? (
-                <Loader2 size={16} className="animate-spin text-blue-600" />
-              ) : (
-                <FileDown size={16} />
-              )}
-            </button>
-
-            {/* Botón de Imprimir PDF (Solo ícono) */}
-            <button 
-              type="button"
-              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
-              onClick={handlePrintPDF}
-              disabled={generatingPdf || loading}
-              title="Imprimir"
-            >
-              {generatingPdf ? (
-                <Loader2 size={16} className="animate-spin text-blue-600" />
-              ) : (
-                <Printer size={16} />
-              )}
-            </button>
-
-            {/* 3-dots actions menu */}
-            <div className="relative">
-              <button 
-                type="button"
-                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                title="Más acciones"
-              >
-                <MoreHorizontal size={16} />
-              </button>
-              {isMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={handleEliminarIngreso}
-                      className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
-                    >
-                      <Trash2 size={14} />
-                      Eliminar ingreso
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          )}
+          <h1 className={`${isSidebar ? "text-sm" : "text-lg"} font-extrabold flex items-center gap-1`}>
+            Ingreso <span className="text-blue-600 font-mono">#{String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}</span>
+            {orden.numeroOrden && <span className="ml-1.5 badge bg-green-50 text-green-700 text-[10px] px-1 py-0.5 font-bold uppercase">ORD-{String(orden.numeroOrden).padStart(5, "0")}</span>}
+          </h1>
+          {saving && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
         </div>
 
-        {/* 3 Columns Layout */}
-        <div className="flex flex-1 gap-6 overflow-hidden px-6 pb-6">
-          
-          {/* Column 1: Cliente Tarjeta + Chat */}
-          <div className="w-[340px] flex flex-col h-full gap-4 overflow-hidden shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button 
+            className={`bg-white hover:bg-orange-50 border border-orange-200 text-orange-600 font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`}
+            onClick={() => setIsRetirarModalOpen(true)}
+            disabled={saving}
+          >
+             {isSidebar ? "Retirar" : "Retirar vehículo"}
+          </button>
+          <button 
+            className={`bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`} 
+            onClick={handleCrearPresupuesto}
+            disabled={creatingPresupuesto || saving}
+          >
+             {creatingPresupuesto ? <Loader2 size={12} className="animate-spin" /> : presupuestoId ? (isSidebar ? "Presupuesto" : "Ver presupuesto") : (isSidebar ? "Crear Pres." : "Crear presupuesto")}
+          </button>
+          <button 
+            className={`bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`} 
+            onClick={handleSave}
+          >
+             Guardar
+          </button>
+          <button 
+            className={`bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`}
+            onClick={handleCrearOrden}
+            disabled={creatingOrden || saving}
+          >
+            {creatingOrden ? <Loader2 size={12} className="animate-spin" /> : orden?.numeroOrden ? (isSidebar ? "Ver Orden" : `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}`) : (isSidebar ? "+ Orden" : "+ Crear orden")}
+          </button>
+
+          {/* Botón de Descargar PDF (Solo ícono) */}
+          <button 
+            type="button"
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
+            onClick={handleDownloadPDF}
+            disabled={generatingPdf || loading}
+            title="Descargar PDF"
+          >
+            {generatingPdf ? (
+              <Loader2 size={14} className="animate-spin text-blue-600" />
+            ) : (
+              <FileDown size={14} />
+            )}
+          </button>
+
+          {/* Botón de Imprimir PDF (Solo ícono) */}
+          <button 
+            type="button"
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
+            onClick={handlePrintPDF}
+            disabled={generatingPdf || loading}
+            title="Imprimir"
+          >
+            {generatingPdf ? (
+              <Loader2 size={14} className="animate-spin text-blue-600" />
+            ) : (
+              <Printer size={14} />
+            )}
+          </button>
+
+          {/* 3-dots actions menu */}
+          <div className="relative">
+            <button 
+              type="button"
+              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              title="Más acciones"
+            >
+              <MoreHorizontal size={14} />
+            </button>
+            {isMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
+                <div className="absolute right-0 mt-2 w-42 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={handleEliminarIngreso}
+                    className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                  >
+                    <Trash2 size={12} />
+                    Eliminar ingreso
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Columns Layout */}
+      <div className={`flex-1 overflow-y-auto ${isSidebar ? "flex flex-col gap-4 px-4 pb-4 custom-scrollbar" : "flex gap-6 overflow-hidden px-6 pb-4"}`}>
+        
+        {/* Column 1: Cliente Tarjeta + Chat */}
+        <div className={`${isSidebar ? "w-full shrink-0" : "min-w-0 flex flex-col h-full gap-4 overflow-hidden"}`} style={isSidebar ? undefined : { flex: "1.2 1 0%" }}>
             {/* Tarjeta de Cliente */}
             {cliente && (
               <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
@@ -725,7 +733,8 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               </div>
             )}
 
-            {/* Chat Container */}
+          {/* Chat Container */}
+          {!isSidebar && (
             <div className="flex-1 min-h-0 flex flex-col border border-[var(--border)] rounded-xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
               <ChatOrden
                 ordenId={ingresoId}
@@ -736,10 +745,11 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                 recibidoPor={user}
               />
             </div>
-          </div>
+          )}
+        </div>
 
-          {/* Column 2: Vehicle details */}
-          <div className="flex-1 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar border-x border-[var(--border)] px-6">
+        {/* Column 2: Vehicle details */}
+        <div className={`${isSidebar ? "w-full shrink-0" : "min-w-0 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar border-x border-[var(--border)] px-6"}`} style={isSidebar ? undefined : { flex: "2 1 0%" }}>
             {/* Tarjeta de Vehículo */}
             {vehiculo && (
               <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
@@ -910,12 +920,12 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
             </div>
           </div>
 
-          {/* Column 3: Inspections */}
-          <div className="w-[340px] flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar pb-10">
+        {/* Column 3: Inspections */}
+        <div className={`${isSidebar ? "w-full shrink-0" : "min-w-0 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar"}`} style={isSidebar ? undefined : { flex: "1.2 1 0%" }}>
             {/* Flujo de Recepción (Stepper Vertical) */}
             <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4">
               <h3 className="font-bold flex items-center gap-2 text-[var(--text-secondary)] text-xs uppercase tracking-wider">
-                Progreso del Proceso
+                Proceso
               </h3>
               
               <div className="relative pl-6 border-l border-slate-200 dark:border-slate-800 ml-2.5 py-1 space-y-5">
@@ -1036,45 +1046,7 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
               </div>
             </div>
 
-            <div>
-              <h3 className="font-bold flex items-center justify-between mb-4 text-[var(--text-secondary)]">
-                <span className="flex items-center gap-2">
-                  <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><Camera size={12} /></span>
-                  Fotos
-                </span>
-                <span className="text-xs font-normal text-[var(--text-muted)]">{fotos.length} fotos</span>
-              </h3>
-              
-              <div className="grid grid-cols-2 gap-2 mb-3">
-                {fotos.map((foto, index) => (
-                  <div key={index} className="relative aspect-square bg-slate-100 rounded-lg overflow-hidden group border border-[var(--border)]">
-                    <img src={foto.url} alt="Inspeccion" className="w-full h-full object-cover" />
-                    <button 
-                      onClick={() => handleRemoveFoto(index)}
-                      className="absolute top-1 right-1 p-1.5 bg-red-500/80 hover:bg-red-600 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
 
-              <input 
-                type="file" 
-                multiple 
-                accept="image/*" 
-                className="hidden" 
-                ref={fileInputRef}
-                onChange={handleUploadFoto}
-              />
-              <button 
-                className="btn w-full justify-center bg-white border border-[var(--border)] shadow-sm"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Camera size={16} className="mr-2 text-[var(--text-muted)]" />
-                Agregar imagen
-              </button>
-            </div>
 
             <div>
               <label className="text-xs font-bold text-[var(--text-muted)] mb-2 block">Diagnóstico y/o conclusión</label>
@@ -1092,55 +1064,57 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
                 <span className="w-5 h-5 bg-slate-200 rounded-full flex items-center justify-center text-slate-600"><ClipboardSignature size={12} /></span>
                 Firma del cliente
               </h3>
-              <div className="space-y-3">
-                {orden.firmaClienteUrl ? (
-                  <div className="card p-3 flex flex-col items-center gap-2 bg-slate-50 dark:bg-slate-900/10 border border-slate-200 rounded-xl relative group">
-                    <img 
-                      src={orden.firmaClienteUrl} 
-                      alt="Firma del cliente" 
-                      className="h-20 object-contain dark:invert" 
-                    />
-                    <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
-                      <span>✓ Firmado</span>
-                    </div>
-                    <button 
-                      onClick={() => setIsFirmaModalOpen(true)}
-                      className="btn btn-sm bg-white border border-[var(--border)] w-full justify-center shadow-sm text-xs mt-1"
-                    >
-                      Firmar de nuevo
-                    </button>
+              {orden.firmaClienteUrl ? (
+                <div className="card p-3 flex flex-col items-center gap-2 bg-slate-50 dark:bg-slate-900/10 border border-slate-200 rounded-xl relative group">
+                  <img 
+                    src={orden.firmaClienteUrl} 
+                    alt="Firma del cliente" 
+                    className="h-20 object-contain dark:invert" 
+                  />
+                  <div className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                    <span>✓ Firmado</span>
                   </div>
-                ) : (
                   <button 
                     onClick={() => setIsFirmaModalOpen(true)}
-                    className="btn w-full justify-start bg-white border border-[var(--border)] shadow-sm font-semibold flex items-center gap-2"
+                    className="btn btn-sm bg-white border border-[var(--border)] w-full justify-center shadow-sm text-xs mt-1"
                   >
-                    <ClipboardSignature size={14} className="text-slate-400" />
-                    Firmar aquí
+                    Firmar de nuevo
                   </button>
-                )}
-                
-                <button 
-                  onClick={() => {
-                    if (cliente.email) {
-                      toast.success(`Solicitud de firma enviada a ${cliente.email}`);
-                    } else {
-                      toast.error("El cliente no tiene un correo electrónico registrado");
-                    }
-                  }}
-                  className="btn w-full justify-start bg-white border border-[var(--border)] shadow-sm text-slate-700 font-semibold flex items-center gap-2"
-                >
-                  <Mail size={14} className="text-slate-400" />
-                  Solicitar firma a {cliente.email || "cliente"}
-                </button>
-              </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <button 
+                    onClick={() => setIsFirmaModalOpen(true)}
+                    className="w-full border border-[var(--border)] bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-xs py-2 px-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5"
+                  >
+                    <ClipboardSignature size={14} />
+                    Firmar
+                  </button>
+                  <button 
+                    onClick={() => {
+                      if (cliente.email) {
+                        toast.success(`Solicitud de firma enviada a ${cliente.email}`);
+                      } else {
+                        toast.error("El cliente no tiene un correo electrónico registrado");
+                      }
+                    }}
+                    className="w-full border border-dashed border-[var(--border)] bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium text-xs py-2 px-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-1.5"
+                  >
+                    <Mail size={14} />
+                    Solicitar
+                  </button>
+                </div>
+              )}
             </div>
 
           </div>
 
         </div>
       </div>
+  );
 
+  const modalesYMas = (
+    <>
       <ModalInspeccion 
         isOpen={isModalInspeccionOpen}
         onClose={() => setIsModalInspeccionOpen(false)}
@@ -1221,6 +1195,22 @@ export default function VistaIngreso({ ingresoId }: { ingresoId: string }) {
         clienteEmail={cliente.email}
         numeroIngreso={`ING-${String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}`}
       />
+    </>
+  );
+
+  if (isSidebar) {
+    return (
+      <>
+        {mainContent}
+        {modalesYMas}
+      </>
+    );
+  }
+
+  return (
+    <AppShell hideHeader noPadding>
+      {mainContent}
+      {modalesYMas}
     </AppShell>
   );
 }

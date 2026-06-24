@@ -14,6 +14,15 @@ interface UIStore {
   toggleSidebar: () => void;
   activeModule: string;
   setActiveModule: (module: string) => void;
+  isIngresoSidebarOpen: boolean;
+  ingresoSidebarId: string | null;
+  setIngresoSidebarOpen: (open: boolean, id?: string | null) => void;
+  isPresupuestoSidebarOpen: boolean;
+  presupuestoSidebarId: string | null;
+  setPresupuestoSidebarOpen: (open: boolean, id?: string | null) => void;
+  isOrdenSidebarOpen: boolean;
+  ordenSidebarId: string | null;
+  setOrdenSidebarOpen: (open: boolean, id?: string | null) => void;
 }
 
 interface RecepcionStore {
@@ -44,6 +53,15 @@ export const useUIStore = create<UIStore>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   activeModule: "dashboard",
   setActiveModule: (module) => set({ activeModule: module }),
+  isIngresoSidebarOpen: false,
+  ingresoSidebarId: null,
+  setIngresoSidebarOpen: (open, id = null) => set({ isIngresoSidebarOpen: open, ingresoSidebarId: id }),
+  isPresupuestoSidebarOpen: false,
+  presupuestoSidebarId: null,
+  setPresupuestoSidebarOpen: (open, id = null) => set({ isPresupuestoSidebarOpen: open, presupuestoSidebarId: id }),
+  isOrdenSidebarOpen: false,
+  ordenSidebarId: null,
+  setOrdenSidebarOpen: (open, id = null) => set({ isOrdenSidebarOpen: open, ordenSidebarId: id }),
 }));
 
 export const useRecepcionStore = create<RecepcionStore>((set) => ({

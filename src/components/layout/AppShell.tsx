@@ -7,6 +7,9 @@ import Sidebar from "./Sidebar";
 import Header from "./Header";
 import ChatInbox from "./ChatInbox";
 import ActiveChatPanel from "./ActiveChatPanel";
+import IngresoSidebar from "../recepcion/IngresoSidebar";
+import PresupuestoSidebar from "../recepcion/PresupuestoSidebar";
+import OrdenSidebar from "../ordenes/OrdenSidebar";
 
 export default function AppShell({ 
   children, 
@@ -40,6 +43,9 @@ export default function AppShell({
       <Sidebar />
       <ChatInbox />
       <ActiveChatPanel />
+      <IngresoSidebar />
+      <PresupuestoSidebar />
+      <OrdenSidebar />
 
       {/* Main area */}
 

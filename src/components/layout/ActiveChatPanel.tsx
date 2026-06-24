@@ -17,7 +17,7 @@ export default function ActiveChatPanel() {
   const router = useRouter();
   const { user } = useAuthStore();
   const { activeChatId, setActiveChatId, isInboxOpen } = useChatStore();
-  const { sidebarOpen } = useUIStore();
+  const { sidebarOpen, setIngresoSidebarOpen, setPresupuestoSidebarOpen, setOrdenSidebarOpen } = useUIStore();
 
   const [orden, setOrden] = useState<OrdenTrabajo | null>(null);
   const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
@@ -413,10 +413,11 @@ export default function ActiveChatPanel() {
 
             {/* Fila de Botones Rápidos */}
             <div className="grid grid-cols-3 gap-2">
-              {/* Botón Ingreso */}
+               {/* Botón Ingreso */}
               <button
                 type="button"
-                onClick={() => ingresoIdRel && router.push(`/ingresos/${ingresoIdRel}`)}
+                id="btn-abrir-ingreso-sidebar"
+                onClick={() => ingresoIdRel && setIngresoSidebarOpen(true, ingresoIdRel)}
                 disabled={!ingresoIdRel}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
                   ingresoIdRel
@@ -436,7 +437,8 @@ export default function ActiveChatPanel() {
               {/* Botón Presupuesto */}
               <button
                 type="button"
-                onClick={() => presupuestoIdRel && router.push(`/presupuestos/${presupuestoIdRel}`)}
+                id="btn-abrir-presupuesto-sidebar"
+                onClick={() => presupuestoIdRel && setPresupuestoSidebarOpen(true, presupuestoIdRel)}
                 disabled={!presupuestoIdRel}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
                   presupuestoIdRel
@@ -456,7 +458,8 @@ export default function ActiveChatPanel() {
               {/* Botón Orden */}
               <button
                 type="button"
-                onClick={() => ordenIdRel && router.push(`/ordenes/detalle?id=${ordenIdRel}`)}
+                id="btn-abrir-orden-sidebar"
+                onClick={() => ordenIdRel && setOrdenSidebarOpen(true, ordenIdRel)}
                 disabled={!ordenIdRel}
                 className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
                   ordenIdRel

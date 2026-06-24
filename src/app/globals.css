@@ -1000,4 +1000,56 @@ textarea.input { resize: vertical; }
   }
 }
 
+/* ─── Ingreso, Presupuesto y Orden Sidebar Panels (ocupan el resto de pantalla desde el Chat) ── */
+.ingreso-sidebar-panel,
+.presupuesto-sidebar-panel,
+.orden-sidebar-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  z-index: 38; /* Por encima de ActiveChatPanel (33) y ChatInbox (35) */
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 16px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(100%); /* Desliza desde la derecha */
+  color: var(--text-primary);
+}
+
+.ingreso-sidebar-panel.open,
+.presupuesto-sidebar-panel.open,
+.orden-sidebar-panel.open {
+  transform: translateX(0);
+}
+
+@media (min-width: 1024px) {
+  .ingreso-sidebar-panel,
+  .presupuesto-sidebar-panel,
+  .orden-sidebar-panel {
+    /* Menú colapsado (70px) + ChatInbox (260px) + ActiveChatPanel (320px) = 650px */
+    left: 650px;
+    width: auto; /* El ancho se auto-calcula con left y right */
+  }
+  .ingreso-sidebar-panel.sidebar-open-offset,
+  .presupuesto-sidebar-panel.sidebar-open-offset,
+  .orden-sidebar-panel.sidebar-open-offset {
+    /* Menú abierto (260px) + ChatInbox (260px) + ActiveChatPanel (320px) = 840px */
+    left: 840px;
+    width: auto;
+  }
+}
+
+@media (max-width: 1023px) {
+  .ingreso-sidebar-panel,
+  .presupuesto-sidebar-panel,
+  .orden-sidebar-panel {
+    left: 0;
+    width: 100vw;
+    z-index: 60; /* En móviles cubre toda la pantalla */
+  }
+}
+
 
