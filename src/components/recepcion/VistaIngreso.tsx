@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, ChevronDown, ChevronUp, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut, MessageSquare, UserPlus } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut, MessageSquare, UserPlus, CheckCircle2, FileText, Wrench } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -18,7 +18,7 @@ import {
   sendMensajeOrden
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, AppUser, NivelCombustible, ChecklistItem, FotoDiagnostico, DatosTaller } from "@/types";
-import { useAuthStore } from "@/store";
+import { useAuthStore, useUIStore, useChatStore } from "@/store";
 import { toast } from "react-hot-toast";
 import { createOrdenConItems } from "@/lib/services";
 import ModalInspeccion from "./ModalInspeccion";
@@ -70,6 +70,9 @@ function getInitials(name: string): string {
 export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingresoId: string; isSidebar?: boolean }) {
   const router = useRouter();
   const { user } = useAuthStore();
+  const { setIngresoSidebarOpen, setPresupuestoSidebarOpen, setOrdenSidebarOpen } = useUIStore();
+  const { isInboxOpen, activeChatId } = useChatStore();
+  const chatAbierto = isInboxOpen && !!activeChatId;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -106,6 +109,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRetirarModalOpen, setIsRetirarModalOpen] = useState(false);
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
+  const [firmaClienteUrl, setFirmaClienteUrl] = useState("");
   const [isClienteExpanded, setIsClienteExpanded] = useState(false);
   const [isVehiculoExpanded, setIsVehiculoExpanded] = useState(false);
 
@@ -154,6 +158,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
       setFotos(ordenData.fotosDiagnostico?.length ? ordenData.fotosDiagnostico : (ordenData.fotoUrls || []).map(url => ({ url, descripcion: "" })));
       setDanos(ordenData.inspeccionVisual?.danos || []);
       setTecnicosAsignados((ordenData.personalAsignado as AppUser[]) || []);
+      setFirmaClienteUrl(ordenData.firmaClienteUrl || "");
 
     } catch (error) {
       console.error(error);
@@ -202,7 +207,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
       const tieneInspeccionAhora = danos.length > 0;
 
       await updateOrden(ingresoId, {
-        tecnicoId: tecnicoId || undefined,
+        tecnicoId: tecnicoId || "",
         kilometrajeIngreso: km ? Number(km) : 0,
         nivelCombustible,
         tipoServicio,
@@ -213,6 +218,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         fotosDiagnostico: fotos,
         inspeccionVisual: { danos },
         personalAsignado: tecnicosAsignados,
+        firmaClienteUrl: firmaClienteUrl || "",
       });
 
       // Si antes no tenía inspección y ahora sí, enviamos el mensaje del sistema
@@ -229,10 +235,21 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         }).catch(err => console.error("Error al enviar mensaje de inspección:", err));
       }
 
-      // Actualizar la fecha localmente para que la UI reaccione
+      // Actualizar la fecha localmente para que la UI reaccione y isDirty se vuelva false
       setOrden(prev => prev ? { 
         ...prev, 
+        tecnicoId: tecnicoId || "",
+        kilometrajeIngreso: km ? Number(km) : 0,
+        nivelCombustible,
+        tipoServicio,
+        motivo,
+        notasInternas: observaciones,
+        checklistInventario: checklist,
+        informeTecnico: diagnostico,
+        fotosDiagnostico: fotos,
         inspeccionVisual: { danos },
+        personalAsignado: tecnicosAsignados,
+        firmaClienteUrl: firmaClienteUrl || "",
         updatedAt: { toDate: () => new Date() } as any 
       } : null);
       toast.success("Cambios guardados", { id: "save" });
@@ -244,10 +261,101 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
     }
   };
 
+  const isDirty = useMemo(() => {
+    if (!orden) return false;
+    
+    // Comparar km
+    const kmOriginal = orden.kilometrajeIngreso ? String(orden.kilometrajeIngreso) : "";
+    if (km !== kmOriginal) return true;
+    
+    // Nivel combustible
+    const combustibleOriginal = orden.nivelCombustible || "1/2";
+    if (nivelCombustible !== combustibleOriginal) return true;
+    
+    // Tipo servicio
+    const tipoOriginal = orden.tipoServicio || "Mantenimiento";
+    if (tipoServicio !== tipoOriginal) return true;
+    
+    // Motivo
+    const motivoOriginal = orden.motivo || "";
+    if (motivo !== motivoOriginal) return true;
+    
+    // Observaciones (notasInternas)
+    const obsOriginal = orden.notasInternas || "";
+    if (observaciones !== obsOriginal) return true;
+    
+    // Diagnostico (informeTecnico)
+    const diagOriginal = orden.informeTecnico || "";
+    if (diagnostico !== diagOriginal) return true;
+    
+    // Checklist
+    const checklistOriginal = getMergedChecklist(orden.checklistInventario);
+    if (checklist.length !== checklistOriginal.length) return true;
+    for (let i = 0; i < checklist.length; i++) {
+      if (checklist[i].checked !== checklistOriginal[i].checked) return true;
+    }
+    
+    // Daños
+    const danosOriginal = orden.inspeccionVisual?.danos || [];
+    if (danos.length !== danosOriginal.length) return true;
+    for (let i = 0; i < danos.length; i++) {
+      if (
+        danos[i].x !== danosOriginal[i].x || 
+        danos[i].y !== danosOriginal[i].y || 
+        danos[i].tipo !== danosOriginal[i].tipo ||
+        danos[i].descripcion !== danosOriginal[i].descripcion
+      ) return true;
+    }
+    
+    // Fotos (fotosDiagnostico)
+    const fotosOriginal = orden.fotosDiagnostico?.length 
+      ? orden.fotosDiagnostico 
+      : (orden.fotoUrls || []).map(url => ({ url, descripcion: "" }));
+    if (fotos.length !== fotosOriginal.length) return true;
+    for (let i = 0; i < fotos.length; i++) {
+      if (fotos[i].url !== fotosOriginal[i].url || fotos[i].descripcion !== fotosOriginal[i].descripcion) return true;
+    }
+
+    // Técnicos asignados
+    const tecnicosOriginal = (orden.personalAsignado as AppUser[]) || [];
+    if (tecnicosAsignados.length !== tecnicosOriginal.length) return true;
+    for (let i = 0; i < tecnicosAsignados.length; i++) {
+      if (tecnicosAsignados[i].uid !== tecnicosOriginal[i].uid) return true;
+    }
+
+    // Firma
+    const firmaOriginal = orden.firmaClienteUrl || "";
+    if (firmaClienteUrl !== firmaOriginal) return true;
+    
+    return false;
+  }, [orden, km, nivelCombustible, tipoServicio, motivo, observaciones, checklist, diagnostico, danos, fotos, tecnicosAsignados, firmaClienteUrl]);
+
+  const handleRequestClose = useCallback(async () => {
+    if (isDirty) {
+      const saveChanges = window.confirm(
+        "Tiene cambios sin guardar en el ingreso.\n\n¿Desea guardarlos antes de salir?\n\n- Presione Aceptar para guardar y cerrar.\n- Presione Cancelar para descartar los cambios y cerrar."
+      );
+      if (saveChanges) {
+        await handleSave();
+      }
+    }
+    setIngresoSidebarOpen(false);
+  }, [isDirty, handleSave, setIngresoSidebarOpen]);
+
+  useEffect(() => {
+    if (isSidebar) {
+      (window as any).__handleRequestCloseIngreso = handleRequestClose;
+    }
+    return () => {
+      delete (window as any).__handleRequestCloseIngreso;
+    };
+  }, [isSidebar, handleRequestClose]);
+
   const handleCrearPresupuesto = async () => {
     if (!orden || !cliente || !vehiculo) return;
     if (presupuestoId) {
-      router.push(`/presupuestos/${presupuestoId}`);
+      setIngresoSidebarOpen(false);
+      setPresupuestoSidebarOpen(true, presupuestoId);
       return;
     }
     setCreatingPresupuesto(true);
@@ -280,7 +388,8 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         presupuestoId: nuevoPresupuestoId
       }).catch(err => console.error("Error al enviar mensaje de presupuesto:", err));
 
-      router.push(`/presupuestos/${nuevoPresupuestoId}`);
+      setIngresoSidebarOpen(false);
+      setPresupuestoSidebarOpen(true, nuevoPresupuestoId);
     } catch (error) {
       console.error(error);
       toast.error("Error al crear el presupuesto");
@@ -292,8 +401,9 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   const handleCrearOrden = async () => {
     if (!orden?.id) return;
     if (orden.numeroOrden) {
-      // Already converted, navigate to ordenes
-      router.push(`/ordenes/detalle?id=${orden.id}`);
+      // Already converted, open orden sidebar
+      setIngresoSidebarOpen(false);
+      setOrdenSidebarOpen(true, orden.id);
       return;
     }
     setCreatingOrden(true);
@@ -464,7 +574,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
       nuevos = [...tecnicosAsignados, tecnico];
     }
     setTecnicosAsignados(nuevos);
-    updateOrden(ingresoId, { personalAsignado: nuevos }).catch(console.error);
   };
 
   const toggleTempTecnico = (tecnico: AppUser) => {
@@ -495,8 +604,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
       }
       const nuevasFotos = [...fotos, ...urls.map(url => ({ url, descripcion: "" }))];
       setFotos(nuevasFotos);
-      await updateOrden(ingresoId, { fotosDiagnostico: nuevasFotos });
-      toast.success("Foto(s) subida(s)", { id: toastId });
+      toast.success("Foto(s) cargada(s) localmente", { id: toastId });
     } catch (error) {
       console.error(error);
       toast.error("Error al subir foto", { id: toastId });
@@ -509,7 +617,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   const handleUpdateFoto = (url: string, descripcion: string) => {
     const nuevasFotos = fotos.map(f => f.url === url ? { ...f, descripcion } : f);
     setFotos(nuevasFotos);
-    updateOrden(ingresoId, { fotosDiagnostico: nuevasFotos }).catch(console.error);
   };
 
   const handleRemoveFoto = async (index: number) => {
@@ -517,22 +624,11 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
     const nuevasFotos = [...fotos];
     nuevasFotos.splice(index, 1);
     setFotos(nuevasFotos);
-    handleSave(); // Guardamos el cambio de arreglo
   };
 
   const handleSaveFirma = async (signatureDataUrl: string) => {
-    setSaving(true);
-    const toastId = toast.loading("Guardando firma...");
-    try {
-      await updateOrden(ingresoId, { firmaClienteUrl: signatureDataUrl });
-      setOrden(prev => prev ? { ...prev, firmaClienteUrl: signatureDataUrl } : null);
-      toast.success("Firma registrada con éxito", { id: toastId });
-    } catch (error) {
-      console.error("Error al registrar la firma:", error);
-      toast.error("Error al registrar la firma", { id: toastId });
-    } finally {
-      setSaving(false);
-    }
+    setFirmaClienteUrl(signatureDataUrl);
+    toast.success("Firma registrada localmente. Recuerde guardar los cambios.");
   };
 
   if (loading || !orden || !cliente || !vehiculo) {
@@ -556,14 +652,22 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
     <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50 dark:bg-slate-900" : "h-screen"}`}>
 
       {/* Header Bar */}
-      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] ${isSidebar ? "px-4 py-2 mb-2" : "px-6 py-3 mb-3"} shadow-sm`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 py-3 mb-3 shadow-sm">
         <div className="flex items-center gap-2">
-          {!isSidebar && (
-            <Link href="/ingresos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center">
+          {!isSidebar ? (
+            <Link href="/ingresos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-555 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center">
               <ChevronLeft size={20} />
             </Link>
+          ) : (
+            <button 
+              onClick={handleRequestClose}
+              className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-555 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center"
+              title="Cerrar panel"
+            >
+              <ChevronLeft size={20} />
+            </button>
           )}
-          <h1 className={`${isSidebar ? "text-sm" : "text-lg"} font-extrabold flex items-center gap-1`}>
+          <h1 className="text-lg font-extrabold flex items-center gap-1">
             Ingreso <span className="text-blue-600 font-mono">#{String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}</span>
             {orden.numeroOrden && <span className="ml-1.5 badge bg-green-50 text-green-700 text-[10px] px-1 py-0.5 font-bold uppercase">ORD-{String(orden.numeroOrden).padStart(5, "0")}</span>}
           </h1>
@@ -571,32 +675,45 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Botón de Guardar */}
+          {isDirty && (
+            <button 
+              disabled={saving}
+              onClick={handleSave}
+              className="bg-blue-600 hover:bg-blue-700 text-white border border-blue-600 font-bold text-xs px-3.5 py-1.5 rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors"
+            >
+               {saving ? <Loader2 size={12} className="animate-spin" /> : "Guardar"}
+            </button>
+          )}
+
+          {/* Botón de Presupuesto (Icono) */}
           <button 
-            className={`bg-white hover:bg-orange-50 border border-orange-200 text-orange-600 font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`}
-            onClick={() => setIsRetirarModalOpen(true)}
-            disabled={saving}
-          >
-             {isSidebar ? "Retirar" : "Retirar vehículo"}
-          </button>
-          <button 
-            className={`bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`} 
+            type="button"
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors" 
             onClick={handleCrearPresupuesto}
             disabled={creatingPresupuesto || saving}
+            title={presupuestoId ? "Ver presupuesto" : "Crear presupuesto"}
           >
-             {creatingPresupuesto ? <Loader2 size={12} className="animate-spin" /> : presupuestoId ? (isSidebar ? "Presupuesto" : "Ver presupuesto") : (isSidebar ? "Crear Pres." : "Crear presupuesto")}
+            {creatingPresupuesto ? (
+              <Loader2 size={14} className="animate-spin text-blue-600" />
+            ) : (
+              <FileText size={14} className={presupuestoId ? "text-emerald-600" : ""} />
+            )}
           </button>
+
+          {/* Botón de Orden (Icono) */}
           <button 
-            className={`bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-[var(--border)] text-slate-700 dark:text-slate-200 font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`} 
-            onClick={handleSave}
-          >
-             Guardar
-          </button>
-          <button 
-            className={`bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5"} rounded-lg shadow-sm flex items-center gap-1 cursor-pointer outline-none transition-colors`}
+            type="button"
+            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-50 bg-transparent border-none cursor-pointer flex items-center justify-center transition-colors"
             onClick={handleCrearOrden}
             disabled={creatingOrden || saving}
+            title={orden?.numeroOrden ? `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}` : "Crear orden"}
           >
-            {creatingOrden ? <Loader2 size={12} className="animate-spin" /> : orden?.numeroOrden ? (isSidebar ? "Ver Orden" : `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}`) : (isSidebar ? "+ Orden" : "+ Crear orden")}
+            {creatingOrden ? (
+              <Loader2 size={14} className="animate-spin text-blue-600" />
+            ) : (
+              <Wrench size={14} className={orden?.numeroOrden ? "text-blue-600" : ""} />
+            )}
           </button>
 
           {/* Botón de Descargar PDF (Solo ícono) */}
@@ -642,10 +759,25 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
             {isMenuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
-                <div className="absolute right-0 mt-2 w-42 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
                   <button
                     type="button"
-                    onClick={handleEliminarIngreso}
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsRetirarModalOpen(true);
+                    }}
+                    disabled={saving}
+                    className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                  >
+                    <LogOut size={12} className="text-orange-500" />
+                    Retirar vehículo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      handleEliminarIngreso();
+                    }}
                     className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
                   >
                     <Trash2 size={12} />
@@ -659,10 +791,11 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
       </div>
 
       {/* Columns Layout */}
-      <div className={`flex-1 overflow-y-auto ${isSidebar ? "flex flex-col gap-4 px-4 pb-4 custom-scrollbar" : "flex gap-6 overflow-hidden px-6 pb-4"}`}>
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-y-auto lg:overflow-hidden px-6 pb-4 custom-scrollbar lg:custom-scrollbar-none">
         
         {/* Column 1: Cliente Tarjeta + Chat */}
-        <div className={`${isSidebar ? "w-full shrink-0" : "min-w-0 flex flex-col h-full gap-4 overflow-hidden"}`} style={isSidebar ? undefined : { flex: "1.2 1 0%" }}>
+        {!(isSidebar && chatAbierto) && (
+          <div className="w-full lg:min-w-0 flex flex-col lg:h-full gap-4 shrink-0 lg:shrink" style={{ flex: "1.2 1 0%" }}>
             {/* Tarjeta de Cliente */}
             {cliente && (
               <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
@@ -734,22 +867,21 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
             )}
 
           {/* Chat Container */}
-          {!isSidebar && (
-            <div className="flex-1 min-h-0 flex flex-col border border-[var(--border)] rounded-xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-              <ChatOrden
-                ordenId={ingresoId}
-                personalAsignado={orden.personalAsignado || []}
-                todosLosUsuarios={todosLosUsuarios}
-                onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
-                cliente={null}
-                recibidoPor={user}
-              />
-            </div>
-          )}
-        </div>
+          <div className="flex-1 min-h-[400px] lg:min-h-0 flex flex-col border border-[var(--border)] rounded-xl bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+            <ChatOrden
+              ordenId={ingresoId}
+              personalAsignado={orden.personalAsignado || []}
+              todosLosUsuarios={todosLosUsuarios}
+              onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
+              cliente={null}
+              recibidoPor={user}
+            />
+          </div>
+          </div>
+        )}
 
         {/* Column 2: Vehicle details */}
-        <div className={`${isSidebar ? "w-full shrink-0" : "min-w-0 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar border-x border-[var(--border)] px-6"}`} style={isSidebar ? undefined : { flex: "2 1 0%" }}>
+        <div className="w-full lg:min-w-0 flex flex-col gap-6 lg:overflow-y-auto pr-2 custom-scrollbar lg:border-x lg:border-[var(--border)] lg:px-6" style={{ flex: "2 1 0%" }}>
             {/* Tarjeta de Vehículo */}
             {vehiculo && (
               <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
@@ -817,7 +949,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                   placeholder="Ej: 85000" 
                   value={km}
                   onChange={(e) => setKm(e.target.value)}
-                  onBlur={handleSave}
                 />
               </div>
               <div>
@@ -827,7 +958,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                   value={tipoServicio}
                   onChange={(e) => {
                     setTipoServicio(e.target.value as OrdenTrabajo["tipoServicio"]);
-                    setTimeout(handleSave, 100);
                   }}
                 >
                   <option value="Mantenimiento">Mantenimiento</option>
@@ -850,7 +980,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                       className={`flex-1 font-bold text-xs transition-colors ${isFilled ? selectedColor : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"}`}
                       onClick={() => {
                         setNivelCombustible(nivel.value);
-                        setTimeout(handleSave, 100);
                       }}
                     >
                       {nivel.label}
@@ -867,7 +996,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                 placeholder="Escribe la falla o requerimiento del cliente"
                 value={motivo}
                 onChange={(e) => setMotivo(e.target.value)}
-                onBlur={handleSave}
               />
             </div>
 
@@ -878,7 +1006,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                 placeholder="Observaciones adicionales..."
                 value={observaciones}
                 onChange={(e) => setObservaciones(e.target.value)}
-                onBlur={handleSave}
               />
             </div>
 
@@ -906,7 +1033,6 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                         checked={item.checked}
                         onChange={() => {
                           toggleChecklistItem(index);
-                          setTimeout(handleSave, 100);
                         }}
                       />
                       <span className="text-slate-700 dark:text-slate-200">{item.label}</span>
@@ -921,7 +1047,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
           </div>
 
         {/* Column 3: Inspections */}
-        <div className={`${isSidebar ? "w-full shrink-0" : "min-w-0 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar"}`} style={isSidebar ? undefined : { flex: "1.2 1 0%" }}>
+        <div className="w-full lg:min-w-0 flex flex-col gap-6 lg:overflow-y-auto pr-2 custom-scrollbar" style={{ flex: "1.2 1 0%" }}>
             {/* Flujo de Recepción (Stepper Vertical) */}
             <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4">
               <h3 className="font-bold flex items-center gap-2 text-[var(--text-secondary)] text-xs uppercase tracking-wider">
@@ -993,9 +1119,15 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                           3. Presupuesto
                         </span>
                         {completado ? (
-                          <Link href={`/presupuestos/${presupuestoId}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
+                          <button
+                            onClick={() => {
+                              setIngresoSidebarOpen(false);
+                              setPresupuestoSidebarOpen(true, presupuestoId);
+                            }}
+                            className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline text-left border-none bg-transparent p-0 cursor-pointer"
+                          >
                             {presupuesto ? `#PRE-${String(presupuesto.numeroCotizacion || presupuesto.numero || 0).padStart(4, "0")}` : "Ver presupuesto"}
-                          </Link>
+                          </button>
                         ) : (
                           <button 
                             onClick={handleCrearPresupuesto}
@@ -1027,9 +1159,15 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                           4. Orden de Trabajo
                         </span>
                         {completado ? (
-                          <Link href={`/ordenes/detalle?id=${orden.id}`} className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline">
+                          <button
+                            onClick={() => {
+                              setIngresoSidebarOpen(false);
+                              setOrdenSidebarOpen(true, orden.id);
+                            }}
+                            className="text-[10px] text-green-600 hover:text-green-700 font-semibold mt-0.5 hover:underline text-left border-none bg-transparent p-0 cursor-pointer"
+                          >
                             #ORD-{String(orden.numeroOrden).padStart(5, "0")}
-                          </Link>
+                          </button>
                         ) : (
                           <button 
                             onClick={handleCrearOrden}
@@ -1121,7 +1259,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         vehiculo={vehiculo}
         danos={danos}
         onChangeDanos={setDanos}
-        onSave={handleSave}
+        onSave={() => {}}
         fotos={fotos}
         onUploadFoto={handleUploadFoto}
         onUpdateFoto={handleUpdateFoto}

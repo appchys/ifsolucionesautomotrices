@@ -20,7 +20,7 @@ import {
   Clock, 
   Eye, 
   ArrowRight,
-  ClipboardList,
+  FileDown,
   Hourglass,
   Package,
   UserCheck,
@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import OrdenDetalleSidebar from "@/components/ordenes/OrdenDetalleSidebar";
+import { useUIStore } from "@/store";
 
 // Mapeo de columnas con sus respectivos estados de órdenes e iconos
 interface ColumnConfig {
@@ -51,7 +52,7 @@ const COLUMNAS: ColumnConfig[] = [
   { 
     id: "ingresados", 
     title: "Ingresados", 
-    icon: ClipboardList, 
+    icon: FileDown, 
     colorClass: "border-t-4 border-purple-500", 
     badgeColorClass: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400",
     dotColor: "#a855f7",
@@ -142,6 +143,7 @@ const COLUMNAS: ColumnConfig[] = [
 
 export default function TableroKanban() {
   const router = useRouter();
+  const { setIngresoSidebarOpen, setOrdenSidebarOpen } = useUIStore();
   const [allDocs, setAllDocs] = useState<OrdenTrabajo[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, Cliente>>({});
   const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>({});
@@ -716,9 +718,9 @@ export default function TableroKanban() {
                             onDragEnd={handleDragEnd}
                             onClick={() => {
                               if (esIngresoCard) {
-                                router.push(`/ingresos/${o.id}`);
+                                setIngresoSidebarOpen(true, o.id);
                               } else {
-                                router.push(`/ordenes/detalle?id=${o.id}`);
+                                setOrdenSidebarOpen(true, o.id);
                               }
                             }}
                             className="group relative bg-[var(--bg-card)] border border-[var(--border)] hover:border-[var(--accent)] hover:shadow-md hover:scale-[1.01] transition-all rounded-xl p-3.5 cursor-grab active:cursor-grabbing text-xs space-y-2.5 shadow-sm"
@@ -753,13 +755,13 @@ export default function TableroKanban() {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (esIngresoCard) {
-                                      router.push(`/ingresos/${o.id}`);
+                                      setIngresoSidebarOpen(true, o.id);
                                     } else {
-                                      router.push(`/ordenes/detalle?id=${o.id}`);
+                                      setOrdenSidebarOpen(true, o.id);
                                     }
                                   }}
                                   className="w-6 h-6 rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border)] flex items-center justify-center cursor-pointer transition-colors"
-                                  title="Ver página de detalle"
+                                  title="Ver detalle"
                                 >
                                   <Eye size={12} />
                                 </button>

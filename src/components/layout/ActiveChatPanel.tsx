@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { X, ClipboardList, FileDown, FileText, Wrench, ArrowLeft, ChevronRight, Copy, User, Phone, Mail, ClipboardCheck } from "lucide-react";
+import { doc, onSnapshot, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { X, ClipboardList, FileDown, FileText, Wrench, ArrowLeft, ChevronRight, Copy, User, Phone, Mail, ClipboardCheck, Loader2 } from "lucide-react";
 import { useChatStore, useUIStore, useAuthStore } from "@/store";
-import { getUsuarios, updateOrden, uploadOrdenFoto, getIngresoOrigenDePresupuesto, getPresupuestoPorIngreso } from "@/lib/services";
+import { getUsuarios, updateOrden, uploadOrdenFoto, getIngresoOrigenDePresupuesto, getPresupuestoPorIngreso, createOrdenConItems, convertirIngresoAOrden, sendMensajeOrden } from "@/lib/services";
 import { db } from "@/lib/firebase";
 import { OrdenTrabajo, AppUser, Vehiculo, Cliente, DanoVehiculo, FotoDiagnostico } from "@/types";
 import ChatOrden from "../ordenes/ChatOrden";
@@ -87,9 +87,23 @@ export default function ActiveChatPanel() {
     cargarRelaciones();
   }, [orden]);
 
-  // Si cambia el chat activo, cerramos el menú de detalles
+  // Si cambia el chat activo, cerramos el menú de detalles y controlamos pointer events
+  const [pointerEventsEnabled, setPointerEventsEnabled] = useState(false);
+
   useEffect(() => {
     setIsMenuOpen(false);
+    // Cerrar el modal de inspección al cambiar de chat para que no persista entre sesiones
+    setIsModalInspeccionOpen(false);
+
+    if (activeChatId) {
+      setPointerEventsEnabled(false);
+      const timer = setTimeout(() => {
+        setPointerEventsEnabled(true);
+      }, 300); // 300ms de retardo que coincide con la transición CSS
+      return () => clearTimeout(timer);
+    } else {
+      setPointerEventsEnabled(false);
+    }
   }, [activeChatId]);
 
   // Estados locales para el modal de inspección
@@ -110,6 +124,9 @@ export default function ActiveChatPanel() {
   const handleSaveInspeccion = async () => {
     if (!activeChatId) return;
     try {
+      const teniaInspeccion = (orden?.inspeccionVisual?.danos?.length || 0) > 0 || (orden?.fotoUrls?.length || 0) > 0;
+      const tieneInspeccionAhora = danos.length > 0 || fotos.length > 0;
+
       await updateOrden(activeChatId, {
         inspeccionVisual: {
           ...orden?.inspeccionVisual,
@@ -118,11 +135,153 @@ export default function ActiveChatPanel() {
         notasInternas: observaciones,
         fotoUrls: fotos.map((f) => f.url)
       });
+
+      // Si antes no tenía inspección y ahora sí, enviamos el mensaje del sistema
+      if (!teniaInspeccion && tieneInspeccionAhora) {
+        await sendMensajeOrden(activeChatId, {
+          autorId: "sistema",
+          autorNombre: "Sistema",
+          autorRole: "admin",
+          texto: `Inspección visual realizada por ${user?.displayName || "un técnico"}.`,
+          sistema: true,
+          accionSistema: "inspeccion" as any,
+          tecnicoAfectadoId: user?.uid || "",
+          tecnicoAfectadoNombre: user?.displayName || "Técnico"
+        }).catch(err => console.error("Error al enviar mensaje de inspección:", err));
+      }
+
       toast.success("Inspección guardada correctamente");
       setIsModalInspeccionOpen(false);
     } catch (err) {
       console.error(err);
       toast.error("Error al guardar inspección");
+    }
+  };
+
+  const [creatingDocument, setCreatingDocument] = useState(false);
+
+  const handleCrearIngreso = async () => {
+    if (!orden || !orden.id || !vehiculo || !cliente || creatingDocument) return;
+    setCreatingDocument(true);
+    const toastId = toast.loading("Creando ingreso...");
+    try {
+      const nuevoIngresoId = await createOrdenConItems({
+        vehiculoId: orden.vehiculoId,
+        clienteId: orden.clienteId,
+        estado: "En Diagnóstico",
+        tipoServicio: orden.tipoServicio || "Mantenimiento",
+        motivo: "Ingreso derivado de la cotización " + (orden.numeroCotizacion ?? orden.numero ?? ""),
+        kilometrajeIngreso: orden.kilometrajeIngreso || 0,
+        nivelCombustible: orden.nivelCombustible || "1/2",
+        checklistInventario: orden.checklistInventario || [],
+        inspeccionVisual: orden.inspeccionVisual || { danos: [] },
+        esCotizacion: false,
+      }, []);
+
+      // Obtener el número de ingreso del nuevo documento creado para vincular
+      const nuevoIngresoDoc = await getDoc(doc(db, "ordenesTrabajo", nuevoIngresoId));
+      const numIngreso = nuevoIngresoDoc.data()?.numeroIngreso;
+      
+      await updateDoc(doc(db, "ordenesTrabajo", orden.id), {
+        motivo: `Cotización derivada del ingreso ${numIngreso}`,
+        updatedAt: serverTimestamp()
+      });
+
+      toast.success("Ingreso creado con éxito", { id: toastId });
+      
+      await sendMensajeOrden(orden.id, {
+        autorId: "sistema",
+        autorNombre: "Sistema",
+        autorRole: "admin",
+        texto: `Ingreso creado a partir de este presupuesto por ${user?.displayName || "un técnico"}.`,
+        sistema: true,
+        tecnicoAfectadoId: user?.uid || "",
+        tecnicoAfectadoNombre: user?.displayName || "Técnico"
+      }).catch(err => console.error("Error al enviar mensaje de ingreso:", err));
+
+      setIsMenuOpen(false);
+      setIngresoSidebarOpen(true, nuevoIngresoId);
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al crear el ingreso", { id: toastId });
+    } finally {
+      setCreatingDocument(false);
+    }
+  };
+
+  const handleCrearPresupuesto = async () => {
+    if (!orden || !orden.id || !vehiculo || !cliente || creatingDocument) return;
+    setCreatingDocument(true);
+    const toastId = toast.loading("Creando presupuesto...");
+    try {
+      const nuevoPresupuestoId = await createOrdenConItems({
+        vehiculoId: orden.vehiculoId,
+        clienteId: orden.clienteId,
+        estado: "En Reparación",
+        tipoServicio: orden.tipoServicio || "Mantenimiento",
+        motivo: "Cotización derivada del ingreso " + (orden.numeroIngreso ?? orden.numero ?? ""),
+        kilometrajeIngreso: orden.kilometrajeIngreso || 0,
+        nivelCombustible: orden.nivelCombustible || "1/2",
+        checklistInventario: orden.checklistInventario || [],
+        inspeccionVisual: orden.inspeccionVisual || { danos: [] },
+        esCotizacion: true,
+      }, []);
+
+      // Disparar recarga en la orden de ingreso
+      await updateDoc(doc(db, "ordenesTrabajo", orden.id), {
+        updatedAt: serverTimestamp()
+      });
+
+      toast.success("Presupuesto creado con éxito", { id: toastId });
+
+      await sendMensajeOrden(orden.id, {
+        autorId: "sistema",
+        autorNombre: "Sistema",
+        autorRole: "admin",
+        texto: `Presupuesto creado por ${user?.displayName || "un técnico"}.`,
+        sistema: true,
+        accionSistema: "presupuesto",
+        tecnicoAfectadoId: user?.uid || "",
+        tecnicoAfectadoNombre: user?.displayName || "Técnico",
+        presupuestoId: nuevoPresupuestoId
+      }).catch(err => console.error("Error al enviar mensaje de presupuesto:", err));
+
+      setIsMenuOpen(false);
+      setPresupuestoSidebarOpen(true, nuevoPresupuestoId);
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al crear el presupuesto", { id: toastId });
+    } finally {
+      setCreatingDocument(false);
+    }
+  };
+
+  const handleCrearOrden = async () => {
+    if (!orden?.id || creatingDocument) return;
+    setCreatingDocument(true);
+    const toastId = toast.loading("Creando orden...");
+    try {
+      const numOrden = await convertirIngresoAOrden(orden.id);
+      toast.success(`Orden #ORD-${String(numOrden).padStart(5, "0")} creada`, { id: toastId });
+
+      await sendMensajeOrden(orden.id, {
+        autorId: "sistema",
+        autorNombre: "Sistema",
+        autorRole: "admin",
+        texto: `Orden de trabajo creada por ${user?.displayName || "un técnico"}.`,
+        sistema: true,
+        accionSistema: "orden",
+        tecnicoAfectadoId: user?.uid || "",
+        tecnicoAfectadoNombre: user?.displayName || "Técnico"
+      }).catch(err => console.error("Error al enviar mensaje de orden de trabajo:", err));
+
+      setIsMenuOpen(false);
+      setOrdenSidebarOpen(true, orden.id);
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al crear la orden", { id: toastId });
+    } finally {
+      setCreatingDocument(false);
     }
   };
 
@@ -250,12 +409,21 @@ export default function ActiveChatPanel() {
       const chatPanelEl = document.getElementById("active-chat-panel");
       const inboxPanelEl = document.getElementById("chat-inbox-panel");
       const toggleButtonEl = document.getElementById("sidebar-chat-toggle");
+      // No cerrar si el click ocurre dentro de sidebars relacionados o el modal de inspección
+      const ingresoSidebarEl = document.getElementById("ingreso-sidebar-panel");
+      const presupuestoSidebarEl = document.getElementById("presupuesto-sidebar-panel");
+      const ordenSidebarEl = document.getElementById("orden-sidebar-panel");
+      const modalInspeccionEl = document.getElementById("modal-inspeccion-overlay");
 
       if (
         chatPanelEl &&
         !chatPanelEl.contains(event.target as Node) &&
         (!inboxPanelEl || !inboxPanelEl.contains(event.target as Node)) &&
-        (!toggleButtonEl || !toggleButtonEl.contains(event.target as Node))
+        (!toggleButtonEl || !toggleButtonEl.contains(event.target as Node)) &&
+        (!ingresoSidebarEl || !ingresoSidebarEl.contains(event.target as Node)) &&
+        (!presupuestoSidebarEl || !presupuestoSidebarEl.contains(event.target as Node)) &&
+        (!ordenSidebarEl || !ordenSidebarEl.contains(event.target as Node)) &&
+        (!modalInspeccionEl || !modalInspeccionEl.contains(event.target as Node))
       ) {
         setActiveChatId(null);
       }
@@ -279,6 +447,10 @@ export default function ActiveChatPanel() {
     };
   }, [orden, vehiculo, cliente]);
 
+  const hasInspeccion = useMemo(() => {
+    return (orden?.inspeccionVisual?.danos?.length || 0) > 0 || (orden?.fotoUrls?.length || 0) > 0;
+  }, [orden]);
+
   // Si no hay chat activo o la bandeja de entrada está cerrada, no mostramos nada
   if (!activeChatId || !isInboxOpen) return null;
 
@@ -296,8 +468,8 @@ export default function ActiveChatPanel() {
       iconColor = "text-purple-400 bg-purple-500/10";
     } else if (populatedOrden.numeroOrden) {
       docType = `Orden #${populatedOrden.numeroOrden}`;
-      Icon = ClipboardList;
-      iconColor = "text-emerald-400 bg-emerald-500/10";
+      Icon = Wrench;
+      iconColor = "text-blue-400 bg-blue-500/10";
     } else {
       docType = `Ingreso #${populatedOrden.numeroIngreso || populatedOrden.numero || ""}`;
       Icon = FileDown;
@@ -320,12 +492,14 @@ export default function ActiveChatPanel() {
   }
 
   return (
-    <div
-      id="active-chat-panel"
-      className={`active-chat-panel ${activeChatId ? "open" : ""} ${
-        sidebarOpen ? "sidebar-open-offset" : ""
-      }`}
-    >
+    <>
+      <div
+        id="active-chat-panel"
+        className={`active-chat-panel ${activeChatId ? "open" : ""} ${
+          sidebarOpen ? "sidebar-open-offset" : ""
+        }`}
+        style={{ pointerEvents: pointerEventsEnabled ? "auto" : "none" }}
+      >
       {/* Header */}
       <div className="chat-inbox-header justify-between flex items-center bg-[var(--bg-primary)] border-b border-[var(--border-light)] px-3 py-2">
         <div 
@@ -412,68 +586,111 @@ export default function ActiveChatPanel() {
             </div>
 
             {/* Fila de Botones Rápidos */}
-            <div className="grid grid-cols-3 gap-2">
-               {/* Botón Ingreso */}
+            <div className="grid grid-cols-4 gap-1.5">
+              {/* Botón Ingreso */}
               <button
                 type="button"
                 id="btn-abrir-ingreso-sidebar"
-                onClick={() => ingresoIdRel && setIngresoSidebarOpen(true, ingresoIdRel)}
-                disabled={!ingresoIdRel}
-                className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
+                onClick={() => {
+                  if (ingresoIdRel) {
+                    setIngresoSidebarOpen(true, ingresoIdRel);
+                    setIsMenuOpen(false);
+                  } else {
+                    void handleCrearIngreso();
+                  }
+                }}
+                disabled={creatingDocument}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 cursor-pointer active:scale-95 ${
                   ingresoIdRel
-                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer active:scale-95 text-indigo-600 dark:text-indigo-400"
-                    : "border-slate-100 dark:border-slate-900 opacity-40 cursor-not-allowed text-slate-400"
+                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400"
+                    : "border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-indigo-500"
                 }`}
               >
-                <FileDown size={18} />
-                <span className="text-[9px] font-bold mt-1.5 text-slate-700 dark:text-slate-350">
+                <FileDown size={16} />
+                <span className="text-[9px] font-bold mt-1 text-slate-700 dark:text-slate-350">
                   Ingreso
                 </span>
-                {!ingresoIdRel && (
-                  <span className="text-[7px] text-slate-400 font-medium">No disponible</span>
-                )}
+                <span className="text-[7px] font-medium leading-none mt-0.5">
+                  {ingresoIdRel ? "Ver" : "+ Crear"}
+                </span>
+              </button>
+
+              {/* Botón Inspección */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsModalInspeccionOpen(true);
+                }}
+                disabled={creatingDocument}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 cursor-pointer active:scale-95 ${
+                  hasInspeccion
+                    ? "border-slate-200/80 dark:border-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-green-600 dark:text-green-400"
+                    : "border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-green-500"
+                }`}
+              >
+                <ClipboardCheck size={16} />
+                <span className="text-[9px] font-bold mt-1 text-slate-700 dark:text-slate-350 truncate max-w-full">
+                  Inspección
+                </span>
+                <span className="text-[7px] font-medium leading-none mt-0.5">
+                  {hasInspeccion ? "Ver" : "+ Registrar"}
+                </span>
               </button>
 
               {/* Botón Presupuesto */}
               <button
                 type="button"
                 id="btn-abrir-presupuesto-sidebar"
-                onClick={() => presupuestoIdRel && setPresupuestoSidebarOpen(true, presupuestoIdRel)}
-                disabled={!presupuestoIdRel}
-                className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
+                onClick={() => {
+                  if (presupuestoIdRel) {
+                    setPresupuestoSidebarOpen(true, presupuestoIdRel);
+                    setIsMenuOpen(false);
+                  } else {
+                    void handleCrearPresupuesto();
+                  }
+                }}
+                disabled={creatingDocument}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 cursor-pointer active:scale-95 ${
                   presupuestoIdRel
-                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer active:scale-95 text-amber-500 dark:text-amber-400"
-                    : "border-slate-100 dark:border-slate-900 opacity-40 cursor-not-allowed text-slate-400"
+                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-amber-500 dark:text-amber-400"
+                    : "border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-500"
                 }`}
               >
-                <FileText size={18} />
-                <span className="text-[9px] font-bold mt-1.5 text-slate-700 dark:text-slate-350">
+                <FileText size={16} />
+                <span className="text-[9px] font-bold mt-1 text-slate-700 dark:text-slate-350 truncate max-w-full">
                   Presupuesto
                 </span>
-                {!presupuestoIdRel && (
-                  <span className="text-[7px] text-slate-400 font-medium">No creado</span>
-                )}
+                <span className="text-[7px] font-medium leading-none mt-0.5">
+                  {presupuestoIdRel ? "Ver" : "+ Crear"}
+                </span>
               </button>
 
               {/* Botón Orden */}
               <button
                 type="button"
                 id="btn-abrir-orden-sidebar"
-                onClick={() => ordenIdRel && setOrdenSidebarOpen(true, ordenIdRel)}
-                disabled={!ordenIdRel}
-                className={`flex flex-col items-center justify-center p-3 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 ${
+                onClick={() => {
+                  if (ordenIdRel) {
+                    setOrdenSidebarOpen(true, ordenIdRel);
+                    setIsMenuOpen(false);
+                  } else {
+                    void handleCrearOrden();
+                  }
+                }}
+                disabled={creatingDocument}
+                className={`flex flex-col items-center justify-center p-2 rounded-xl border bg-white dark:bg-slate-850 shadow-sm transition-all duration-200 cursor-pointer active:scale-95 ${
                   ordenIdRel
-                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer active:scale-95 text-emerald-600 dark:text-emerald-400"
-                    : "border-slate-100 dark:border-slate-900 opacity-40 cursor-not-allowed text-slate-400"
+                    ? "border-slate-200/80 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-blue-600 dark:text-blue-400"
+                    : "border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-400 hover:text-blue-500"
                 }`}
               >
-                <ClipboardList size={18} />
-                <span className="text-[9px] font-bold mt-1.5 text-slate-700 dark:text-slate-350">
+                <Wrench size={16} />
+                <span className="text-[9px] font-bold mt-1 text-slate-700 dark:text-slate-350 truncate max-w-full">
                   Orden
                 </span>
-                {!ordenIdRel && (
-                  <span className="text-[7px] text-slate-400 font-medium">No creada</span>
-                )}
+                <span className="text-[7px] font-medium leading-none mt-0.5">
+                  {ordenIdRel ? "Ver" : "+ Crear"}
+                </span>
               </button>
             </div>
 
@@ -572,22 +789,24 @@ export default function ActiveChatPanel() {
         </div>
       )}
 
-      {vehiculo && (
-        <ModalInspeccion
-          isOpen={isModalInspeccionOpen}
-          onClose={() => setIsModalInspeccionOpen(false)}
-          vehiculo={vehiculo}
-          danos={danos}
-          onChangeDanos={setDanos}
-          onSave={handleSaveInspeccion}
-          fotos={fotos}
-          onUploadFoto={handleUploadFoto}
-          onUpdateFoto={handleUpdateFoto}
-          onRemoveFoto={handleRemoveFoto}
-          observaciones={observaciones}
-          onChangeObservaciones={setObservaciones}
-        />
-      )}
     </div>
-  );
+
+    {vehiculo && (
+      <ModalInspeccion
+        isOpen={isModalInspeccionOpen}
+        onClose={() => setIsModalInspeccionOpen(false)}
+        vehiculo={vehiculo}
+        danos={danos}
+        onChangeDanos={setDanos}
+        onSave={handleSaveInspeccion}
+        fotos={fotos}
+        onUploadFoto={handleUploadFoto}
+        onUpdateFoto={handleUpdateFoto}
+        onRemoveFoto={handleRemoveFoto}
+        observaciones={observaciones}
+        onChangeObservaciones={setObservaciones}
+      />
+    )}
+  </>
+);
 }

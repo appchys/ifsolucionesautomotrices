@@ -6,10 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowRight, Car, ClipboardList, Plus, Users, Wrench } from "lucide-react";
+import { ArrowRight, Car, ClipboardList, Plus, Users, Wrench, FileDown } from "lucide-react";
 import AppShell from "@/components/layout/AppShell";
 import { getDashboardStats, subscribeIngresosRecientes, type DashboardStats } from "@/lib/services";
 import { OrdenTrabajo } from "@/types";
+import { useUIStore } from "@/store";
 
 const ModalNuevoIngreso = dynamic(() => import("@/components/recepcion/ModalNuevoIngreso"), {
   ssr: false,
@@ -54,6 +55,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showNuevoIngreso, setShowNuevoIngreso] = useState(false);
   const router = useRouter();
+  const { setIngresoSidebarOpen } = useUIStore();
 
   useEffect(() => {
     let mounted = true;
@@ -100,17 +102,17 @@ export default function DashboardPage() {
     {
       label: "Ingresos",
       value: statsData.ingresos,
-      icon: ClipboardList,
-      color: "#2563eb",
-      bg: "rgba(37,99,235,0.12)",
+      icon: FileDown,
+      color: "#8b5cf6",
+      bg: "rgba(139,92,246,0.12)",
       trend: `${statsData.ingresosPendientes} pendientes`,
     },
     {
       label: "Ordenes Activas",
       value: statsData.ordenesActivas,
       icon: Wrench,
-      color: "#a78bfa",
-      bg: "rgba(139,92,246,0.12)",
+      color: "#2563eb",
+      bg: "rgba(37,99,235,0.12)",
       trend: `${statsData.ordenesFinalizadas} entregadas`,
     },
     {
@@ -178,7 +180,7 @@ export default function DashboardPage() {
           </div>
         ) : recientes.length === 0 ? (
           <div className="text-center py-10" style={{ color: "var(--text-muted)" }}>
-            <ClipboardList size={36} className="mx-auto mb-2 opacity-30" />
+            <FileDown size={36} className="mx-auto mb-2 opacity-30" />
             <p className="text-sm">No hay ingresos aun</p>
             <button
               onClick={() => setShowNuevoIngreso(true)}
@@ -236,7 +238,7 @@ export default function DashboardPage() {
                         return (
                           <tr
                             key={orden.id}
-                            onClick={() => router.push(`/ingresos/${orden.id}`)}
+                            onClick={() => setIngresoSidebarOpen(true, orden.id)}
                             className="cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                           >
                             <td>

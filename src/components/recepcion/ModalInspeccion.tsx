@@ -93,9 +93,18 @@ export default function ModalInspeccion({
   return (
     <>
       <div 
+        id="modal-inspeccion-overlay"
         className={`fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 pt-[calc(var(--header-height)+1rem)] transition-all duration-300 ${
           sidebarOpen ? "lg:pl-[calc(var(--sidebar-width)+1rem)]" : ""
         }`}
+        onMouseDown={(e) => {
+          // Bloquear la propagación al listener del documento (chat) en todos los casos
+          e.nativeEvent.stopImmediatePropagation();
+          // Si el click fue directo sobre el backdrop, cerrar el modal
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
       >
       <div className="bg-white dark:bg-[var(--bg-card)] rounded-2xl w-full max-w-5xl shadow-xl flex flex-col max-h-[90vh] lg:max-h-[85vh] overflow-hidden">
         

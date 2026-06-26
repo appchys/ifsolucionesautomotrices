@@ -130,9 +130,10 @@ interface VistaOrdenDetalleProps {
 
 export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaOrdenDetalleProps) {
   const router = useRouter();
-  const { sidebarOpen } = useUIStore();
+  const { sidebarOpen, setOrdenSidebarOpen } = useUIStore();
   const { user } = useAuthStore();
-  const { unreadCount } = useChatStore();
+  const { unreadCount, isInboxOpen, activeChatId } = useChatStore();
+  const chatVisible = isInboxOpen && !!activeChatId;
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -171,7 +172,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   const [notasInternas, setNotasInternas] = useState("");
 
   // Modals & Panels State
-  const [activeTab, setActiveTab] = useState<"Vehículo" | "Fotos" | "Notas" | "Diagnóstico" | "Informe" | "Chat">("Vehículo");
+  const [activeTab, setActiveTab] = useState<"Vehículo" | "Fotos" | "Notas" | "Informe" | "Chat">("Vehículo");
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
@@ -314,6 +315,11 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
     }
   }, [orden]);
 
+  useEffect(() => {
+    if (isSidebar && chatVisible && activeTab === "Chat") {
+      setActiveTab("Vehículo");
+    }
+  }, [isSidebar, chatVisible, activeTab]);
 
   // Save changes
   const handleSaveField = async (fields: Partial<OrdenTrabajo>) => {
@@ -958,17 +964,25 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
       {/* Top Header Navigation */}
       <div className={`flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] shadow-sm ${isSidebar ? "px-4 py-2.5 mb-3" : "px-6 py-3 mb-5"}`}>
         <div className="flex items-center gap-3">
-          {!isSidebar && (
+          {!isSidebar ? (
             <button
               onClick={() => router.back()}
-              className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-500 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center"
+              className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-550 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center"
               title="Volver"
+            >
+              <ChevronLeft size={20} />
+            </button>
+          ) : (
+            <button
+              onClick={() => setOrdenSidebarOpen(false)}
+              className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-555 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center"
+              title="Cerrar panel"
             >
               <ChevronLeft size={20} />
             </button>
           )}
           <div>
-            <h1 className={`${isSidebar ? "text-sm" : "text-lg"} font-extrabold flex items-center gap-2`}>
+            <h1 className="text-lg font-extrabold flex items-center gap-2">
               Orden <span className="text-blue-600 font-mono">#OT-{String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0")}</span>
             </h1>
             <div className="mt-0.5 leading-none flex">
@@ -1008,8 +1022,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
           </div>
           
           {/* Creation and Delivery Dates */}
-          {!isSidebar && (
-            <div className="flex items-center gap-3 text-xs border-l border-[var(--border)] pl-4">
+          <div className="flex items-center gap-3 text-xs border-l border-[var(--border)] pl-4">
               <div className="flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-md border border-[var(--border)]">
                 <span className="text-[var(--text-muted)] font-medium">Creación</span>
                 <input
@@ -1036,11 +1049,9 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                 />
               </div>
             </div>
-          )}
 
           {/* Technician Select Popover */}
-          {!isSidebar && (
-            <div className="relative border-l border-[var(--border)] pl-4">
+          <div className="relative border-l border-[var(--border)] pl-4">
               <button
                 type="button"
                 onClick={() => setIsTecnicoPopoverOpen(!isTecnicoPopoverOpen)}
@@ -1137,7 +1148,6 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                 </>
               )}
             </div>
-          )}
         </div>
 
         {/* Top actions & Payment */}
@@ -1301,10 +1311,10 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
 
 
       {/* Main 2-Column Grid */}
-      <div className={`flex flex-1 gap-6 min-h-0 ${isSidebar ? "flex-col overflow-y-auto px-4 pb-4 custom-scrollbar" : "overflow-hidden px-6 pb-6"}`}>
+      <div className="flex flex-col lg:flex-row flex-1 gap-6 min-h-0 overflow-y-auto lg:overflow-hidden px-6 pb-6 custom-scrollbar lg:custom-scrollbar-none">
         
         {/* Left Column (Items & Form) */}
-        <div className={`${isSidebar ? "w-full shrink-0" : "flex-1 flex flex-col gap-5 overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0"}`}>
+        <div className="w-full lg:flex-1 flex flex-col gap-5 lg:overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0">
           
 
 
@@ -1595,11 +1605,12 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
         </div>
 
         {/* Right Column (Sidebar Tabs) */}
-        <div className={`${isSidebar ? "w-full min-h-[450px]" : "w-[340px]"} border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0`}>
+        {!(isSidebar && chatVisible) && (
+          <div className="w-full lg:w-[340px] lg:h-full border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0 min-h-[450px] lg:min-h-0">
           {/* Tabs bar */}
           <div className="flex border-b border-[var(--border)] bg-slate-50/50 shrink-0">
-            {(["Vehículo", "Fotos", "Notas", "Diagnóstico", "Informe", "Chat"] as const)
-              .filter((tab) => !(isSidebar && tab === "Chat"))
+            {(["Vehículo", "Fotos", "Notas", "Informe", "Chat"] as const)
+              .filter((tab) => !(isSidebar && chatVisible && tab === "Chat"))
               .map((tab) => (
               <button
                 key={tab}
@@ -1691,25 +1702,16 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                 {/* MOTIVO DE INGRESO */}
                 <div className="form-group border-b border-[var(--border)] pb-4">
                   <div className="flex items-center justify-between mb-2">
-                    <label className="label">Motivo de Ingreso</label>
-                    <div className="flex items-center gap-3 text-[10px] font-semibold text-[var(--text-secondary)]">
-                      {["Diagnóstico", "Reparación", "Mantenimiento", "Garantía"].map((tipo) => (
-                        <label key={tipo} className="flex items-center gap-1 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="tipoServicio"
-                            className="text-blue-600 focus:ring-0 cursor-pointer w-3.5 h-3.5"
-                            checked={tipoServicio === tipo || (tipo === "Mantenimiento" && tipoServicio === "Mantenimiento")}
-                            onChange={() => {
-                              const parsedVal = tipo === "Diagnóstico" ? "Mantenimiento" : (tipo as TipoServicio);
-                              setTipoServicio(parsedVal);
-                              handleSaveField({ tipoServicio: parsedVal });
-                            }}
-                          />
-                          {tipo}
-                        </label>
-                      ))}
-                    </div>
+                    <label className="label mb-0">Motivo de Ingreso</label>
+                    <span className={`badge text-[10px] ${
+                      tipoServicio === "Reparación"
+                        ? "badge-yellow"
+                        : tipoServicio === "Garantía"
+                        ? "badge-purple"
+                        : "badge-green"
+                    }`}>
+                      {tipoServicio}
+                    </span>
                   </div>
                   <textarea
                     className="input w-full bg-slate-50/50 hover:bg-slate-50 border border-[var(--border)] text-xs rounded-lg"
@@ -1831,6 +1833,19 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                     )}
                   </div>
                 </div>
+
+                {/* Informe Técnico / Diagnóstico */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Informe Técnico / Diagnóstico</label>
+                  <textarea
+                    className="input w-full bg-slate-50/50"
+                    placeholder="Escriba aquí los detalles del diagnóstico y conclusiones..."
+                    value={informeTecnico}
+                    onChange={(e) => setInformeTecnico(e.target.value)}
+                    onBlur={() => handleSaveField({ informeTecnico })}
+                    rows={4}
+                  />
+                </div>
               </div>
             )}
 
@@ -1890,20 +1905,6 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
               </div>
             )}
 
-            {activeTab === "Diagnóstico" && (
-              <div className="space-y-3">
-                <label className="label">Informe Técnico / Diagnóstico</label>
-                <textarea
-                  className="input w-full bg-slate-50/50"
-                  placeholder="Escriba aquí los detalles del diagnóstico y conclusiones..."
-                  value={informeTecnico}
-                  onChange={(e) => setInformeTecnico(e.target.value)}
-                  onBlur={() => handleSaveField({ informeTecnico })}
-                  rows={10}
-                />
-              </div>
-            )}
-
             {activeTab === "Informe" && (
               <div className="space-y-4 py-4 text-center">
                 <FileText size={40} className="mx-auto text-slate-300 mb-2" />
@@ -1926,23 +1927,22 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Footer bar */}
-      <div className={`mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap justify-between items-center bg-[var(--bg-card)] py-2 shrink-0 rounded-xl shadow-sm gap-4 ${isSidebar ? "px-3 text-xs" : "px-4"}`}>
+      <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap justify-between items-center bg-[var(--bg-card)] py-2 shrink-0 rounded-xl shadow-sm gap-4 px-4">
         {/* Progress bar */}
-        {!isSidebar && (
-          <div className="flex items-center gap-2.5 w-60 text-xs">
-            <span className="font-extrabold text-[var(--text-secondary)]">Progreso</span>
-            <div className="flex-1 progress-bar h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div className="progress-fill h-full bg-blue-600" style={{ width: "0%" }}></div>
-            </div>
-            <span className="font-extrabold text-[var(--text-secondary)]">0%</span>
+        <div className="flex items-center gap-2.5 w-60 text-xs">
+          <span className="font-extrabold text-[var(--text-secondary)]">Progreso</span>
+          <div className="flex-1 progress-bar h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div className="progress-fill h-full bg-blue-600" style={{ width: "0%" }}></div>
           </div>
-        )}
+          <span className="font-extrabold text-[var(--text-secondary)]">0%</span>
+        </div>
 
         {/* Totals panel compact */}
-        <div className={`flex items-center text-xs font-semibold ${isSidebar ? "gap-3" : "gap-6"}`}>
+        <div className="flex items-center text-xs font-semibold gap-6">
           <div>
             <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Subtotal</span>
             <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>

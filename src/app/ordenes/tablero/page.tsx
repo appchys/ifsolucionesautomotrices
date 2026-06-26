@@ -2,12 +2,12 @@
 
 import AppShell from "@/components/layout/AppShell";
 import TableroKanban from "@/components/ordenes/TableroKanban";
-import { Plus } from "lucide-react";
 import { useState } from "react";
-import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
+import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
+import BotonNuevoPopover from "@/components/ordenes/BotonNuevoPopover";
 
 export default function TableroPage() {
-  const [showNuevaOrden, setShowNuevaOrden] = useState(false);
+  const [tipoNuevo, setTipoNuevo] = useState<"ingreso" | "presupuesto" | "orden" | null>(null);
 
   return (
     <AppShell>
@@ -17,12 +17,7 @@ export default function TableroPage() {
           <h1 className="page-title">Órdenes de Trabajo</h1>
           <p className="page-subtitle">Visualización y gestión del flujo de trabajo</p>
         </div>
-        <button 
-          onClick={() => setShowNuevaOrden(true)} 
-          className="btn-primary flex items-center gap-1.5"
-        >
-          <Plus size={16} /> Nueva Orden
-        </button>
+        <BotonNuevoPopover onSelect={(tipo) => setTipoNuevo(tipo)} />
       </div>
 
       {/* Componente del Tablero */}
@@ -31,13 +26,10 @@ export default function TableroPage() {
       </div>
 
       {/* Sidebar de Nueva Orden */}
-      {showNuevaOrden && (
-        <NuevaOrdenSidebar 
-          onClose={() => setShowNuevaOrden(false)} 
-          onSuccess={() => {
-            setShowNuevaOrden(false);
-            // La recarga es reactiva por la suscripción al tablero
-          }}
+      {tipoNuevo && (
+        <ModalNuevoIngreso
+          onClose={() => setTipoNuevo(null)}
+          tipoMode={tipoNuevo}
         />
       )}
     </AppShell>

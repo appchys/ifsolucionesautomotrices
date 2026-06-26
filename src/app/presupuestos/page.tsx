@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import AppShell from "@/components/layout/AppShell";
 import {
   subscribeOrdenes,
@@ -11,7 +11,7 @@ import {
 import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Loader2,
   Plus,
@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
 import { toast } from "react-hot-toast";
+import { useUIStore } from "@/store";
 
 const FILTROS = ["Todos", "Pendiente", "Aprobado"] as const;
 type FiltroPresupuesto = (typeof FILTROS)[number];
@@ -41,7 +42,7 @@ function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
 
 type MenuPosition = { id: string; top: number; left: number };
 
-export default function PresupuestosPage() {
+function PresupuestosPageContent() {
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, Cliente>>({});
   const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>(
@@ -56,6 +57,15 @@ export default function PresupuestosPage() {
   const [openMenu, setOpenMenu] = useState<MenuPosition | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const idParam = searchParams.get("id");
+  const { setPresupuestoSidebarOpen } = useUIStore();
+
+  useEffect(() => {
+    if (idParam) {
+      setPresupuestoSidebarOpen(true, idParam);
+    }
+  }, [idParam, setPresupuestoSidebarOpen]);
 
   const loadRelations = useCallback(async () => {
     try {
@@ -343,7 +353,7 @@ export default function PresupuestosPage() {
                         key={o.id}
                         className="hover:bg-[var(--bg-hover)] group cursor-pointer"
                         onClick={() =>
-                          router.push(`/presupuestos/${o.id}`)
+                          setPresupuestoSidebarOpen(true, o.id)
                         }
                       >
                         <td>
@@ -476,5 +486,17 @@ export default function PresupuestosPage() {
         />
       )}
     </AppShell>
+  );
+}
+
+export default function PresupuestosPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
+      </div>
+    }>
+      <PresupuestosPageContent />
+    </Suspense>
   );
 }

@@ -1,14 +1,17 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { deleteOrden, subscribeOrdenes, updateEstadoOrden, getClientes, getVehiculos } from "@/lib/services";
 import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, MoreVertical, Plus, Search, Trash2, Wrench } from "lucide-react";
 import { toast } from "react-hot-toast";
 import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
+import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
+import { useUIStore } from "@/store";
+import BotonNuevoPopover from "@/components/ordenes/BotonNuevoPopover";
 
 const ESTADOS: EstadoOrden[] = [
   "Borrador",
@@ -33,18 +36,27 @@ function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
   return typeof maybeTimestamp.toDate === "function" ? maybeTimestamp.toDate() : null;
 }
 
-export default function OrdenesPage() {
+function OrdenesPageContent() {
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, Cliente>>({});
   const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoOrden | "Todos">("Todos");
-  const [showNuevaOrden, setShowNuevaOrden] = useState(false);
+  const [tipoNuevo, setTipoNuevo] = useState<"ingreso" | "presupuesto" | "orden" | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<MenuPosition | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const idParam = searchParams.get("id");
+  const { setOrdenSidebarOpen } = useUIStore();
+
+  useEffect(() => {
+    if (idParam) {
+      setOrdenSidebarOpen(true, idParam);
+    }
+  }, [idParam, setOrdenSidebarOpen]);
 
   const loadRelations = useCallback(async () => {
     try {
@@ -143,9 +155,7 @@ export default function OrdenesPage() {
           <h1 className="page-title">Órdenes de Trabajo</h1>
           <p className="page-subtitle">{ordenes.length} órdenes en total</p>
         </div>
-        <button onClick={() => setShowNuevaOrden(true)} className="btn-primary">
-          <Plus size={16} /> Nueva Orden
-        </button>
+        <BotonNuevoPopover onSelect={(tipo) => setTipoNuevo(tipo)} />
       </div>
 
 
@@ -206,7 +216,7 @@ export default function OrdenesPage() {
                 {filtered.map((o) => (
                   <tr 
                     key={o.id} 
-                    onClick={() => router.push(`/ordenes/detalle?id=${o.id}`)}
+                    onClick={() => setOrdenSidebarOpen(true, o.id)}
                     className="cursor-pointer hover:bg-[var(--bg-hover)]"
                   >
                     <td>
@@ -311,16 +321,24 @@ export default function OrdenesPage() {
         </div>
       ) : null}
 
-      {showNuevaOrden && (
-        <NuevaOrdenSidebar 
-          onClose={() => setShowNuevaOrden(false)} 
-          onSuccess={(id) => {
-            setShowNuevaOrden(false);
-            void loadRelations();
-            router.push(`/ordenes/detalle?id=${id}`);
-          }}
+      {tipoNuevo && (
+        <ModalNuevoIngreso
+          onClose={() => setTipoNuevo(null)}
+          tipoMode={tipoNuevo}
         />
       )}
     </AppShell>
+  );
+}
+
+export default function OrdenesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
+      </div>
+    }>
+      <OrdenesPageContent />
+    </Suspense>
   );
 }

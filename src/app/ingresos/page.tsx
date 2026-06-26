@@ -1,14 +1,15 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { subscribeOrdenes, getClientes, getVehiculos } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Plus, Search, Settings, Download } from "lucide-react";
 import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
 import Link from "next/link";
+import { useUIStore } from "@/store";
 
 const FILTROS = ["Todos", "Recibidos", "Inspeccionados", "Presupuestados", "Con Orden"] as const;
 type FiltroIngreso = typeof FILTROS[number];
@@ -22,7 +23,7 @@ function toDate(value: OrdenTrabajo["createdAt"]): Date | null {
   return typeof maybeTimestamp.toDate === "function" ? maybeTimestamp.toDate() : null;
 }
 
-export default function IngresosPage() {
+function IngresosPageContent() {
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, Cliente>>({});
   const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>({});
@@ -31,6 +32,15 @@ export default function IngresosPage() {
   const [filtroActivo, setFiltroActivo] = useState<FiltroIngreso>("Todos");
   const [showModal, setShowModal] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const idParam = searchParams.get("id");
+  const { setIngresoSidebarOpen } = useUIStore();
+
+  useEffect(() => {
+    if (idParam) {
+      setIngresoSidebarOpen(true, idParam);
+    }
+  }, [idParam, setIngresoSidebarOpen]);
 
   const loadRelations = useCallback(async () => {
     try {
@@ -197,7 +207,7 @@ export default function IngresosPage() {
                     const inspeccionOk = hasInspeccion(o);
                     const { tienePresupuesto, tieneOrden } = checkPresupuestoYOrden(o);
                     return (
-                      <tr key={o.id} className="hover:bg-[var(--bg-hover)] group cursor-pointer" onClick={() => router.push(`/ingresos/${o.id}`)}>
+                      <tr key={o.id} className="hover:bg-[var(--bg-hover)] group cursor-pointer" onClick={() => setIngresoSidebarOpen(true, o.id)}>
                         <td>
                           <span className="font-semibold text-blue-600 dark:text-blue-400">
                             #ING-{String(getNumeroDocumento(o) ?? 0).padStart(5, "0")}
@@ -222,15 +232,15 @@ export default function IngresosPage() {
                           <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tienePresupuesto ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
                         </td>
                         <td className="text-center">
-                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tieneOrden ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
+                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tieneOrden ? 'bg-blue-500 border-blue-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
                         </td>
                         <td className="text-right">
                           {o.numeroOrden ? (
-                            <span className="badge bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                            <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
                               ORD-{String(o.numeroOrden).padStart(5, "0")}
                             </span>
                           ) : (
-                            <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                            <span className="badge bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
                               Recibido
                             </span>
                           )}
@@ -254,5 +264,17 @@ export default function IngresosPage() {
 
       {showModal && <ModalNuevoIngreso onClose={() => setShowModal(false)} />}
     </AppShell>
+  );
+}
+
+export default function IngresosPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-primary)]">
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--color-primary)]" />
+      </div>
+    }>
+      <IngresosPageContent />
+    </Suspense>
   );
 }

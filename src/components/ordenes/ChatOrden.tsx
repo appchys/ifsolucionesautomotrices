@@ -5,7 +5,7 @@ import { Send, Users, UserPlus, ClipboardCheck, FileText, Info, Edit, User } fro
 import { useRouter } from "next/navigation";
 import { MensajeOrden, AppUser, UserRole, Cliente } from "@/types";
 import { sendMensajeOrden, subscribeMensajesOrden } from "@/lib/services";
-import { useAuthStore } from "@/store";
+import { useAuthStore, useUIStore } from "@/store";
 import { useChatStore } from "@/store/chatStore";
 import { toast } from "react-hot-toast";
 import { db } from "@/lib/firebase";
@@ -142,6 +142,7 @@ export default function ChatOrden({
   const router = useRouter();
   const { user } = useAuthStore();
   const { resetUnread, setActiveOrdenId } = useChatStore();
+  const { setPresupuestoSidebarOpen, setOrdenSidebarOpen } = useUIStore();
   const [mensajes, setMensajes] = useState<MensajeOrden[]>([]);
   const [texto, setTexto] = useState("");
   const [sending, setSending] = useState(false);
@@ -760,7 +761,7 @@ export default function ChatOrden({
                         type="button"
                         onClick={() => {
                           if (msg.presupuestoId) {
-                            router.push(`/presupuestos/${msg.presupuestoId}`);
+                            setPresupuestoSidebarOpen(true, msg.presupuestoId);
                           }
                         }}
                         disabled={!msg.presupuestoId}
@@ -783,7 +784,7 @@ export default function ChatOrden({
                       <button
                         type="button"
                         onClick={() => {
-                          router.push(`/ordenes/detalle?id=${ordenId}`);
+                          setOrdenSidebarOpen(true, ordenId);
                         }}
                         className={`${bgClass} flex items-center justify-center gap-1.5 text-[10px] font-medium px-3.5 py-1.5 rounded-lg max-w-[85%] text-center shadow-sm border leading-relaxed transition-all duration-200 cursor-pointer hover:bg-[#ebd5ff] dark:hover:bg-[#341659] hover:scale-[1.02] active:scale-[0.98]`}
                       >

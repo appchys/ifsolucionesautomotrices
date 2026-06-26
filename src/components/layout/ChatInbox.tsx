@@ -337,8 +337,8 @@ export default function ChatInbox() {
                 iconColor = "text-purple-400 bg-purple-500/10";
               } else if (orden.numeroOrden) {
                 docType = `Orden #${orden.numeroOrden}`;
-                Icon = ClipboardList;
-                iconColor = "text-emerald-400 bg-emerald-500/10";
+                Icon = Wrench;
+                iconColor = "text-blue-400 bg-blue-500/10";
               } else {
                 docType = `Ingreso #${orden.numeroIngreso || orden.numero || ""}`;
                 Icon = FileDown;
@@ -371,16 +371,29 @@ export default function ChatInbox() {
               : (autorDb?.displayName?.split(" ")[0] || ultimoMsg?.autorNombre || "Usuario");
 
             return (
-              <button
+              <div
                 key={c.ordenId}
-                onClick={() => handleItemClick(c.ordenId, orden)}
-                className={`w-full chat-inbox-item ${
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleItemClick(c.ordenId, orden);
+                }}
+                className={`w-full chat-inbox-item cursor-pointer text-left ${
                   c.ordenId === activeChatId
                     ? "active"
                     : c.unreadCount > 0
                       ? "bg-blue-50/50 dark:bg-[#182339]/20"
                       : ""
                 }`}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleItemClick(c.ordenId, orden);
+                  }
+                }}
               >
                 <div className="flex gap-3 items-start">
                   {/* Icono de tipo */}
@@ -422,7 +435,7 @@ export default function ChatInbox() {
                     </div>
                   )}
                 </div>
-              </button>
+              </div>
             );
           })
         )}

@@ -21,9 +21,11 @@ import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden, DatosTaller } from "@/types
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
 import OpcionesItemPopover from "@/components/ordenes/OpcionesItemPopover";
+import { useUIStore } from "@/store";
 
 export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: { presupuestoId: string; isSidebar?: boolean }) {
   const router = useRouter();
+  const { setPresupuestoSidebarOpen } = useUIStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -439,9 +441,9 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   const mainContent = (
     <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50 dark:bg-slate-900" : ""}`} style={isSidebar ? undefined : { height: "calc(100vh - 8.5rem)" }}>
       {/* Header Bar */}
-      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-2 mb-3 flex-shrink-0 ${isSidebar ? "px-4 pt-2" : ""}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-2 mb-3 flex-shrink-0">
         <div className="flex items-center gap-2">
-          {!isSidebar && (
+          {!isSidebar ? (
             <button 
               onClick={() => router.back()} 
               className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors border-none bg-transparent cursor-pointer text-inherit flex items-center justify-center"
@@ -449,8 +451,16 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             >
               <ChevronLeft size={20} />
             </button>
+          ) : (
+            <button 
+              onClick={() => setPresupuestoSidebarOpen(false)} 
+              className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors border-none bg-transparent cursor-pointer text-inherit flex items-center justify-center"
+              title="Cerrar panel"
+            >
+              <ChevronLeft size={20} />
+            </button>
           )}
-          <h1 className={`${isSidebar ? "text-sm" : "text-xl"} font-bold flex items-center gap-1.5`}>
+          <h1 className="text-xl font-bold flex items-center gap-1.5">
             Presupuesto <span className="text-blue-600 font-mono">#PRE-{String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0")}</span>
           </h1>
           {!isSidebar && (
@@ -495,11 +505,11 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
               )}
             </button>
           </div>
-          <button className={`btn bg-white border border-[var(--border)] shadow-sm font-semibold ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5 text-xs"}`}>
+          <button className="btn bg-white border border-[var(--border)] shadow-sm font-semibold px-3.5 py-1.5 text-xs">
              ✉ Solicitar
           </button>
           <button 
-            className={`btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50 ${isSidebar ? "px-2 py-1 text-[10px]" : "px-3.5 py-1.5 text-xs"}`}
+            className="btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50 px-3.5 py-1.5 text-xs"
             onClick={handleAprobar}
             disabled={saving || orden.presupuestoConfirmadoPorCliente}
           >
@@ -534,10 +544,10 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       </div>
 
       {/* Columns Layout */}
-      <div className={`flex-1 ${isSidebar ? "flex flex-col gap-4 px-4 pb-4 overflow-y-auto custom-scrollbar" : "flex gap-6 overflow-hidden px-6"}`}>
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-y-auto lg:overflow-hidden px-6 pb-4 custom-scrollbar lg:custom-scrollbar-none">
         
         {/* Left Column: Items */}
-        <div className={`${isSidebar ? "w-full shrink-0" : "flex-1 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar border-r border-[var(--border)]"}`}>
+        <div className="w-full lg:flex-1 flex flex-col gap-4 lg:overflow-y-auto pr-2 custom-scrollbar lg:border-r lg:border-[var(--border)]">
             {/* Client Card */}
             <div className="flex gap-4 items-center mb-2">
               <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase">
@@ -695,7 +705,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
         </div>
 
         {/* Right Column: Sidebar */}
-        <div className={`${isSidebar ? "w-full shrink-0 pt-4 border-t border-[var(--border)]" : "w-[340px] flex flex-col overflow-hidden pb-4"}`}>
+        <div className="w-full lg:w-[340px] flex flex-col lg:overflow-hidden pb-4 lg:shrink-0 pt-4 border-t border-[var(--border)] lg:pt-0 lg:border-t-0">
             
             {/* Tabs */}
             <div className="flex border-b border-[var(--border)] mb-4 overflow-x-auto custom-scrollbar shrink-0">

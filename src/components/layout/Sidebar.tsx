@@ -27,7 +27,7 @@ const navGroups = [
     items: [
       { href: "/ingresos", label: "Ingresos", icon: FileDown, roles: ["admin","recepcion"] },
       { href: "/presupuestos", label: "Presupuestos", icon: FileText, roles: ["admin","recepcion"] },
-      { href: "/ordenes", label: "Órdenes", icon: ClipboardList, roles: ["admin","recepcion","tecnico","contador"] },
+      { href: "/ordenes", label: "Órdenes", icon: Wrench, roles: ["admin","recepcion","tecnico","contador"], colorClass: "text-blue-600 dark:text-blue-400" },
       { href: "/ventas", label: "Ventas", icon: Receipt, roles: ["admin","recepcion","contador"] },
     ]
   },
@@ -184,33 +184,30 @@ export default function Sidebar() {
 
           {/* Chat Inbox Button */}
           {user && (
-            <div className={`mx-3 mb-1 mt-1 transition-all duration-300 ${sidebarOpen ? "px-1" : "px-0"}`}>
+            <div className={`transition-all duration-300 ${sidebarOpen ? "px-3" : "px-2"}`}>
               <button
                 id="sidebar-chat-toggle"
                 onClick={toggleInbox}
-                className={`w-full flex items-center gap-2.5 rounded-xl transition-all duration-200 border-0 cursor-pointer ${
-                  isInboxOpen 
-                    ? "bg-[rgba(37,99,235,0.2)] text-[var(--accent-light)] font-semibold" 
-                    : "text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-                } ${sidebarOpen ? "px-3 py-2.5 text-xs" : "px-[7px] py-2.5 justify-center"}`}
-                style={{
-                  background: isInboxOpen ? "rgba(37,99,235,0.18)" : "transparent",
-                  color: isInboxOpen ? "var(--accent-light)" : "var(--text-secondary)",
-                }}
+                className={`sidebar-link w-full ${isInboxOpen ? "active" : ""} ${
+                  sidebarOpen ? "px-3" : "px-[18px]"
+                }`}
                 title={sidebarOpen ? undefined : "Bandeja de Chats"}
               >
                 <div className="relative flex items-center justify-center flex-shrink-0">
                   <MessageSquare size={18} />
                   {!sidebarOpen && unreadCount > 0 && (
                     <span 
-                      className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-blue-600 border border-[#111827] shadow-sm animate-pulse-glow"
+                      className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-blue-600 border border-[#111827] shadow-sm animate-pulse-glow"
                     />
                   )}
                 </div>
                 <span
                   className={`transition-all duration-300 whitespace-nowrap text-left flex-1 flex justify-between items-center ${
-                    sidebarOpen ? "opacity-100 max-w-[200px]" : "opacity-0 max-w-0 overflow-hidden pointer-events-none"
+                    sidebarOpen ? "opacity-100 ml-0" : "opacity-0 ml-4 pointer-events-none"
                   }`}
+                  style={{
+                    transitionDelay: sidebarOpen ? "50ms" : "0ms"
+                  }}
                 >
                   <span>Bandeja de Chats</span>
                   {unreadCount > 0 && (
@@ -248,7 +245,7 @@ export default function Sidebar() {
                         if (window.innerWidth < 1024) toggleSidebar();
                       }}
                     >
-                      <item.icon size={18} className="flex-shrink-0" />
+                      <item.icon size={18} className={`flex-shrink-0 ${(item as any).colorClass || ""}`} />
                       <span 
                         className={`transition-all duration-300 whitespace-nowrap ${
                           sidebarOpen ? "opacity-100 ml-0" : "opacity-0 ml-4 pointer-events-none"

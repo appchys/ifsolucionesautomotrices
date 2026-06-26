@@ -1052,4 +1052,18 @@ textarea.input { resize: vertical; }
   }
 }
 
+@media (min-width: 1024px) {
+  .ingreso-sidebar-panel.full-width-sidebar,
+  .presupuesto-sidebar-panel.full-width-sidebar,
+  .orden-sidebar-panel.full-width-sidebar {
+    left: 70px;
+  }
+  .ingreso-sidebar-panel.full-width-sidebar.sidebar-open-offset,
+  .presupuesto-sidebar-panel.full-width-sidebar.sidebar-open-offset,
+  .orden-sidebar-panel.full-width-sidebar.sidebar-open-offset {
+    left: 260px;
+  }
+}
+
+
 

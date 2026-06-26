@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Car, Search, X, Loader2, ArrowLeft, Edit, User, Plus } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "react-hot-toast";
 import {
   getClientes,
@@ -11,21 +10,23 @@ import {
   createCliente,
   createVehiculo,
   createOrdenConItems,
+  convertirIngresoAOrden,
   getTiposVehiculo,
   searchVehiculosByPlacaPrefix,
 } from "@/lib/services";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import { Cliente, Vehiculo, TipoVehiculo } from "@/types";
+import { useUIStore } from "@/store";
 
 interface Props {
   onClose: () => void;
-  tipoMode?: "ingreso" | "presupuesto";
+  tipoMode?: "ingreso" | "presupuesto" | "orden";
 }
 
 type SearchMode = "placa" | "cliente";
 
 export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Props) {
-  const router = useRouter();
+  const { setIngresoSidebarOpen, setPresupuestoSidebarOpen, setOrdenSidebarOpen } = useUIStore();
   const [loading, setLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchMode, setSearchMode] = useState<SearchMode>("placa");
@@ -260,9 +261,9 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
       const ordenId = await createOrdenConItems({
         vehiculoId,
         clienteId: selectedCliente.id,
-        estado: tipoMode === "ingreso" ? "En Diagnóstico" : "En Reparación",
+        estado: "En Diagnóstico",
         tipoServicio: "Mantenimiento",
-        motivo: tipoMode === "ingreso" ? "Ingreso inicial" : "Presupuesto inicial",
+        motivo: tipoMode === "ingreso" ? "Ingreso inicial" : tipoMode === "presupuesto" ? "Presupuesto inicial" : "Orden de trabajo",
         kilometrajeIngreso: 0,
         nivelCombustible: "1/2",
         checklistInventario: [],
@@ -270,12 +271,23 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
         esCotizacion: tipoMode === "presupuesto",
       }, []);
 
-      toast.success(tipoMode === "ingreso" ? "Ingreso registrado" : "Presupuesto creado");
-      onClose();
-      router.push(`/${tipoMode === "ingreso" ? "ingresos" : "presupuestos"}/${ordenId}`);
+      if (tipoMode === "orden") {
+        await convertirIngresoAOrden(ordenId);
+        toast.success("Orden de trabajo creada");
+        onClose();
+        setOrdenSidebarOpen(true, ordenId);
+      } else if (tipoMode === "ingreso") {
+        toast.success("Ingreso registrado");
+        onClose();
+        setIngresoSidebarOpen(true, ordenId);
+      } else {
+        toast.success("Presupuesto creado");
+        onClose();
+        setPresupuestoSidebarOpen(true, ordenId);
+      }
     } catch (error) {
       console.error(error);
-      toast.error("Error al crear el ingreso");
+      toast.error("Error al crear el documento");
     } finally {
       setIsSubmitting(false);
     }
