@@ -652,7 +652,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
     <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50 dark:bg-slate-900" : "h-screen"}`}>
 
       {/* Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 py-3 mb-3 shadow-sm">
+      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 mb-3 shadow-sm ${isSidebar ? "py-2 h-16" : "py-3"}`}>
         <div className="flex items-center gap-2">
           {!isSidebar ? (
             <Link href="/ingresos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-555 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center">
@@ -695,9 +695,9 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
             title={presupuestoId ? "Ver presupuesto" : "Crear presupuesto"}
           >
             {creatingPresupuesto ? (
-              <Loader2 size={14} className="animate-spin text-blue-600" />
+              <Loader2 size={16} className="animate-spin text-blue-600" />
             ) : (
-              <FileText size={14} className={presupuestoId ? "text-emerald-600" : ""} />
+              <FileText size={16} className={presupuestoId ? "text-emerald-600" : ""} />
             )}
           </button>
 
@@ -710,9 +710,9 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
             title={orden?.numeroOrden ? `Ver orden #ORD-${String(orden.numeroOrden).padStart(5, "0")}` : "Crear orden"}
           >
             {creatingOrden ? (
-              <Loader2 size={14} className="animate-spin text-blue-600" />
+              <Loader2 size={16} className="animate-spin text-blue-600" />
             ) : (
-              <Wrench size={14} className={orden?.numeroOrden ? "text-blue-600" : ""} />
+              <Wrench size={16} className={orden?.numeroOrden ? "text-blue-600" : ""} />
             )}
           </button>
 
@@ -725,9 +725,9 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
             title="Descargar PDF"
           >
             {generatingPdf ? (
-              <Loader2 size={14} className="animate-spin text-blue-600" />
+              <Loader2 size={16} className="animate-spin text-blue-600" />
             ) : (
-              <FileDown size={14} />
+              <FileDown size={16} />
             )}
           </button>
 
@@ -740,9 +740,9 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
             title="Imprimir"
           >
             {generatingPdf ? (
-              <Loader2 size={14} className="animate-spin text-blue-600" />
+              <Loader2 size={16} className="animate-spin text-blue-600" />
             ) : (
-              <Printer size={14} />
+              <Printer size={16} />
             )}
           </button>
 
@@ -754,7 +754,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               title="Más acciones"
             >
-              <MoreHorizontal size={14} />
+              <MoreHorizontal size={16} />
             </button>
             {isMenuOpen && (
               <>

@@ -1025,23 +1025,6 @@ textarea.input { resize: vertical; }
   transform: translateX(0);
 }
 
-@media (min-width: 1024px) {
-  .ingreso-sidebar-panel,
-  .presupuesto-sidebar-panel,
-  .orden-sidebar-panel {
-    /* Menú colapsado (70px) + ChatInbox (260px) + ActiveChatPanel (320px) = 650px */
-    left: 650px;
-    width: auto; /* El ancho se auto-calcula con left y right */
-  }
-  .ingreso-sidebar-panel.sidebar-open-offset,
-  .presupuesto-sidebar-panel.sidebar-open-offset,
-  .orden-sidebar-panel.sidebar-open-offset {
-    /* Menú abierto (260px) + ChatInbox (260px) + ActiveChatPanel (320px) = 840px */
-    left: 840px;
-    width: auto;
-  }
-}
-
 @media (max-width: 1023px) {
   .ingreso-sidebar-panel,
   .presupuesto-sidebar-panel,
@@ -1053,15 +1036,64 @@ textarea.input { resize: vertical; }
 }
 
 @media (min-width: 1024px) {
+  /* Caso 1: chat-active (Bandeja de chats + Conversación abierta) */
+  .ingreso-sidebar-panel,
+  .presupuesto-sidebar-panel,
+  .orden-sidebar-panel,
+  .ingreso-sidebar-panel.chat-active,
+  .presupuesto-sidebar-panel.chat-active,
+  .orden-sidebar-panel.chat-active {
+    /* Menú colapsado (70px) + ChatInbox (260px) + ActiveChatPanel (320px) = 650px */
+    left: 650px;
+    width: auto;
+  }
+  .ingreso-sidebar-panel.sidebar-open-offset,
+  .presupuesto-sidebar-panel.sidebar-open-offset,
+  .orden-sidebar-panel.sidebar-open-offset,
+  .ingreso-sidebar-panel.chat-active.sidebar-open-offset,
+  .presupuesto-sidebar-panel.chat-active.sidebar-open-offset,
+  .orden-sidebar-panel.chat-active.sidebar-open-offset {
+    /* Menú abierto (260px) + ChatInbox (260px) + ActiveChatPanel (320px) = 840px */
+    left: 840px;
+    width: auto;
+  }
+
+  /* Caso 2: inbox-only (Solo bandeja de chats abierta, sin conversación) */
+  .ingreso-sidebar-panel.inbox-only,
+  .presupuesto-sidebar-panel.inbox-only,
+  .orden-sidebar-panel.inbox-only {
+    /* Menú colapsado (70px) + ChatInbox (260px) = 330px */
+    left: 330px;
+    width: auto;
+  }
+  .ingreso-sidebar-panel.inbox-only.sidebar-open-offset,
+  .presupuesto-sidebar-panel.inbox-only.sidebar-open-offset,
+  .orden-sidebar-panel.inbox-only.sidebar-open-offset {
+    /* Menú abierto (260px) + ChatInbox (260px) = 520px */
+    left: 520px;
+    width: auto;
+  }
+
+  /* Caso 3: full-width (Sin chat abierto o full-width-sidebar fallback) */
+  .ingreso-sidebar-panel.full-width,
+  .presupuesto-sidebar-panel.full-width,
+  .orden-sidebar-panel.full-width,
   .ingreso-sidebar-panel.full-width-sidebar,
   .presupuesto-sidebar-panel.full-width-sidebar,
   .orden-sidebar-panel.full-width-sidebar {
+    /* Menú colapsado (70px) */
     left: 70px;
+    width: auto;
   }
+  .ingreso-sidebar-panel.full-width.sidebar-open-offset,
+  .presupuesto-sidebar-panel.full-width.sidebar-open-offset,
+  .orden-sidebar-panel.full-width.sidebar-open-offset,
   .ingreso-sidebar-panel.full-width-sidebar.sidebar-open-offset,
   .presupuesto-sidebar-panel.full-width-sidebar.sidebar-open-offset,
   .orden-sidebar-panel.full-width-sidebar.sidebar-open-offset {
+    /* Menú abierto (260px) */
     left: 260px;
+    width: auto;
   }
 }
 

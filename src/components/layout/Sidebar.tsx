@@ -54,7 +54,13 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, setUser } = useAuthStore();
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { 
+    sidebarOpen, 
+    toggleSidebar,
+    setIngresoSidebarOpen,
+    setOrdenSidebarOpen,
+    setPresupuestoSidebarOpen
+  } = useUIStore();
   const { isInboxOpen, toggleInbox, unreadCount } = useChatStore();
   const [datosTaller, setDatosTaller] = useState<DatosTaller | null>(null);
 
@@ -243,6 +249,9 @@ export default function Sidebar() {
                       title={sidebarOpen ? undefined : item.label}
                       onClick={() => {
                         if (window.innerWidth < 1024) toggleSidebar();
+                        setIngresoSidebarOpen(false);
+                        setOrdenSidebarOpen(false);
+                        setPresupuestoSidebarOpen(false);
                       }}
                     >
                       <item.icon size={18} className={`flex-shrink-0 ${(item as any).colorClass || ""}`} />

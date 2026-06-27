@@ -1,8 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { X, Save, Eye, AlertCircle, Camera, Pencil, ChevronLeft, ChevronRight, Menu } from "lucide-react";
 import DamageSelector, { TIPO_CONFIG, VISTAS } from "./DamageSelector";
 import { DanoVehiculo, Vehiculo, VehiculoVista, FotoDiagnostico } from "@/types";
 import { useUIStore } from "@/store";
+import { createPortal } from "react-dom";
 
 interface Props {
   isOpen: boolean;
@@ -33,6 +34,11 @@ export default function ModalInspeccion({
   observaciones,
   onChangeObservaciones,
 }: Props) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const { sidebarOpen } = useUIStore();
   const fotosRef = useRef<HTMLInputElement>(null);
   const danoFotoRef = useRef<HTMLInputElement>(null);
@@ -72,7 +78,7 @@ export default function ModalInspeccion({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const handleGuardar = () => {
     onSave();
@@ -90,7 +96,7 @@ export default function ModalInspeccion({
     onChangeDanos(nuevosDanos);
   };
 
-  return (
+  return createPortal(
     <>
       <div 
         id="modal-inspeccion-overlay"
@@ -436,6 +442,7 @@ export default function ModalInspeccion({
           </div>
         </div>
       ) : null}
-    </>
+    </>,
+    document.body
   );
 }

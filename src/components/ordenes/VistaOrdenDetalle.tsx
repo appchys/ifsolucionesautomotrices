@@ -62,7 +62,6 @@ import {
   Edit2,
   DollarSign,
   HeartPulse,
-  FileText,
   HelpCircle,
   Tags,
   Check,
@@ -172,7 +171,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   const [notasInternas, setNotasInternas] = useState("");
 
   // Modals & Panels State
-  const [activeTab, setActiveTab] = useState<"Vehículo" | "Fotos" | "Notas" | "Informe" | "Chat">("Vehículo");
+  const [activeTab, setActiveTab] = useState<"Vehículo" | "Fotos" | "Notas" | "Chat">("Vehículo");
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
@@ -1250,7 +1249,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
               className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 bg-transparent border-0 cursor-pointer flex items-center justify-center"
               title="Enviar Email"
             >
-              <Mail size={16} />
+              <Mail size={14} />
             </button>
             {!isSidebar && (
               <button className="p-2 hover:bg-slate-100 rounded-lg text-slate-500" title="Chat"><MessageCircle size={16} /></button>
@@ -1428,9 +1427,9 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                                   {/* Botón Agregar */}
                                   <button
                                     type="button"
-                                    onClick={async () => {
+                                    onClick={() => {
                                       const precioUnitario = (!isProd || !result.aplicaIva) ? result.precio : Number((result.precio / 1.15).toFixed(2));
-                                      await handleAddItem({
+                                      void handleAddItem({
                                         tipo: result.tipo,
                                         productoId: result.id,
                                         productoSku: result.sku,
@@ -1609,7 +1608,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
           <div className="w-full lg:w-[340px] lg:h-full border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0 min-h-[450px] lg:min-h-0">
           {/* Tabs bar */}
           <div className="flex border-b border-[var(--border)] bg-slate-50/50 shrink-0">
-            {(["Vehículo", "Fotos", "Notas", "Informe", "Chat"] as const)
+            {(["Vehículo", "Fotos", "Notas", "Chat"] as const)
               .filter((tab) => !(isSidebar && chatVisible && tab === "Chat"))
               .map((tab) => (
               <button
@@ -1639,64 +1638,62 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             
             {activeTab === "Vehículo" && (
               <div className="space-y-4">
-                {/* Vehicle header */}
-                <div className="flex items-center justify-between p-3 border border-[var(--border)] rounded-xl bg-slate-50/30">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center text-white shrink-0">
-                      <Car size={20} />
+                {/* Vehicle + Client unified card */}
+                <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      <Car size={12} className="text-blue-500 shrink-0" />
+                      Vehículo
+                    </h3>
+                    <button
+                      onClick={() => setIsVehiculoModalOpen(true)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      title="Editar vehículo"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 border border-blue-200/50">
+                      <Car size={24} className="text-blue-600 dark:text-blue-400" />
                     </div>
-                    <div>
-                      <h4 className="font-extrabold text-sm text-[var(--text-primary)] leading-tight">
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-extrabold text-base text-slate-800 dark:text-white truncate">
                         {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
                       </h4>
-                      <span className="inline-block badge badge-gray font-mono uppercase text-[9px] mt-1">
-                        {vehiculo.placa}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setIsVehiculoModalOpen(true)}
-                    className="p-1.5 hover:bg-slate-100 rounded-md text-slate-500"
-                  >
-                    <Edit2 size={13} />
-                  </button>
-                </div>
-
-                <a
-                  href="#"
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 pl-1"
-                >
-                  Ver ficha completa del vehículo →
-                </a>
-
-                {/* Customer info card */}
-                <div className="flex items-center justify-between p-3 border border-[var(--border)] rounded-xl bg-slate-50/30">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white text-sm font-bold uppercase shrink-0">
-                      {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
-                    </div>
-                    <div>
-                      <h4 className="font-extrabold text-sm text-[var(--text-primary)] leading-tight uppercase">
-                        {cliente.nombre} {cliente.apellido}
-                      </h4>
-                      <div className="flex items-center gap-2 mt-1">
-                        <a
-                          href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
-                          target="_blank"
-                          className="text-xs text-[var(--text-muted)] hover:text-green-600 flex items-center gap-1.5"
-                        >
-                          <MessageCircle size={14} className="text-green-500 fill-green-500/10" /> {cliente.telefono}
-                        </a>
+                      <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                        <span className="text-xs text-slate-555 dark:text-slate-400 font-mono uppercase bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
+                          {vehiculo.placa}
+                        </span>
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setIsClienteModalOpen(true)}
-                    className="p-1.5 hover:bg-slate-100 rounded-md text-slate-500"
-                    title="Cambiar cliente"
-                  >
-                    <Edit2 size={13} />
-                  </button>
+                  <div className="pt-3 mt-1 border-t border-[var(--border-light)] flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0 uppercase text-[9px] border border-blue-200/50">
+                      {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
+                    </div>
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                        {cliente.nombre} {cliente.apellido || ""}
+                      </span>
+                      <a
+                        href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-400 hover:text-green-600 transition-colors shrink-0"
+                        title="Enviar WhatsApp"
+                      >
+                        <MessageCircle size={14} className="text-green-500 fill-green-500/10" />
+                      </a>
+                    </div>
+                    <button
+                      onClick={() => setIsClienteModalOpen(true)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
+                      title="Cambiar cliente"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* MOTIVO DE INGRESO */}
@@ -1766,12 +1763,14 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                 {/* Inspeccion visual */}
                 <div className="form-group border-t border-[var(--border)] pt-4">
                   <label className="label">Inspección Visual</label>
-                  <button
-                    onClick={() => setIsModalInspeccionOpen(true)}
-                    className="btn w-full justify-center bg-white hover:bg-slate-50 border border-[var(--border)] text-slate-700 font-bold text-xs py-2 shadow-sm rounded-lg"
-                  >
-                    Registrar inspección
-                  </button>
+                  {danos.length === 0 && (
+                    <button
+                      onClick={() => setIsModalInspeccionOpen(true)}
+                      className="btn w-full justify-center bg-white hover:bg-slate-50 border border-[var(--border)] text-slate-700 font-bold text-xs py-2 shadow-sm rounded-lg"
+                    >
+                      Registrar inspección
+                    </button>
+                  )}
 
                   {danos.length > 0 && (
                     <div className="flex items-center justify-between p-3 border border-blue-200 bg-blue-50/30 rounded-xl mt-2 text-xs">
@@ -1902,18 +1901,6 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                   onBlur={() => handleSaveField({ notasInternas })}
                   rows={10}
                 />
-              </div>
-            )}
-
-            {activeTab === "Informe" && (
-              <div className="space-y-4 py-4 text-center">
-                <FileText size={40} className="mx-auto text-slate-300 mb-2" />
-                <p className="text-xs text-[var(--text-muted)]">
-                  Generación y descarga de informes técnicos para enviar al cliente en formato PDF.
-                </p>
-                <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-2 w-full justify-center rounded-lg shadow-sm">
-                  Descargar Informe Técnico PDF
-                </button>
               </div>
             )}
 

@@ -292,14 +292,27 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
   };
 
   const handleAddItem = async (item: Omit<ItemOrden, "id" | "ordenId" | "subtotal">) => {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const subtotal = item.cantidad * item.precioUnitario * (1 + item.impuestoAplicable / 100);
+    const itemOptimista: ItemOrden = {
+      ...item,
+      id: tempId,
+      ordenId,
+      subtotal,
+    };
+
+    setItems((prev) => [...prev, itemOptimista]);
+
     try {
-      await addItemOrden(ordenId, { ...item, subtotal, ordenId });
-      setItems(await getItemsOrden(ordenId));
+      const realId = await addItemOrden(ordenId, { ...item, subtotal, ordenId });
+      setItems((prev) =>
+        prev.map((it) => (it.id === tempId ? { ...it, id: realId } : it))
+      );
       toast.success("Item agregado");
       onUpdate?.();
     } catch (error) {
       console.error(error);
+      setItems((prev) => prev.filter((it) => it.id !== tempId));
       toast.error(error instanceof Error && error.message === "STOCK_INSUFICIENTE"
         ? "Stock insuficiente para agregar el producto"
         : "Error al agregar item");
@@ -328,14 +341,21 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
     const nuevaCantidad = Math.max(1, item.cantidad + delta);
     if (nuevaCantidad === item.cantidad) return;
     const subtotal = nuevaCantidad * item.precioUnitario * (1 + item.impuestoAplicable / 100);
+
+    const previousItems = [...items];
+
+    // Actualización optimista de la UI
+    setItems((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, cantidad: nuevaCantidad, subtotal } : i))
+    );
+
     try {
       await updateItemOrden(ordenId, item.id, { cantidad: nuevaCantidad, subtotal });
-      setItems((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, cantidad: nuevaCantidad, subtotal } : i))
-      );
       onUpdate?.();
     } catch (error) {
       console.error(error);
+      // Revertir en caso de error
+      setItems(previousItems);
       toast.error(error instanceof Error && error.message === "STOCK_INSUFICIENTE"
         ? "Stock insuficiente para aumentar la cantidad"
         : "Error al actualizar cantidad");
@@ -343,10 +363,23 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
   };
 
   const eliminarItem = async (itemId: string) => {
-    await deleteItemOrden(ordenId, itemId);
+    if (itemId.startsWith("temp-")) return;
+
+    const previousItems = [...items];
+
+    // Actualización optimista de la UI
     setItems((prev) => prev.filter((i) => i.id !== itemId));
     toast.success("Item eliminado");
-    onUpdate?.();
+
+    try {
+      await deleteItemOrden(ordenId, itemId);
+      onUpdate?.();
+    } catch (error) {
+      console.error(error);
+      // Revertir en caso de error
+      setItems(previousItems);
+      toast.error("Error al eliminar item");
+    }
   };
 
   const getCantidadDevuelta = (itemId?: string) => {
