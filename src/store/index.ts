@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { AppUser, Cliente, Vehiculo, OrdenTrabajo } from "@/types";
+import { AppUser, Caja, CajaMovimientoManual, Cliente, MovimientoCajaUnificado, OrdenTrabajo, Pago, Vehiculo } from "@/types";
+import type { PagoProveedorDelDia } from "@/lib/services";
 
 interface AuthStore {
   user: AppUser | null;
@@ -38,6 +39,23 @@ interface OrdenesStore {
   selectedOrden: OrdenTrabajo | null;
   setOrdenes: (ordenes: OrdenTrabajo[]) => void;
   setSelectedOrden: (orden: OrdenTrabajo | null) => void;
+}
+
+interface CajaStore {
+  caja: Caja | null;
+  movimientosManuales: CajaMovimientoManual[];
+  cobrosDelDia: Pago[];
+  pagosProveedorDelDia: PagoProveedorDelDia[];
+  movimientosUnificados: MovimientoCajaUnificado[];
+  isCajaModalOpen: boolean;
+  setCaja: (caja: Caja | null) => void;
+  setMovimientosManuales: (m: CajaMovimientoManual[]) => void;
+  setCobrosDelDia: (p: Pago[]) => void;
+  setPagosProveedorDelDia: (p: PagoProveedorDelDia[]) => void;
+  setMovimientosUnificados: (m: MovimientoCajaUnificado[]) => void;
+  toggleCajaModal: () => void;
+  openCajaModal: () => void;
+  closeCajaModal: () => void;
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -79,5 +97,21 @@ export const useOrdenesStore = create<OrdenesStore>((set) => ({
   setSelectedOrden: (orden) => set({ selectedOrden: orden }),
 }));
 
-export * from "./chatStore";
+export const useCajaStore = create<CajaStore>((set) => ({
+  caja: null,
+  movimientosManuales: [],
+  cobrosDelDia: [],
+  pagosProveedorDelDia: [],
+  movimientosUnificados: [],
+  isCajaModalOpen: false,
+  setCaja: (caja) => set({ caja }),
+  setMovimientosManuales: (m) => set({ movimientosManuales: m }),
+  setCobrosDelDia: (p) => set({ cobrosDelDia: p }),
+  setPagosProveedorDelDia: (p) => set({ pagosProveedorDelDia: p }),
+  setMovimientosUnificados: (m) => set({ movimientosUnificados: m }),
+  toggleCajaModal: () => set((s) => ({ isCajaModalOpen: !s.isCajaModalOpen })),
+  openCajaModal: () => set({ isCajaModalOpen: true }),
+  closeCajaModal: () => set({ isCajaModalOpen: false }),
+}));
 
+export * from "./chatStore";

@@ -50,6 +50,9 @@ import {
   Venta,
   VentaItem,
   MensajeOrden,
+  Caja,
+  CajaMovimientoManual,
+  MovimientoCajaUnificado,
 } from "@/types";
 
 export function normalizarMargenGanancia(value: unknown): number {
@@ -2025,3 +2028,285 @@ export function subscribeVehiculos(
   );
 }
 
+// ─── CAJA ────────────────────────────────────────────────────────────────────
+
+/** Devuelve la fecha de hoy en Ecuador (UTC-5) como "YYYY-MM-DD" */
+export function getFechaHoyEcuador(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Guayaquil" });
+}
+
+function inicioDiaEcuador(fecha: string): Date {
+  return new Date(`${fecha}T00:00:00-05:00`);
+}
+
+function finDiaEcuador(fecha: string): Date {
+  return new Date(`${fecha}T23:59:59-05:00`);
+}
+
+export async function getCajaDeHoy(): Promise<Caja | null> {
+  const fecha = getFechaHoyEcuador();
+  const snap = await getDocs(
+    query(
+      collection(db, "cajas"),
+      where("fecha", "==", fecha),
+      where("estado", "==", "abierta"),
+      limit(1)
+    )
+  );
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { id: d.id, ...d.data() } as Caja;
+}
+
+export function onCajaDeHoySnapshot(callback: (caja: Caja | null) => void): () => void {
+  const fecha = getFechaHoyEcuador();
+  const q = query(
+    collection(db, "cajas"),
+    where("fecha", "==", fecha),
+    where("estado", "==", "abierta"),
+    limit(1)
+  );
+  return onSnapshot(q, (snap) => {
+    if (snap.empty) {
+      callback(null);
+    } else {
+      const d = snap.docs[0];
+      callback({ id: d.id, ...d.data() } as Caja);
+    }
+  });
+}
+
+export async function abrirCaja(
+  montoApertura: number,
+  usuario: { uid: string; displayName: string }
+): Promise<string> {
+  const fecha = getFechaHoyEcuador();
+  const existente = await getCajaDeHoy();
+  if (existente?.id) return existente.id;
+
+  const cajaRef = await addDoc(collection(db, "cajas"), {
+    fecha,
+    montoApertura: Number(montoApertura),
+    estado: "abierta",
+    abiertaPor: usuario,
+    aperturaAt: serverTimestamp(),
+  });
+  return cajaRef.id;
+}
+
+export async function cerrarCaja(
+  cajaId: string,
+  usuario: { uid: string; displayName: string },
+  notas?: string
+): Promise<void> {
+  const payload: Record<string, unknown> = {
+    estado: "cerrada",
+    cerradaPor: usuario,
+    cierreAt: serverTimestamp(),
+  };
+  if (notas?.trim()) payload.notas = notas.trim();
+  await updateDoc(doc(db, "cajas", cajaId), payload);
+}
+
+export async function getMovimientosManuales(cajaId: string): Promise<CajaMovimientoManual[]> {
+  const snap = await getDocs(
+    query(collection(db, "cajas", cajaId, "movimientos"), orderBy("createdAt", "asc"))
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as CajaMovimientoManual));
+}
+
+export function onMovimientosManualesSnapshot(
+  cajaId: string,
+  callback: (movimientos: CajaMovimientoManual[]) => void
+): () => void {
+  const q = query(
+    collection(db, "cajas", cajaId, "movimientos"),
+    orderBy("createdAt", "asc")
+  );
+  return onSnapshot(q, (snap) => {
+    callback(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CajaMovimientoManual)));
+  });
+}
+
+export async function createMovimientoManual(
+  cajaId: string,
+  data: Omit<CajaMovimientoManual, "id" | "createdAt">
+): Promise<string> {
+  const payload = removeUndefinedFields(data);
+  const movRef = await addDoc(collection(db, "cajas", cajaId, "movimientos"), {
+    ...payload,
+    createdAt: serverTimestamp(),
+  });
+  return movRef.id;
+}
+
+export async function deleteMovimientoManual(cajaId: string, movimientoId: string): Promise<void> {
+  await deleteDoc(doc(db, "cajas", cajaId, "movimientos", movimientoId));
+}
+
+/** Listener en tiempo real de cobros del día (órdenes + ventas) */
+export function onCobrosDelDiaSnapshot(
+  fecha: string,
+  callback: (pagos: Pago[]) => void
+): () => void {
+  const desde = Timestamp.fromDate(inicioDiaEcuador(fecha));
+  const hasta = Timestamp.fromDate(finDiaEcuador(fecha));
+  const q = query(
+    collection(db, "pagos"),
+    where("createdAt", ">=", desde),
+    where("createdAt", "<=", hasta)
+  );
+  return onSnapshot(q, (snap) => {
+    callback(
+      snap.docs
+        .map((d) => ({ id: d.id, ...d.data() } as Pago))
+        .sort((a, b) => {
+          const aT = (a.createdAt as Timestamp)?.toMillis?.() ?? 0;
+          const bT = (b.createdAt as Timestamp)?.toMillis?.() ?? 0;
+          return aT - bT;
+        })
+    );
+  });
+}
+
+export type PagoProveedorDelDia = CompraPago & {
+  compraId: string;
+  proveedorNombre: string;
+  itemIndex: number;
+};
+
+export async function getPagosProveedorDelDia(fecha: string): Promise<PagoProveedorDelDia[]> {
+  const snap = await getDocs(query(collection(db, "compras"), orderBy("updatedAt", "desc")));
+  const result: PagoProveedorDelDia[] = [];
+  for (const d of snap.docs) {
+    const compra = { id: d.id, ...d.data() } as Compra;
+    const pagos = compra.pagosProveedor ?? [];
+    pagos.forEach((pago, idx) => {
+      const pagoFecha = pago.fecha ?? "";
+      if (pagoFecha === fecha) {
+        result.push({
+          ...pago,
+          compraId: d.id,
+          proveedorNombre: compra.proveedorRazonSocial,
+          itemIndex: idx,
+        });
+      }
+    });
+  }
+  return result;
+}
+
+/** Combina las 3 fuentes en un array normalizado de MovimientoCajaUnificado */
+export function normalizarMovimientosCaja({
+  movimientosManuales,
+  cobros,
+  pagosProveedor,
+}: {
+  movimientosManuales: CajaMovimientoManual[];
+  cobros: Pago[];
+  pagosProveedor: PagoProveedorDelDia[];
+}): MovimientoCajaUnificado[] {
+  const lista: MovimientoCajaUnificado[] = [];
+
+  for (const pago of cobros) {
+    const ts = pago.createdAt as Timestamp | undefined;
+    const hora = ts?.toDate?.() ?? new Date();
+    const esTarjeta =
+      pago.metodoPago === "tarjeta_credito" ||
+      pago.metodoPago === "tarjeta_debito" ||
+      pago.metodoPago === "tarjeta";
+    const pendiente =
+      esTarjeta &&
+      (pago.estadoAcreditacion === "pendiente" ||
+        (pago.fechaAcreditacion ? getFechaHoyEcuador() < pago.fechaAcreditacion : true));
+
+    lista.push({
+      id: pago.id!,
+      hora,
+      concepto: pago.ventaId ? "Cobro venta" : "Cobro orden",
+      categoria: pago.ventaId ? "Venta directa" : "Cobro orden",
+      tipo: "ingreso",
+      metodoPago: pago.metodoPago,
+      banco: pago.banco,
+      monto: pago.monto,
+      usuario: pago.registradoPor ?? "",
+      fuente: pago.ventaId ? "cobro_venta" : "cobro_orden",
+      pendienteAcreditacion: pendiente,
+      referencia: pago.referencia,
+    });
+  }
+
+  for (const pago of pagosProveedor) {
+    lista.push({
+      id: `proveedor-${pago.compraId}-${pago.itemIndex}`,
+      hora: pago.createdAt?.toDate?.() ?? new Date(),
+      concepto: `Pago a proveedor (${pago.proveedorNombre})`,
+      categoria: "Pago proveedor",
+      tipo: "egreso",
+      metodoPago: (pago.metodoPago as unknown) as import("@/types").MetodoPago,
+      banco: pago.banco,
+      monto: pago.monto,
+      usuario: "",
+      fuente: "pago_proveedor",
+      referencia: pago.referencia,
+    });
+  }
+
+  for (const m of movimientosManuales) {
+    lista.push({
+      id: m.id!,
+      hora: (m.createdAt as Timestamp)?.toDate?.() ?? new Date(),
+      concepto: m.concepto,
+      categoria: m.categoria,
+      tipo: m.tipo,
+      metodoPago: m.metodoPago,
+      banco: m.banco,
+      monto: m.monto,
+      usuario: m.registradoPor.displayName,
+      fuente: "manual",
+      referencia: m.referencia,
+    });
+  }
+
+  lista.sort((a, b) => a.hora.getTime() - b.hora.getTime());
+  return lista;
+}
+
+export function calcularResumenCaja(
+  montoApertura: number,
+  movimientos: MovimientoCajaUnificado[]
+): {
+  efectivoEnCaja: number;
+  totalIngresos: number;
+  totalEgresos: number;
+  saldoEsperado: number;
+  desglosePorMetodo: Record<string, { ingresos: number; egresos: number }>;
+} {
+  let efectivoExtra = 0;
+  let totalIngresos = 0;
+  let totalEgresos = 0;
+  const desglose: Record<string, { ingresos: number; egresos: number }> = {};
+
+  for (const m of movimientos) {
+    const metodo = m.metodoPago;
+    if (!desglose[metodo]) desglose[metodo] = { ingresos: 0, egresos: 0 };
+
+    if (m.tipo === "ingreso") {
+      totalIngresos += m.monto;
+      desglose[metodo].ingresos += m.monto;
+      if (metodo === "efectivo" && !m.pendienteAcreditacion) efectivoExtra += m.monto;
+    } else {
+      totalEgresos += m.monto;
+      desglose[metodo].egresos += m.monto;
+      if (metodo === "efectivo") efectivoExtra -= m.monto;
+    }
+  }
+
+  return {
+    efectivoEnCaja: Number((montoApertura + efectivoExtra).toFixed(2)),
+    totalIngresos: Number(totalIngresos.toFixed(2)),
+    totalEgresos: Number(totalEgresos.toFixed(2)),
+    saldoEsperado: Number((montoApertura + totalIngresos - totalEgresos).toFixed(2)),
+    desglosePorMetodo: desglose,
+  };
+}

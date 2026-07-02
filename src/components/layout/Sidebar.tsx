@@ -5,11 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Columns3, Users, Car, CreditCard,
   Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3,
-  FileDown, FileText, Receipt, Menu, MessageSquare
+  FileDown, FileText, Receipt, Menu, MessageSquare, Vault
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useAuthStore, useUIStore, useChatStore } from "@/store";
+import { useAuthStore, useUIStore, useChatStore, useCajaStore } from "@/store";
 import { toast } from "react-hot-toast";
 import { getDatosTaller } from "@/lib/services";
 import type { DatosTaller } from "@/types";
@@ -62,6 +62,7 @@ export default function Sidebar() {
     setPresupuestoSidebarOpen
   } = useUIStore();
   const { isInboxOpen, toggleInbox, unreadCount } = useChatStore();
+  const { caja, toggleCajaModal } = useCajaStore();
   const [datosTaller, setDatosTaller] = useState<DatosTaller | null>(null);
 
   useEffect(() => {
@@ -226,6 +227,45 @@ export default function Sidebar() {
             </div>
           )}
 
+
+
+          {/* Caja del día */}
+          {user && (
+            <div className={`transition-all duration-300 ${sidebarOpen ? "px-3" : "px-2"}`}>
+              <button
+                id="sidebar-caja-toggle"
+                onClick={toggleCajaModal}
+                className={`sidebar-link w-full ${sidebarOpen ? "px-3" : "px-[18px]"}`}
+                title={sidebarOpen ? undefined : "Caja del día"}
+              >
+                <div className="relative flex items-center justify-center flex-shrink-0">
+                  <Vault size={18} />
+                  <span
+                    className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-[var(--bg-secondary)] ${
+                      caja ? "bg-green-400" : "bg-slate-400"
+                    }`}
+                  />
+                </div>
+                <span
+                  className={`transition-all duration-300 whitespace-nowrap text-left flex-1 flex justify-between items-center ${
+                    sidebarOpen ? "opacity-100 ml-0" : "opacity-0 ml-4 pointer-events-none"
+                  }`}
+                  style={{ transitionDelay: sidebarOpen ? "50ms" : "0ms" }}
+                >
+                  <span>Caja del día</span>
+                  <span
+                    className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                      caja
+                        ? "bg-green-500/20 text-green-500"
+                        : "bg-slate-400/20 text-slate-400"
+                    }`}
+                  >
+                    {caja ? "Abierta" : "Cerrada"}
+                  </span>
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Nav */}
           <nav className={`flex-1 py-2 flex flex-col gap-1.5 overflow-y-auto transition-all duration-300 ${sidebarOpen ? "px-3" : "px-2"}`}>

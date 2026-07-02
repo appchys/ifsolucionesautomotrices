@@ -68,6 +68,7 @@ import {
   Calendar,
   Grid,
   FileDown,
+  FileText,
   MoreVertical,
   Box,
 } from "lucide-react";
@@ -172,6 +173,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
 
   // Modals & Panels State
   const [activeTab, setActiveTab] = useState<"Vehículo" | "Fotos" | "Notas" | "Chat">("Vehículo");
+  const [isEditingIngreso, setIsEditingIngreso] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
@@ -1312,7 +1314,470 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
       {/* Main 2-Column Grid */}
       <div className="flex flex-col lg:flex-row flex-1 gap-6 min-h-0 overflow-y-auto lg:overflow-hidden px-6 pb-6 custom-scrollbar lg:custom-scrollbar-none">
         
-        {/* Left Column (Items & Form) */}
+        {/* Left Column (Sidebar Tabs) */}
+        {!(isSidebar && chatVisible) && (
+          <div className="w-full lg:w-[340px] lg:h-full border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0 min-h-[450px] lg:min-h-0">
+          {/* Tabs bar */}
+          <div className="flex border-b border-[var(--border)] bg-slate-50/50 shrink-0">
+            {(["Vehículo", "Chat", "Fotos", "Notas"] as const)
+              .filter((tab) => !(isSidebar && chatVisible && tab === "Chat"))
+              .map((tab) => (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  if (tab === "Chat") useChatStore.getState().resetUnread();
+                }}
+                className={`flex-1 text-center py-2.5 text-[10px] font-bold transition-all border-b-2 uppercase tracking-wide relative ${
+                  activeTab === tab
+                    ? "border-blue-600 text-blue-600 bg-white"
+                    : "border-transparent text-[var(--text-muted)] hover:text-slate-900"
+                }`}
+              >
+                {tab}
+                {tab === "Chat" && unreadCount > 0 && activeTab !== "Chat" && (
+                  <span className="absolute -top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center shadow-sm">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content */}
+          <div className={`flex-1 overflow-hidden ${activeTab === "Chat" ? "" : "overflow-y-auto p-4 custom-scrollbar space-y-4"}`}>
+            
+            {activeTab === "Vehículo" && (
+              <div className="space-y-4">
+                {/* Vehicle + Client unified card */}
+                <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      <Car size={12} className="text-blue-500 shrink-0" />
+                      Vehículo
+                    </h3>
+                    <button
+                      onClick={() => setIsVehiculoModalOpen(true)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      title="Editar vehículo"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 border border-blue-200/50">
+                      <Car size={24} className="text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-extrabold text-base text-slate-800 dark:text-white truncate">
+                        {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
+                      </h4>
+                      <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                        <span className="text-xs text-slate-555 dark:text-slate-400 font-mono uppercase bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
+                          {vehiculo.placa}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="pt-3 mt-1 border-t border-[var(--border-light)] flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0 uppercase text-[9px] border border-blue-200/50">
+                      {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
+                    </div>
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                        {cliente.nombre} {cliente.apellido || ""}
+                      </span>
+                      <a
+                        href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-400 hover:text-green-600 transition-colors shrink-0"
+                        title="Enviar WhatsApp"
+                      >
+                        <MessageCircle size={14} className="text-green-500 fill-green-500/10" />
+                      </a>
+                    </div>
+                    <button
+                      onClick={() => setIsClienteModalOpen(true)}
+                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
+                      title="Cambiar cliente"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {!isEditingIngreso ? (
+                  /* Vista / Tarjeta Informativa */
+                  <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                        <FileText size={12} className="text-blue-500 shrink-0" />
+                        Detalles de Ingreso
+                      </h3>
+                      <button
+                        onClick={() => setIsEditingIngreso(true)}
+                        className="text-xs text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/20 dark:hover:bg-blue-950/40 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-none"
+                      >
+                        <Edit2 size={12} /> Editar
+                      </button>
+                    </div>
+
+                    <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                      {/* MOTIVO DE INGRESO */}
+                      <div className="py-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-slate-400">Motivo de Ingreso</span>
+                          <span className={`badge text-[9px] font-bold ${
+                            tipoServicio === "Reparación"
+                              ? "badge-yellow"
+                              : tipoServicio === "Garantía"
+                              ? "badge-purple"
+                              : "badge-green"
+                          }`}>
+                            {tipoServicio}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200 leading-relaxed">
+                          {motivo || <span className="italic text-slate-400 font-normal">No especificado</span>}
+                        </p>
+                      </div>
+
+                      {/* KILOMETRAJE & COMBUSTIBLE */}
+                      <div className="grid grid-cols-2 gap-4 py-2.5">
+                        <div>
+                          <span className="font-semibold text-slate-400 block mb-0.5">Kilometraje</span>
+                          <span className="font-bold text-slate-800 dark:text-white">
+                            {km ? `${Number(km).toLocaleString("es-EC")} km` : <span className="italic font-normal text-slate-400">No registrado</span>}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-semibold text-slate-400 block mb-0.5">Combustible</span>
+                          <span className="font-bold text-slate-800 dark:text-white">
+                            {nivelCombustible ? (NIVELES_COMBUSTIBLE.find(n => n.value === nivelCombustible)?.label || nivelCombustible) : <span className="italic font-normal text-slate-400">No registrado</span>}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* INSPECCIÓN VISUAL */}
+                      <div className="py-2.5">
+                        <span className="font-semibold text-slate-400 block mb-1.5">Inspección Visual</span>
+                        <div
+                          onClick={() => setIsModalInspeccionOpen(true)}
+                          className="flex items-center gap-3 p-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/50 dark:hover:bg-slate-900 border border-[var(--border)] rounded-xl cursor-pointer transition-colors group shadow-sm"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 border border-blue-100/20">
+                            <FileText size={18} className="text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                              Inspección de Ingreso
+                            </p>
+                            <p className="text-[10px] text-[var(--text-muted)] mt-0.5 font-medium">
+                              {danos.length > 0
+                                ? `${danos.length} marca${danos.length !== 1 ? "s" : ""} de daño registrada${danos.length !== 1 ? "s" : ""}`
+                                : "Sin daños registrados"}
+                            </p>
+                          </div>
+                          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity pr-1">
+                            Ver
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* ESTADO GENERAL */}
+                      <div className="py-2.5">
+                        <span className="font-semibold text-slate-400 block">Estado General del Vehículo</span>
+                        <p className="mt-1 text-slate-700 dark:text-slate-350 font-medium leading-relaxed">
+                          {estadoGeneral || <span className="italic text-slate-400">Sin observaciones</span>}
+                        </p>
+                      </div>
+
+                      {/* INVENTARIO */}
+                      <div className="py-2.5">
+                        <span className="font-semibold text-slate-400 block mb-1">Inventario del Vehículo</span>
+                        {checklist.length === 0 ? (
+                          <p className="italic text-slate-400">Sin inventario registrado</p>
+                        ) : (
+                          <div className="flex flex-col gap-1.5 mt-1 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-[var(--border-light)]">
+                            <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                              <span>Artículos checklist</span>
+                              <span>{checklist.filter(c => c.checked).length} de {checklist.length}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {checklist.map((item, idx) => (
+                                <span
+                                  key={idx}
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                                    item.checked
+                                      ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30"
+                                      : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-750"
+                                  }`}
+                                >
+                                  {item.checked ? "✓ " : "✗ "}{item.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* INFORME TÉCNICO */}
+                      <div className="py-2.5">
+                        <span className="font-semibold text-slate-400 block">Informe Técnico / Diagnóstico</span>
+                        <p className="mt-1 text-slate-700 dark:text-slate-350 font-medium leading-relaxed bg-blue-50/20 dark:bg-blue-950/5 p-2 rounded-lg border border-blue-100/30">
+                          {informeTecnico || <span className="italic text-slate-400">Sin diagnóstico cargado</span>}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Formulario de Edición */
+                  <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+                      <h3 className="text-xs font-bold text-slate-700 dark:text-white uppercase tracking-wider flex items-center gap-1">
+                        <Edit2 size={12} className="text-blue-500 shrink-0" />
+                        Editar Ingreso
+                      </h3>
+                      <button
+                        onClick={() => setIsEditingIngreso(false)}
+                        className="text-xs text-white bg-blue-600 hover:bg-blue-700 font-bold flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border-none shadow-sm"
+                      >
+                        <Check size={12} /> Listo
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* MOTIVO DE INGRESO */}
+                <div className="form-group border-b border-[var(--border)] pb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="label mb-0">Motivo de Ingreso</label>
+                    <span className={`badge text-[10px] ${
+                      tipoServicio === "Reparación"
+                        ? "badge-yellow"
+                        : tipoServicio === "Garantía"
+                        ? "badge-purple"
+                        : "badge-green"
+                    }`}>
+                      {tipoServicio}
+                    </span>
+                  </div>
+                  <textarea
+                    className="input w-full bg-slate-50/50 hover:bg-slate-50 border border-[var(--border)] text-xs rounded-lg"
+                    placeholder="Describa el motivo detallado de ingreso"
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                    onBlur={() => handleSaveField({ motivo })}
+                    rows={2}
+                  />
+                </div>
+
+                {/* Kilometraje */}
+                <div className="form-group">
+                  <label className="label">Kilometraje</label>
+                  <input
+                    type="number"
+                    className="input w-full bg-slate-50/50"
+                    placeholder="Ej: 85000"
+                    value={km}
+                    onChange={(e) => setKm(e.target.value)}
+                    onBlur={() => handleSaveField({ kilometrajeIngreso: Number(km) })}
+                  />
+                </div>
+
+                {/* Combustible */}
+                <div className="form-group">
+                  <label className="label">Combustible</label>
+                  <div className="flex rounded-lg overflow-hidden border border-[var(--border)] bg-slate-100 dark:bg-slate-800 p-0.5">
+                    {NIVELES_COMBUSTIBLE.map((nivel) => {
+                      const isSelected = nivelCombustible === nivel.value;
+                      return (
+                        <button
+                          key={nivel.value}
+                          type="button"
+                          className={`flex-1 text-center py-1.5 text-xs font-extrabold rounded-md transition-all ${
+                            isSelected
+                              ? "bg-amber-500 text-white shadow-sm"
+                              : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"
+                          }`}
+                          onClick={() => {
+                            setNivelCombustible(nivel.value);
+                            handleSaveField({ nivelCombustible: nivel.value });
+                          }}
+                        >
+                          {nivel.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Inspeccion visual */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Inspección Visual</label>
+                  {danos.length === 0 && (
+                    <button
+                      onClick={() => setIsModalInspeccionOpen(true)}
+                      className="btn w-full justify-center bg-white hover:bg-slate-50 border border-[var(--border)] text-slate-700 font-bold text-xs py-2 shadow-sm rounded-lg"
+                    >
+                      Registrar inspección
+                    </button>
+                  )}
+
+                  {danos.length > 0 && (
+                    <div className="flex items-center justify-between p-3 border border-blue-200 bg-blue-50/30 rounded-xl mt-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Eye size={15} className="text-blue-600" />
+                        <div>
+                          <p className="font-bold text-blue-900">Inspección de ingreso</p>
+                          <p className="text-[10px] text-blue-700 mt-0.5">
+                            {danos.length} marca{danos.length !== 1 ? "s" : ""} · {fechaCreacion || "Reciente"}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setIsModalInspeccionOpen(true)}
+                        className="text-blue-600 hover:text-blue-800 font-bold"
+                      >
+                        Ver
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Estado General del Vehiculo */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Estado General del Vehículo</label>
+                  <textarea
+                    className="input w-full bg-slate-50/50"
+                    placeholder="Describe el estado general..."
+                    value={estadoGeneral}
+                    onChange={(e) => setEstadoGeneral(e.target.value)}
+                    onBlur={() => handleSaveField({ notasInternas: estadoGeneral })}
+                    rows={3}
+                  />
+                </div>
+
+                {/* Inventario Checklist */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Inventario del Vehículo</label>
+                  <div className="border border-[var(--border)] rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
+                    {checklist.length === 0 ? (
+                      <p className="p-3 text-center text-xs text-[var(--text-muted)] italic">
+                        Sin inventario registrado
+                      </p>
+                    ) : (
+                      checklist.map((item, idx) => (
+                        <label
+                          key={idx}
+                          className="flex items-center justify-between p-2.5 hover:bg-slate-50 cursor-pointer text-xs"
+                        >
+                          <span className="text-slate-700 font-medium">{item.label}</span>
+                          <input
+                            type="checkbox"
+                            checked={item.checked}
+                            onChange={() => handleToggleChecklist(idx)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-0"
+                          />
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Informe Técnico / Diagnóstico */}
+                <div className="form-group border-t border-[var(--border)] pt-4">
+                  <label className="label">Informe Técnico / Diagnóstico</label>
+                  <textarea
+                    className="input w-full bg-slate-50/50"
+                    placeholder="Escriba aquí los detalles del diagnóstico y conclusiones..."
+                    value={informeTecnico}
+                    onChange={(e) => setInformeTecnico(e.target.value)}
+                    onBlur={() => handleSaveField({ informeTecnico })}
+                    rows={4}
+                  />
+                </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2 border-t border-[var(--border)] mt-2">
+                      <button
+                        onClick={() => setIsEditingIngreso(false)}
+                        className="text-xs text-white bg-blue-600 hover:bg-blue-700 font-bold flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border-none shadow-sm"
+                      >
+                        <Check size={12} /> Guardar Cambios
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {activeTab === "Fotos" && (
+              <div className="space-y-4">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleUploadFoto}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="btn w-full justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 shadow-sm rounded-lg"
+                >
+                  <Camera size={14} className="mr-1.5" /> Agregar Imagen
+                </button>
+
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {(orden.fotoUrls || []).map((url, index) => (
+                    <div
+                      key={index}
+                      className="relative aspect-square rounded-xl overflow-hidden border border-[var(--border)] bg-slate-100 group shadow-sm"
+                    >
+                      <img src={url} alt="Evidencia" className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => handleRemoveFoto(index)}
+                        className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                  {(orden.fotoUrls || []).length === 0 && (
+                    <p className="col-span-2 text-center text-xs text-[var(--text-muted)] py-8">
+                      No hay imágenes cargadas a esta orden.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "Notas" && (
+              <div className="space-y-3">
+                <label className="label">Notas Internas / Observaciones</label>
+                <textarea
+                  className="input w-full bg-slate-50/50"
+                  placeholder="Escribe observaciones de uso interno..."
+                  value={notasInternas}
+                  onChange={(e) => setNotasInternas(e.target.value)}
+                  onBlur={() => handleSaveField({ notasInternas })}
+                  rows={10}
+                />
+              </div>
+            )}
+
+            {activeTab === "Chat" && (
+              <ChatOrden
+                ordenId={ordenId}
+                personalAsignado={orden.personalAsignado || []}
+                todosLosUsuarios={todosLosUsuarios}
+                onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
+              />
+            )}
+          </div>
+        </div>
+        )}        {/* Right Column (Items & Form) */}
         <div className="w-full lg:flex-1 flex flex-col gap-5 lg:overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0">
           
 
@@ -1473,127 +1938,147 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
           </div>
 
           {/* Table of items */}
-          <div className="border border-[var(--border)] rounded-xl shadow-sm bg-[var(--bg-card)] overflow-visible">
-            <table className="table w-full">
-              <thead>
-                <tr className="border-b border-[var(--border)] bg-slate-50/50">
-                  <th>Descripción</th>
-                  <th className="text-center w-24">Cant</th>
-                  <th className="text-right w-28">Precio</th>
-                  <th className="text-center w-20">IVA</th>
-                  <th className="text-right w-28">Total</th>
-                  <th className="w-16"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {items.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-10 text-[var(--text-muted)] text-sm">
-                      No hay repuestos o servicios cargados a esta orden.
-                    </td>
+          <div className="relative">
+            <div className="border border-[var(--border)] rounded-xl shadow-sm bg-[var(--bg-card)] overflow-visible">
+              <table className="table w-full">
+                <thead>
+                  <tr className="border-b border-[var(--border)] bg-slate-50/50">
+                    <th>Descripción</th>
+                    <th className="text-center w-24">Cant</th>
+                    <th className="text-right w-28">Precio</th>
+                    <th className="text-center w-20">IVA</th>
+                    <th className="text-right w-28">Total</th>
+                    <th className="w-16"></th>
                   </tr>
-                ) : (
-                  items.map((item, idx) => {
-                    const isOptimistic = item.id?.startsWith("temp-");
-                    return (
-                      <tr key={item.id || idx} className={`hover:bg-slate-50/50 transition-opacity duration-300 ${isOptimistic ? "opacity-65 pointer-events-none select-none" : ""}`}>
-                      <td className="py-2.5">
-                        <p className="font-bold text-[var(--text-primary)] text-sm truncate" title={item.descripcion}>
-                          {item.descripcion}
-                        </p>
-                        {item.productoSku && (
-                          <p className="font-mono text-[10px] text-[var(--text-muted)] uppercase mt-0.5">
-                            SKU: {item.productoSku}
-                          </p>
-                        )}
-                      </td>
-                      <td className="text-center py-2.5">
-                        <div className="inline-flex items-center border border-[var(--border)] rounded-lg bg-white overflow-hidden shadow-sm">
-                          <button
-                            type="button"
-                            className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
-                            onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            className="w-10 text-center border-0 p-0 text-xs font-semibold focus:ring-0"
-                            value={item.cantidad}
-                            onChange={(e) => {
-                              const newItems = [...items];
-                              newItems[idx].cantidad = Number(e.target.value);
-                              setItems(newItems);
-                            }}
-                            onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
-                          />
-                          <button
-                            type="button"
-                            className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
-                            onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
-                          >
-                            +
-                          </button>
-                        </div>
-                      </td>
-                      <td className="text-right py-2.5">
-                        <div className="relative inline-block w-24">
-                          <input
-                            type="number"
-                            className="w-full text-right border border-[var(--border)] rounded-lg p-1 text-xs focus:ring-0"
-                            value={item.precioUnitario}
-                            onChange={(e) => {
-                              const newItems = [...items];
-                              newItems[idx].precioUnitario = Number(e.target.value);
-                              setItems(newItems);
-                            }}
-                            onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
-                          />
-                        </div>
-                      </td>
-                      <td className="text-center text-xs text-slate-500 py-2.5">
-                        {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
-                      </td>
-                      <td className="text-right font-extrabold text-sm text-[var(--text-primary)] py-2.5">
-                        ${(item.precioUnitario * item.cantidad).toFixed(2)}
-                      </td>
-                      <td className="text-center py-2.5 relative flex items-center justify-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
-                          className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
-                            activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
-                          }`}
-                          title="Opciones de ítem"
-                        >
-                          <MoreVertical size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteItem(item.id)}
-                          className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100"
-                          title="Eliminar ítem"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-
-                        {/* Popover flotante de 3 puntos */}
-                        {activePopoverItemId === item.id && (
-                          <OpcionesItemPopover
-                            item={item}
-                            onClose={() => setActivePopoverItemId(null)}
-                            onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
-                            onLocalUpdate={(updates) => {
-                              setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
-                            }}
-                          />
-                        )}
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {items.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="text-center py-10 text-[var(--text-muted)] text-sm">
+                        No hay repuestos o servicios cargados a esta orden.
                       </td>
                     </tr>
-                  );
-                })
-              )}
-              </tbody>
-            </table>
+                  ) : (
+                    items.map((item, idx) => {
+                      const isOptimistic = item.id?.startsWith("temp-");
+                      return (
+                        <tr key={item.id || idx} className={`hover:bg-slate-50/50 transition-opacity duration-300 ${isOptimistic ? "opacity-65 pointer-events-none select-none" : ""}`}>
+                        <td className="py-2.5">
+                          <p className="font-bold text-[var(--text-primary)] text-sm truncate" title={item.descripcion}>
+                            {item.descripcion}
+                          </p>
+                          {item.productoSku && (
+                            <p className="font-mono text-[10px] text-[var(--text-muted)] uppercase mt-0.5">
+                              SKU: {item.productoSku}
+                            </p>
+                          )}
+                        </td>
+                        <td className="text-center py-2.5">
+                          <div className="inline-flex items-center border border-[var(--border)] rounded-lg bg-white overflow-hidden shadow-sm">
+                            <button
+                              type="button"
+                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                              onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              className="w-10 text-center border-0 p-0 text-xs font-semibold focus:ring-0"
+                              value={item.cantidad}
+                              onChange={(e) => {
+                                const newItems = [...items];
+                                newItems[idx].cantidad = Number(e.target.value);
+                                setItems(newItems);
+                              }}
+                              onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
+                            />
+                            <button
+                              type="button"
+                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                              onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </td>
+                        <td className="text-right py-2.5">
+                          <div className="relative inline-block w-24">
+                            <input
+                              type="number"
+                              className="w-full text-right border border-[var(--border)] rounded-lg p-1 text-xs focus:ring-0"
+                              value={item.precioUnitario}
+                              onChange={(e) => {
+                                const newItems = [...items];
+                                newItems[idx].precioUnitario = Number(e.target.value);
+                                setItems(newItems);
+                              }}
+                              onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                            />
+                          </div>
+                        </td>
+                        <td className="text-center text-xs text-slate-500 py-2.5">
+                          {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
+                        </td>
+                        <td className="text-right font-extrabold text-sm text-[var(--text-primary)] py-2.5">
+                          ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                        </td>
+                        <td className="text-center py-2.5 relative flex items-center justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                            className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                              activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                            }`}
+                            title="Opciones de ítem"
+                          >
+                            <MoreVertical size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteItem(item.id)}
+                            className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100"
+                            title="Eliminar ítem"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+
+                          {/* Popover flotante de 3 puntos */}
+                          {activePopoverItemId === item.id && (
+                            <OpcionesItemPopover
+                              item={item}
+                              onClose={() => setActivePopoverItemId(null)}
+                              onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                              onLocalUpdate={(updates) => {
+                                setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                              }}
+                            />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pestaña de Totales Sobresaliendo Hacia Abajo */}
+            <div className="flex justify-end">
+              <div className="bg-[var(--bg-card)] border-x border-b border-[var(--border)] rounded-b-xl px-5 py-2.5 shadow-sm flex items-center gap-6 text-sm font-semibold -mt-[1px] select-none">
+                <div>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Subtotal</span>
+                  <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">IVA (15%)</span>
+                  <span className="font-bold text-[var(--text-primary)]">${iva.toFixed(2)}</span>
+                </div>
+                <div className="border-l border-[var(--border)] pl-4">
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Total</span>
+                  <span className="font-extrabold text-base text-blue-600">${total.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="flex justify-start">
@@ -1603,359 +2088,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
           </div>
         </div>
 
-        {/* Right Column (Sidebar Tabs) */}
-        {!(isSidebar && chatVisible) && (
-          <div className="w-full lg:w-[340px] lg:h-full border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0 min-h-[450px] lg:min-h-0">
-          {/* Tabs bar */}
-          <div className="flex border-b border-[var(--border)] bg-slate-50/50 shrink-0">
-            {(["Vehículo", "Fotos", "Notas", "Chat"] as const)
-              .filter((tab) => !(isSidebar && chatVisible && tab === "Chat"))
-              .map((tab) => (
-              <button
-                key={tab}
-                onClick={() => {
-                  setActiveTab(tab);
-                  if (tab === "Chat") useChatStore.getState().resetUnread();
-                }}
-                className={`flex-1 text-center py-2.5 text-[10px] font-bold transition-all border-b-2 uppercase tracking-wide relative ${
-                  activeTab === tab
-                    ? "border-blue-600 text-blue-600 bg-white"
-                    : "border-transparent text-[var(--text-muted)] hover:text-slate-900"
-                }`}
-              >
-                {tab}
-                {tab === "Chat" && unreadCount > 0 && activeTab !== "Chat" && (
-                  <span className="absolute -top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center shadow-sm">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
 
-          {/* Tab content */}
-          <div className={`flex-1 overflow-hidden ${activeTab === "Chat" ? "" : "overflow-y-auto p-4 custom-scrollbar space-y-4"}`}>
-            
-            {activeTab === "Vehículo" && (
-              <div className="space-y-4">
-                {/* Vehicle + Client unified card */}
-                <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                      <Car size={12} className="text-blue-500 shrink-0" />
-                      Vehículo
-                    </h3>
-                    <button
-                      onClick={() => setIsVehiculoModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
-                      title="Editar vehículo"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 border border-blue-200/50">
-                      <Car size={24} className="text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-extrabold text-base text-slate-800 dark:text-white truncate">
-                        {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
-                      </h4>
-                      <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                        <span className="text-xs text-slate-555 dark:text-slate-400 font-mono uppercase bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
-                          {vehiculo.placa}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="pt-3 mt-1 border-t border-[var(--border-light)] flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0 uppercase text-[9px] border border-blue-200/50">
-                      {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
-                    </div>
-                    <div className="min-w-0 flex-1 flex items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
-                        {cliente.nombre} {cliente.apellido || ""}
-                      </span>
-                      <a
-                        href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-slate-400 hover:text-green-600 transition-colors shrink-0"
-                        title="Enviar WhatsApp"
-                      >
-                        <MessageCircle size={14} className="text-green-500 fill-green-500/10" />
-                      </a>
-                    </div>
-                    <button
-                      onClick={() => setIsClienteModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
-                      title="Cambiar cliente"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* MOTIVO DE INGRESO */}
-                <div className="form-group border-b border-[var(--border)] pb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="label mb-0">Motivo de Ingreso</label>
-                    <span className={`badge text-[10px] ${
-                      tipoServicio === "Reparación"
-                        ? "badge-yellow"
-                        : tipoServicio === "Garantía"
-                        ? "badge-purple"
-                        : "badge-green"
-                    }`}>
-                      {tipoServicio}
-                    </span>
-                  </div>
-                  <textarea
-                    className="input w-full bg-slate-50/50 hover:bg-slate-50 border border-[var(--border)] text-xs rounded-lg"
-                    placeholder="Describa el motivo detallado de ingreso"
-                    value={motivo}
-                    onChange={(e) => setMotivo(e.target.value)}
-                    onBlur={() => handleSaveField({ motivo })}
-                    rows={2}
-                  />
-                </div>
-
-                {/* Kilometraje */}
-                <div className="form-group">
-                  <label className="label">Kilometraje</label>
-                  <input
-                    type="number"
-                    className="input w-full bg-slate-50/50"
-                    placeholder="Ej: 85000"
-                    value={km}
-                    onChange={(e) => setKm(e.target.value)}
-                    onBlur={() => handleSaveField({ kilometrajeIngreso: Number(km) })}
-                  />
-                </div>
-
-                {/* Combustible */}
-                <div className="form-group">
-                  <label className="label">Combustible</label>
-                  <div className="flex rounded-lg overflow-hidden border border-[var(--border)] bg-slate-100 dark:bg-slate-800 p-0.5">
-                    {NIVELES_COMBUSTIBLE.map((nivel) => {
-                      const isSelected = nivelCombustible === nivel.value;
-                      return (
-                        <button
-                          key={nivel.value}
-                          type="button"
-                          className={`flex-1 text-center py-1.5 text-xs font-extrabold rounded-md transition-all ${
-                            isSelected
-                              ? "bg-amber-500 text-white shadow-sm"
-                              : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"
-                          }`}
-                          onClick={() => {
-                            setNivelCombustible(nivel.value);
-                            handleSaveField({ nivelCombustible: nivel.value });
-                          }}
-                        >
-                          {nivel.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Inspeccion visual */}
-                <div className="form-group border-t border-[var(--border)] pt-4">
-                  <label className="label">Inspección Visual</label>
-                  {danos.length === 0 && (
-                    <button
-                      onClick={() => setIsModalInspeccionOpen(true)}
-                      className="btn w-full justify-center bg-white hover:bg-slate-50 border border-[var(--border)] text-slate-700 font-bold text-xs py-2 shadow-sm rounded-lg"
-                    >
-                      Registrar inspección
-                    </button>
-                  )}
-
-                  {danos.length > 0 && (
-                    <div className="flex items-center justify-between p-3 border border-blue-200 bg-blue-50/30 rounded-xl mt-2 text-xs">
-                      <div className="flex items-center gap-2">
-                        <Eye size={15} className="text-blue-600" />
-                        <div>
-                          <p className="font-bold text-blue-900">Inspección de ingreso</p>
-                          <p className="text-[10px] text-blue-700 mt-0.5">
-                            {danos.length} marca{danos.length !== 1 ? "s" : ""} · {fechaCreacion || "Reciente"}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setIsModalInspeccionOpen(true)}
-                        className="text-blue-600 hover:text-blue-800 font-bold"
-                      >
-                        Ver
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Estado General del Vehiculo */}
-                <div className="form-group border-t border-[var(--border)] pt-4">
-                  <label className="label">Estado General del Vehículo</label>
-                  <textarea
-                    className="input w-full bg-slate-50/50"
-                    placeholder="Describe el estado general..."
-                    value={estadoGeneral}
-                    onChange={(e) => setEstadoGeneral(e.target.value)}
-                    onBlur={() => handleSaveField({ notasInternas: estadoGeneral })}
-                    rows={3}
-                  />
-                </div>
-
-                {/* Inventario Checklist */}
-                <div className="form-group border-t border-[var(--border)] pt-4">
-                  <label className="label">Inventario del Vehículo</label>
-                  <div className="border border-[var(--border)] rounded-xl overflow-hidden divide-y divide-slate-100 bg-white">
-                    {checklist.length === 0 ? (
-                      <p className="p-3 text-center text-xs text-[var(--text-muted)] italic">
-                        Sin inventario registrado
-                      </p>
-                    ) : (
-                      checklist.map((item, idx) => (
-                        <label
-                          key={idx}
-                          className="flex items-center justify-between p-2.5 hover:bg-slate-50 cursor-pointer text-xs"
-                        >
-                          <span className="text-slate-700 font-medium">{item.label}</span>
-                          <input
-                            type="checkbox"
-                            checked={item.checked}
-                            onChange={() => handleToggleChecklist(idx)}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-0"
-                          />
-                        </label>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* Informe Técnico / Diagnóstico */}
-                <div className="form-group border-t border-[var(--border)] pt-4">
-                  <label className="label">Informe Técnico / Diagnóstico</label>
-                  <textarea
-                    className="input w-full bg-slate-50/50"
-                    placeholder="Escriba aquí los detalles del diagnóstico y conclusiones..."
-                    value={informeTecnico}
-                    onChange={(e) => setInformeTecnico(e.target.value)}
-                    onBlur={() => handleSaveField({ informeTecnico })}
-                    rows={4}
-                  />
-                </div>
-              </div>
-            )}
-
-            {activeTab === "Fotos" && (
-              <div className="space-y-4">
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  className="hidden"
-                  ref={fileInputRef}
-                  onChange={handleUploadFoto}
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="btn w-full justify-center bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs py-2 shadow-sm rounded-lg"
-                >
-                  <Camera size={14} className="mr-1.5" /> Agregar Imagen
-                </button>
-
-                <div className="grid grid-cols-2 gap-2 mt-3">
-                  {(orden.fotoUrls || []).map((url, index) => (
-                    <div
-                      key={index}
-                      className="relative aspect-square rounded-xl overflow-hidden border border-[var(--border)] bg-slate-100 group shadow-sm"
-                    >
-                      <img src={url} alt="Evidencia" className="w-full h-full object-cover" />
-                      <button
-                        onClick={() => handleRemoveFoto(index)}
-                        className="absolute top-1 right-1 p-1 bg-red-600/90 text-white rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Eliminar"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  ))}
-                  {(orden.fotoUrls || []).length === 0 && (
-                    <p className="col-span-2 text-center text-xs text-[var(--text-muted)] py-8">
-                      No hay imágenes cargadas a esta orden.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {activeTab === "Notas" && (
-              <div className="space-y-3">
-                <label className="label">Notas Internas / Observaciones</label>
-                <textarea
-                  className="input w-full bg-slate-50/50"
-                  placeholder="Escribe observaciones de uso interno..."
-                  value={notasInternas}
-                  onChange={(e) => setNotasInternas(e.target.value)}
-                  onBlur={() => handleSaveField({ notasInternas })}
-                  rows={10}
-                />
-              </div>
-            )}
-
-            {activeTab === "Chat" && (
-              <ChatOrden
-                ordenId={ordenId}
-                personalAsignado={orden.personalAsignado || []}
-                todosLosUsuarios={todosLosUsuarios}
-                onOpenInspeccion={() => setIsModalInspeccionOpen(true)}
-              />
-            )}
-          </div>
-        </div>
-        )}
-      </div>
-
-      {/* Footer bar */}
-      <div className="mt-4 pt-3 border-t border-[var(--border)] flex flex-wrap justify-between items-center bg-[var(--bg-card)] py-2 shrink-0 rounded-xl shadow-sm gap-4 px-4">
-        {/* Progress bar */}
-        <div className="flex items-center gap-2.5 w-60 text-xs">
-          <span className="font-extrabold text-[var(--text-secondary)]">Progreso</span>
-          <div className="flex-1 progress-bar h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div className="progress-fill h-full bg-blue-600" style={{ width: "0%" }}></div>
-          </div>
-          <span className="font-extrabold text-[var(--text-secondary)]">0%</span>
-        </div>
-
-        {/* Totals panel compact */}
-        <div className="flex items-center text-xs font-semibold gap-6">
-          <div>
-            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Subtotal</span>
-            <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>
-          </div>
-          <div>
-            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">IVA (15%)</span>
-            <span className="font-bold text-[var(--text-primary)]">${iva.toFixed(2)}</span>
-          </div>
-          <div className="border-l border-[var(--border)] pl-4">
-            <span className="text-[9px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Total</span>
-            <span className="font-extrabold text-sm text-blue-600">${total.toFixed(2)}</span>
-          </div>
-        </div>
-
-        {/* Control actions */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setIsFirmasModalOpen(true)}
-            className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm cursor-pointer"
-          >
-            Firmar
-          </button>
-          <button className="btn bg-white border border-[var(--border)] text-slate-700 text-xs py-1.5 px-3 rounded-lg shadow-sm">
-            Etiqueta
-          </button>
-        </div>
       </div>
 
       {/* AgregarItemModal */}

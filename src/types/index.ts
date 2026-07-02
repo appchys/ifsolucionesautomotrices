@@ -472,3 +472,48 @@ export interface MensajeOrden {
   createdAt?: Timestamp;
 }
 
+// ─── CAJA ─────────────────────────────────────────────────────────────────────
+
+export interface CajaMovimientoManual {
+  id?: string;
+  tipo: "ingreso" | "egreso";
+  concepto: string;
+  categoria: string;
+  monto: number;
+  metodoPago: MetodoPago;
+  banco?: string;
+  referencia?: string;
+  registradoPor: { uid: string; displayName: string };
+  createdAt?: Timestamp;
+}
+
+export interface Caja {
+  id?: string;
+  fecha: string; // "YYYY-MM-DD" en UTC-5
+  aperturaAt: Timestamp;
+  cierreAt?: Timestamp;
+  montoApertura: number;
+  estado: "abierta" | "cerrada";
+  abiertaPor: { uid: string; displayName: string };
+  cerradaPor?: { uid: string; displayName: string };
+  notas?: string;
+}
+
+/** Movimiento normalizado que combina las 3 fuentes para la tabla de caja */
+export type FuenteMovimientoCaja = "cobro_orden" | "cobro_venta" | "pago_proveedor" | "manual";
+
+export interface MovimientoCajaUnificado {
+  id: string;
+  hora: Date;
+  concepto: string;
+  categoria: string;
+  tipo: "ingreso" | "egreso";
+  metodoPago: MetodoPago;
+  banco?: string;
+  monto: number;
+  usuario: string;
+  fuente: FuenteMovimientoCaja;
+  pendienteAcreditacion?: boolean;
+  referencia?: string;
+}
+

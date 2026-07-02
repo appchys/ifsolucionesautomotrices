@@ -10,6 +10,8 @@ import ActiveChatPanel from "./ActiveChatPanel";
 import IngresoSidebar from "../recepcion/IngresoSidebar";
 import PresupuestoSidebar from "../recepcion/PresupuestoSidebar";
 import OrdenSidebar from "../ordenes/OrdenSidebar";
+import CajaProvider from "../caja/CajaProvider";
+import CajaModal from "../caja/CajaModal";
 
 export default function AppShell({ 
   children, 
@@ -46,6 +48,8 @@ export default function AppShell({
       <IngresoSidebar />
       <PresupuestoSidebar />
       <OrdenSidebar />
+      <CajaProvider />
+      <CajaModal />
 
       {/* Main area */}
 
