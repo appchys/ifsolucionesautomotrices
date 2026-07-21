@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, RefreshCw, Save, Shield, X, UserCheck, UserX } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Save, Shield, X, UserCheck, UserX, Trash2 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import type { AppUser, UserRole } from "@/types";
 import { createAuthUser } from "@/lib/firebase";
-import { createUsuarioDB, getUsuarios, updateUsuario } from "@/lib/services";
+import { createUsuarioDB, getUsuarios, updateUsuario, deleteUsuario } from "@/lib/services";
 
 const ROLE_OPTIONS: Array<{ value: UserRole; label: string }> = [
   { value: "admin", label: "Admin" },
@@ -40,6 +40,8 @@ export default function UsuariosManager() {
   const [usuarios, setUsuarios] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingUid, setSavingUid] = useState<string | null>(null);
+  const [deletingUid, setDeletingUid] = useState<string | null>(null);
+  const [userToDelete, setUserToDelete] = useState<AppUser | null>(null);
   const [creating, setCreating] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [form, setForm] = useState<UsuarioForm>(EMPTY_FORM);
@@ -140,6 +142,23 @@ export default function UsuariosManager() {
       toast.error("No se pudo actualizar el usuario");
     } finally {
       setSavingUid(null);
+    }
+  };
+
+  const handleDelete = async (usuario: AppUser) => {
+    const targetId = usuario.id || usuario.uid;
+    setDeletingUid(targetId);
+    try {
+      await deleteUsuario(targetId);
+      setUsuarios((current) =>
+        current.filter((item) => item.uid !== usuario.uid && item.id !== usuario.id)
+      );
+      toast.success("Usuario eliminado exitosamente");
+      setUserToDelete(null);
+    } catch {
+      toast.error("No se pudo eliminar el usuario");
+    } finally {
+      setDeletingUid(null);
     }
   };
 
@@ -314,6 +333,84 @@ export default function UsuariosManager() {
         </div>
       ) : null}
 
+      {userToDelete ? (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="eliminarUsuarioTitle"
+          onClick={() => {
+            if (!deletingUid) setUserToDelete(null);
+          }}
+        >
+          <div
+            className="modal-box"
+            style={{ maxWidth: "480px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className="stat-icon flex-shrink-0"
+                  style={{ background: "rgba(239, 68, 68, 0.12)", color: "#ef4444" }}
+                >
+                  <Trash2 size={22} />
+                </div>
+                <div>
+                  <h3
+                    id="eliminarUsuarioTitle"
+                    className="font-semibold text-lg"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    Eliminar usuario
+                  </h3>
+                  <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+                    Esta acción no se puede deshacer.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-ghost btn-icon"
+                disabled={Boolean(deletingUid)}
+                aria-label="Cerrar modal"
+                onClick={() => setUserToDelete(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-sm mb-6" style={{ color: "var(--text-secondary)" }}>
+              ¿Estás seguro de que deseas eliminar al usuario{" "}
+              <strong style={{ color: "var(--text-primary)" }}>
+                {userToDelete.displayName || userToDelete.email}
+              </strong>{" "}
+              ({userToDelete.email})?
+            </p>
+
+            <div className="flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={Boolean(deletingUid)}
+                onClick={() => setUserToDelete(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn-danger flex items-center gap-2"
+                disabled={Boolean(deletingUid)}
+                onClick={() => handleDelete(userToDelete)}
+              >
+                {deletingUid ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="table-container">
         <table className="table">
           <thead>
@@ -341,7 +438,11 @@ export default function UsuariosManager() {
               </tr>
             ) : (
               usuariosOrdenados.map((usuario) => {
+                const targetId = usuario.id || usuario.uid;
                 const saving = savingUid === usuario.uid;
+                const deleting = deletingUid === targetId;
+                const isBusy = saving || deleting;
+
                 return (
                   <tr key={usuario.id ?? usuario.uid}>
                     <td>
@@ -356,7 +457,7 @@ export default function UsuariosManager() {
                       <select
                         className="input text-sm"
                         value={usuario.role}
-                        disabled={saving}
+                        disabled={isBusy}
                         onChange={(e) => handleUpdate(usuario, { role: e.target.value as UserRole })}
                       >
                         {ROLE_OPTIONS.map((option) => (
@@ -376,7 +477,7 @@ export default function UsuariosManager() {
                         <button
                           type="button"
                           className="btn-secondary btn-sm"
-                          disabled={saving}
+                          disabled={isBusy}
                           onClick={() => handleUpdate(usuario, { activo: !usuario.activo })}
                         >
                           {saving ? (
@@ -391,11 +492,24 @@ export default function UsuariosManager() {
                         <button
                           type="button"
                           className="btn-ghost btn-sm"
-                          disabled={saving}
+                          disabled={isBusy}
                           onClick={() => handleUpdate(usuario, { role: usuario.role })}
                           title={`Guardar rol ${roleLabel(usuario.role)}`}
                         >
                           <Save size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger btn-sm"
+                          disabled={isBusy}
+                          onClick={() => setUserToDelete(usuario)}
+                          title="Eliminar usuario"
+                        >
+                          {deleting ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={16} />
+                          )}
                         </button>
                       </div>
                     </td>

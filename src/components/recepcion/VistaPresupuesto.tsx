@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -299,6 +299,42 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
     await handleUpdateItemFields(itemId, { [fieldName]: value });
   };
 
+  const handleToggleAllIva = async (aplicaIva: boolean) => {
+    if (!items || items.length === 0) return;
+    const nuevoImpuesto = aplicaIva ? 15 : 0;
+
+    // Actualizar UI inmediatamente (optimistic UI)
+    const updatedItems = items.map((it) => ({
+      ...it,
+      impuestoAplicable: nuevoImpuesto,
+      subtotal: Number((it.cantidad * it.precioUnitario).toFixed(2)),
+    }));
+    setItems(updatedItems);
+
+    const toastId = toast.loading(aplicaIva ? "Aplicando IVA a todos los productos..." : "Quitando IVA a todos los productos...");
+
+    try {
+      await Promise.all(
+        items.map((it) =>
+          it.id
+            ? updateItemOrden(presupuestoId, it.id, {
+                impuestoAplicable: nuevoImpuesto,
+                subtotal: Number((it.cantidad * it.precioUnitario).toFixed(2)),
+              })
+            : Promise.resolve()
+        )
+      );
+      toast.success(
+        aplicaIva ? "IVA (15%) aplicado a todos los productos" : "IVA removido de todos los productos",
+        { id: toastId }
+      );
+    } catch (err) {
+      console.error("Error al actualizar IVA masivo:", err);
+      toast.error("Error al actualizar IVA masivo", { id: toastId });
+      void loadData();
+    }
+  };
+
   const handleDownloadPDF = async () => {
     if (!orden || !cliente || !vehiculo) return;
     setGeneratingPdf(true);
@@ -577,6 +613,35 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
               >
                 <Search size={16} /> Catálogo
               </button>
+            </div>
+
+            {/* Items Header & Batch IVA Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+              <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                Productos / Servicios ({items.length})
+              </span>
+              {items.length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAllIva(true)}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Aplicar IVA (15%) a todos los productos"
+                  >
+                    <Percent size={13} />
+                    Con IVA a todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAllIva(false)}
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="Quitar IVA (0%) a todos los productos"
+                  >
+                    <Percent size={13} className="opacity-40" />
+                    Sin IVA a todos
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Items Table */}

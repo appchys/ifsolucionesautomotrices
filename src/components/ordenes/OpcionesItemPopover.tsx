@@ -93,42 +93,60 @@ export default function OpcionesItemPopover({
           </div>
         </div>
 
-        {/* Exento de Impuesto */}
-        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 mb-3">
-          <div>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Exento de impuesto</span>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500 block mt-0.5">IVA 15%</span>
+        {/* IMPUESTO (IVA) */}
+        <div className="border-t border-slate-100 dark:border-slate-800 pt-3 mb-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">IMPUESTO (IVA)</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              {draft.impuestoAplicable > 0 ? `Con IVA (${draft.impuestoAplicable}%)` : "Sin IVA"}
+            </span>
           </div>
-          <label className="relative inline-flex items-center cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={draft.impuestoAplicable === 0}
-              onChange={(e) => {
-                const isExent = e.target.checked;
-                updateDraft({ impuestoAplicable: isExent ? 0 : 15 });
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg mb-2">
+            <button
+              type="button"
+              className={`flex-1 text-center py-1 text-xs font-bold rounded-md transition-all border-0 cursor-pointer ${
+                draft.impuestoAplicable > 0
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 bg-transparent hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+              }`}
+              onClick={() => {
+                updateDraft({ impuestoAplicable: draft.impuestoAplicable > 0 ? draft.impuestoAplicable : 15 });
               }}
-              className="sr-only peer"
-            />
-            <div className="w-8 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all dark:border-slate-600 peer-checked:bg-blue-600"></div>
-          </label>
-        </div>
+            >
+              Con IVA
+            </button>
+            <button
+              type="button"
+              className={`flex-1 text-center py-1 text-xs font-bold rounded-md transition-all border-0 cursor-pointer ${
+                draft.impuestoAplicable === 0
+                  ? "bg-slate-600 text-white shadow-sm"
+                  : "text-slate-500 dark:text-slate-400 bg-transparent hover:bg-slate-200/50 dark:hover:bg-slate-700/50"
+              }`}
+              onClick={() => {
+                updateDraft({ impuestoAplicable: 0 });
+              }}
+            >
+              Sin IVA
+            </button>
+          </div>
 
-        {/* % IVA */}
-        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3 mb-3">
-          <span className="text-xs font-bold text-slate-700 dark:text-slate-300">% IVA</span>
-          <div className="flex items-center gap-1">
-            <input
-              type="number"
-              className="w-16 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
-              value={draft.impuestoAplicable}
-              disabled={draft.impuestoAplicable === 0}
-              onChange={(e) => {
-                const val = Number(e.target.value);
-                updateDraft({ impuestoAplicable: val });
-              }}
-            />
-            <span className="text-xs text-slate-500">%</span>
-          </div>
+          {draft.impuestoAplicable > 0 && (
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">% IVA</span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  className="w-16 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-800 text-[var(--text-primary)]"
+                  value={draft.impuestoAplicable}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    updateDraft({ impuestoAplicable: val });
+                  }}
+                />
+                <span className="text-xs text-slate-500">%</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* OPCIONES DE ITEM EXTERNO (CONDICIONAL) */}
