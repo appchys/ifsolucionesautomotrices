@@ -101,7 +101,7 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white dark:bg-[var(--bg-card)] rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col h-[85vh] overflow-hidden border border-[var(--border)] animate-fade-in">
+      <div className="bg-white rounded-2xl w-full max-w-5xl shadow-2xl flex flex-col h-[85vh] overflow-hidden border border-[var(--border)] animate-fade-in">
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-[var(--border)]">
@@ -149,7 +149,7 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
                       onClick={() => setSelectedVenta(v)}
                       className={`w-full p-4 text-left transition-colors relative ${
                         isSelected 
-                          ? "bg-blue-50/40 dark:bg-blue-900/5" 
+                          ? "bg-blue-50/40" 
                           : "hover:bg-[var(--bg-hover)]"
                       }`}
                     >
@@ -176,8 +176,8 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
                         
                         <span className={`badge ${
                           isAnulada 
-                            ? "bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/30" 
-                            : "bg-green-50 text-green-600 border border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30"
+                            ? "bg-red-50 text-red-600 border border-red-200" 
+                            : "bg-green-50 text-green-600 border border-green-200"
                         }`}>
                           {isAnulada ? "Anulada" : "Completada"}
                         </span>
@@ -190,15 +190,15 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
           </div>
 
           {/* Right panel: Details */}
-          <div className="flex-1 flex flex-col overflow-y-auto p-6 bg-slate-50/30 dark:bg-[var(--bg-secondary)]/10">
+          <div className="flex-1 flex flex-col overflow-y-auto p-6 bg-slate-50/30">
             {selectedVenta ? (
               <div className="space-y-6">
                 
                 {/* Status Box */}
                 <div className={`p-4 rounded-xl border flex items-center justify-between ${
                   selectedVenta.estado === "anulada"
-                    ? "bg-red-50/50 dark:bg-red-950/10 border-red-200 dark:border-red-900/30 text-red-700 dark:text-red-400"
-                    : "bg-green-50/50 dark:bg-green-950/10 border-green-200 dark:border-green-900/30 text-green-700 dark:text-green-400"
+                    ? "bg-red-50/50 border-red-200 text-red-700"
+                    : "bg-green-50/50 border-green-200 text-green-700"
                 }`}>
                   <div className="flex items-center gap-2.5">
                     <AlertTriangle size={18} />
@@ -237,7 +237,7 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
                   <div className="card p-4">
                     <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Detalle de Registro</p>
                     <p className="font-bold text-sm text-[var(--text-primary)]">Vendedor: {selectedVenta.vendedorNombre}</p>
-                    <p className="text-xs text-[var(--text-secondary)] mt-0.5 capitalize font-bold text-blue-600 dark:text-blue-400">Pago: {selectedVenta.metodoPago}</p>
+                    <p className="text-xs text-[var(--text-secondary)] mt-0.5 capitalize font-bold text-blue-600">Pago: {selectedVenta.metodoPago}</p>
                   </div>
                 </div>
 
@@ -253,7 +253,7 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
                 <div className="card p-0 overflow-hidden border-[var(--border)]">
                   <table className="table">
                     <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-900/10 border-b border-[var(--border)]">
+                      <tr className="bg-slate-50 border-b border-[var(--border)]">
                         <th>Descripción</th>
                         <th className="text-center">Cant.</th>
                         <th className="text-right">Precio Unit.</th>
@@ -278,7 +278,7 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
 
                 {/* Financial Summary */}
                 <div className="flex justify-end">
-                  <div className="w-64 space-y-2 border border-[var(--border)] rounded-xl p-4 bg-white dark:bg-[var(--bg-card)]">
+                  <div className="w-64 space-y-2 border border-[var(--border)] rounded-xl p-4 bg-white">
                     <div className="flex justify-between text-xs text-[var(--text-secondary)]">
                       <span>Subtotal:</span>
                       <span>${Number(selectedVenta.subtotal || 0).toFixed(2)}</span>

@@ -46,8 +46,12 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       const ordenData = await getOrdenById(presupuestoId);
       
       if (!ordenData) {
-        toast.error("Presupuesto no encontrado");
-        router.push("/presupuestos");
+        if (isSidebar) {
+          setPresupuestoSidebarOpen(false);
+        } else {
+          toast.error("Presupuesto no encontrado");
+          router.push("/presupuestos");
+        }
         return;
       }
 
@@ -441,7 +445,11 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
     try {
       await deleteOrden(presupuestoId);
       toast.success("Presupuesto eliminado con éxito", { id: toastId });
-      router.push("/presupuestos");
+      if (isSidebar) {
+        setPresupuestoSidebarOpen(false);
+      } else {
+        router.push("/presupuestos");
+      }
     } catch (err) {
       console.error(err);
       toast.error("Error al eliminar el presupuesto", { id: toastId });
@@ -454,7 +462,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   if (loading || !orden || !cliente || !vehiculo) {
     if (isSidebar) {
       return (
-        <div className="flex items-center justify-center h-full p-6 bg-slate-50 dark:bg-slate-900">
+        <div className="flex items-center justify-center h-full p-6 bg-slate-50">
           <Loader2 size={32} className="animate-spin text-blue-500" />
         </div>
       );
@@ -475,7 +483,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   const total = base + iva;
 
   const mainContent = (
-    <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50 dark:bg-slate-900" : ""}`} style={isSidebar ? undefined : { height: "calc(100vh - 8.5rem)" }}>
+    <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50" : ""}`} style={isSidebar ? undefined : { height: "calc(100vh - 8.5rem)" }}>
       {/* Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-2 mb-3 flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -500,7 +508,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             Presupuesto <span className="text-blue-600 font-mono">#PRE-{String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0")}</span>
           </h1>
           {!isSidebar && (
-            <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-[var(--border)]">
+            <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] bg-slate-100 px-3 py-1.5 rounded-lg border border-[var(--border)]">
                <span>Creación</span>
                <span className="font-semibold text-[var(--text-primary)]">
                  {orden.createdAt ? new Date(orden.createdAt.toMillis()).toLocaleDateString('es-ES') : "N/A"}
@@ -516,7 +524,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
           <div className="flex items-center gap-1 text-[var(--text-secondary)]">
             <button 
               type="button"
-              className="p-1 text-slate-700 dark:text-slate-350 hover:text-blue-600 disabled:opacity-50 bg-transparent border-0 cursor-pointer" 
+              className="p-1 text-slate-700 hover:text-blue-600 disabled:opacity-50 bg-transparent border-0 cursor-pointer" 
               onClick={handlePrintPDF}
               disabled={generatingPdf || loading}
               title="Imprimir"
@@ -529,7 +537,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             </button>
             <button 
               type="button"
-              className="p-1 text-slate-700 dark:text-slate-350 hover:text-blue-600 disabled:opacity-50 bg-transparent border-0 cursor-pointer"
+              className="p-1 text-slate-700 hover:text-blue-600 disabled:opacity-50 bg-transparent border-0 cursor-pointer"
               onClick={handleDownloadPDF}
               disabled={generatingPdf || loading}
               title="Descargar PDF"
@@ -563,11 +571,11 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             {isMenuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
-                <div className="absolute right-0 mt-2 w-42 bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-42 bg-white border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
                   <button
                     type="button"
                     onClick={handleEliminarPresupuesto}
-                    className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                    className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
                   >
                     <Trash2 size={12} />
                     Eliminar presupuesto
@@ -625,7 +633,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                   <button
                     type="button"
                     onClick={() => handleToggleAllIva(true)}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:hover:bg-blue-900/50 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/60 transition-colors flex items-center gap-1 cursor-pointer"
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200/60 transition-colors flex items-center gap-1 cursor-pointer"
                     title="Aplicar IVA (15%) a todos los productos"
                   >
                     <Percent size={13} />
@@ -634,7 +642,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                   <button
                     type="button"
                     onClick={() => handleToggleAllIva(false)}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                    className="px-2.5 py-1 text-xs font-bold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
                     title="Quitar IVA (0%) a todos los productos"
                   >
                     <Percent size={13} className="opacity-40" />
@@ -645,7 +653,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             </div>
 
             {/* Items Table */}
-            <div className="border border-[var(--border)] rounded-xl bg-white dark:bg-[var(--bg-card)] overflow-visible">
+            <div className="border border-[var(--border)] rounded-xl bg-white overflow-visible">
               <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold text-[var(--text-muted)] uppercase border-b border-[var(--border)]">
                 <div className="col-span-4">Descripción</div>
                 <div className="col-span-2 text-center">Cant</div>
@@ -663,7 +671,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                   </div>
                 ) : (
                   items.map((item, idx) => (
-                    <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
                       <div className="col-span-4 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
                       <div className="col-span-2 flex items-center justify-center gap-1">
                         <button 
@@ -742,7 +750,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
               </div>
 
               {/* Totals */}
-              <div className="bg-slate-50 dark:bg-slate-900 border-t border-[var(--border)] p-4">
+              <div className="bg-slate-50 border-t border-[var(--border)] p-4">
                 <div className="flex justify-end">
                   <div className="w-64 space-y-2">
                     <div className="flex justify-between text-sm">

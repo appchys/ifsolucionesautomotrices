@@ -231,36 +231,71 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
 
 
 
+  // Determine if client is valid (either selected OR new client form filled with name)
+  const isClientValid = useMemo(() => {
+    if (selectedCliente?.id) return true;
+    return Boolean(clienteForm.nombre.trim());
+  }, [selectedCliente, clienteForm]);
+
+  // Determine if vehicle is valid (either selected OR new vehicle form filled)
+  const isVehicleValid = useMemo(() => {
+    if (selectedVehiculo?.id) return true;
+    const finalPlaca = searchPlaca.trim();
+    return Boolean(
+      finalPlaca.length >= 6 &&
+      vehiculoForm.marca.trim() &&
+      vehiculoForm.modelo.trim()
+    );
+  }, [selectedVehiculo, searchPlaca, vehiculoForm]);
+
+  const canSubmit = isClientValid && isVehicleValid;
+
   const handleFinalSubmit = async () => {
-    if (!selectedCliente?.id) {
-      toast.error("Selecciona un cliente");
+    if (!isClientValid || !isVehicleValid) {
+      if (!isClientValid) {
+        toast.error("Por favor ingresa el Nombre del cliente");
+      } else {
+        toast.error("Por favor completa los datos obligatorios del vehículo (Placa, Marca y Modelo)");
+      }
       return;
     }
     
     setIsSubmitting(true);
     try {
+      let clienteId = selectedCliente?.id;
+
+      // 1. Si el cliente es nuevo, crearlo en Firestore
+      if (!clienteId) {
+        clienteId = await createCliente({
+          nombre: clienteForm.nombre.trim(),
+          apellido: clienteForm.apellido.trim(),
+          identificacion: clienteForm.cedula.trim(),
+          telefono: clienteForm.telefono.trim(),
+          email: clienteForm.email.trim(),
+          direccion: "",
+        });
+      }
+
       let vehiculoId = selectedVehiculo?.id;
 
+      // 2. Si el vehículo es nuevo, crearlo en Firestore vinculado al clienteId
       if (!vehiculoId) {
-        if (!searchPlaca.trim() || !vehiculoForm.marca || !vehiculoForm.modelo) {
-          toast.error("Por favor ingresa la placa, marca y modelo del vehículo");
-          setIsSubmitting(false);
-          return;
-        }
+        const finalPlaca = searchPlaca.trim().toUpperCase();
         vehiculoId = await createVehiculo({
-          clienteId: selectedCliente.id,
-          placa: searchPlaca.trim().toUpperCase(),
-          marca: vehiculoForm.marca,
-          modelo: vehiculoForm.modelo,
-          anio: vehiculoForm.anio,
+          clienteId,
+          placa: finalPlaca,
+          marca: vehiculoForm.marca.trim(),
+          modelo: vehiculoForm.modelo.trim(),
+          anio: vehiculoForm.anio || new Date().getFullYear(),
           color: "Por definir",
           tipoVehiculo: vehiculoForm.tipoVehiculo,
         });
       }
 
+      // 3. Crear la Orden / Ingreso / Presupuesto
       const ordenId = await createOrdenConItems({
         vehiculoId,
-        clienteId: selectedCliente.id,
+        clienteId,
         estado: "En Diagnóstico",
         tipoServicio: "Mantenimiento",
         motivo: tipoMode === "ingreso" ? "Ingreso inicial" : tipoMode === "presupuesto" ? "Presupuesto inicial" : "Orden de trabajo",
@@ -286,21 +321,18 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
         setPresupuestoSidebarOpen(true, ordenId);
       }
     } catch (error) {
-      console.error(error);
+      console.error("Error al registrar:", error);
       toast.error("Error al crear el documento");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Determine if we can submit
-  const canSubmit = selectedCliente && (selectedVehiculo || searchPlaca.trim().length >= 6);
-
   // Render client card (reusable)
   const renderClienteCard = () => {
     if (!selectedCliente) return null;
     return (
-      <div className="card p-3 border-green-200 dark:border-green-700/50 bg-green-50/50 dark:bg-green-900/10">
+      <div className="card p-3 border-green-200 bg-green-50/50">
         <div className="flex items-start justify-between">
           <div className="flex gap-3">
             <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold shrink-0 uppercase text-sm">
@@ -331,7 +363,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
   const renderVehiculoCard = () => {
     if (!selectedVehiculo) return null;
     return (
-      <div className="card p-3 border-green-200 dark:border-green-700/50 bg-green-50/50 dark:bg-green-900/10">
+      <div className="card p-3 border-green-200 bg-green-50/50">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
             <Car size={18} className="text-green-600" />
@@ -351,7 +383,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
     if (searchMode === "cliente" && !isCreatingNewVehicle) return null;
 
     return (
-      <div className="bg-slate-50 dark:bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4 space-y-4">
+      <div className="bg-slate-50 border border-[var(--border)] rounded-xl p-4 space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-sm font-semibold text-blue-600">Vehículo nuevo — completa sus datos</p>
           {searchMode === "cliente" && (
@@ -424,7 +456,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
               autoFocus
             />
             {mostrarSugerenciasPlaca && sugerenciasPlaca.length > 0 && (
-              <div className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+              <div className="absolute z-50 top-full mt-1 w-full bg-white border border-[var(--border)] rounded-xl shadow-xl overflow-hidden max-h-56 overflow-y-auto">
                 {sugerenciasPlaca.map((v) => (
                   <button
                     key={v.id}
@@ -501,7 +533,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
           />
         </div>
         {filteredClientesInline.length > 0 && !selectedCliente && (
-          <div className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden">
+          <div className="absolute z-50 top-full mt-1 w-full bg-white border border-[var(--border)] rounded-xl shadow-xl overflow-hidden">
             {filteredClientesInline.map((c) => (
               <button key={c.id} className="w-full text-left p-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border)] last:border-0"
                 onClick={() => handleSelectCliente(c)}>
@@ -543,7 +575,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
               type="text"
-              className={`input pl-9 w-full ${selectedCliente ? "border-blue-500 bg-blue-50 dark:bg-blue-900/10" : ""}`}
+              className={`input pl-9 w-full ${selectedCliente ? "border-blue-500 bg-blue-50" : ""}`}
               placeholder="Buscar por nombre, CI / RUC, teléfono o email..."
               value={searchCliente}
               onChange={(e) => {
@@ -559,7 +591,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
             />
           </div>
           {filteredClientes.length > 0 && !selectedCliente && (
-            <div className="absolute z-50 top-full mt-1 w-full bg-white dark:bg-[var(--bg-card)] border border-[var(--border)] rounded-xl shadow-xl overflow-hidden">
+            <div className="absolute z-50 top-full mt-1 w-full bg-white border border-[var(--border)] rounded-xl shadow-xl overflow-hidden">
               {filteredClientes.map((c) => (
                 <button key={c.id} className="w-full text-left p-3 hover:bg-[var(--bg-hover)] border-b border-[var(--border)] last:border-0"
                   onClick={() => handleSelectCliente(c)}>
@@ -572,7 +604,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
         </div>
 
         {isClienteNew && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-xl p-3 text-sm text-yellow-800 dark:text-yellow-500">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-sm text-yellow-800">
             No encontramos un cliente con «<strong>{searchCliente}</strong>» — se registrará como nuevo.
           </div>
         )}
@@ -618,7 +650,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
             {/* Placa search for new vehicle */}
             {!selectedVehiculo && !isCreatingNewVehicle && (
               <button 
-                className="w-full py-2.5 border-2 border-dashed border-[var(--border)] rounded-xl text-sm font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors flex items-center justify-center gap-2"
+                className="w-full py-2.5 border-2 border-dashed border-[var(--border)] rounded-xl text-sm font-semibold text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
                 onClick={() => {
                   setIsCreatingNewVehicle(true);
                   setSelectedVehiculo(null);
@@ -666,12 +698,12 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-sm font-semibold mb-1 block">Cédula / RUC *</label>
+          <label className="text-sm font-semibold mb-1 block">Cédula / RUC (Opcional)</label>
           <input type="text" className="input w-full" placeholder="Ej: 1712345678"
             value={clienteForm.cedula} onChange={(e) => setClienteForm({ ...clienteForm, cedula: e.target.value })} />
         </div>
         <div>
-          <label className="text-sm font-semibold mb-1 block">Teléfono *</label>
+          <label className="text-sm font-semibold mb-1 block">Teléfono (Opcional)</label>
           <input type="text" className="input w-full" placeholder="+593 9 1234 5678"
             value={clienteForm.telefono} onChange={(e) => setClienteForm({ ...clienteForm, telefono: e.target.value })} />
         </div>
@@ -684,78 +716,11 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
     </div>
   );
 
-  // For placa mode with new vehicle + new client, we need to create client first
-  const handleSubmitPlacaMode = async () => {
-    // If we have both, submit directly
-    if (selectedCliente && (selectedVehiculo || searchPlaca.trim().length >= 6)) {
-      await handleFinalSubmit();
-      return;
-    }
-
-    // Need to create client from form
-    if (!selectedCliente && (isClienteNewInline || isClienteNew)) {
-      if (!clienteForm.nombre || !clienteForm.cedula || !clienteForm.telefono) {
-        toast.error("Por favor completa los datos del cliente");
-        return;
-      }
-      setIsSubmitting(true);
-      try {
-        const nuevoClienteId = await createCliente({
-          nombre: clienteForm.nombre,
-          apellido: clienteForm.apellido,
-          identificacion: clienteForm.cedula,
-          telefono: clienteForm.telefono,
-          email: clienteForm.email,
-          direccion: "",
-        });
-        setSelectedCliente({
-          id: nuevoClienteId,
-          nombre: clienteForm.nombre,
-          apellido: clienteForm.apellido,
-          identificacion: clienteForm.cedula,
-          telefono: clienteForm.telefono,
-          email: clienteForm.email,
-          direccion: "",
-        });
-        // Will re-render, user clicks submit again — or we call directly:
-        // Actually let's just proceed
-      } catch (error) {
-        console.error(error);
-        toast.error("Error al crear el cliente");
-        setIsSubmitting(false);
-        return;
-      }
-      // selectedCliente is set via setState, but won't be available synchronously.
-      // We need to wait for re-render. Better: call handleFinalSubmit in a useEffect or just let user click again.
-      setIsSubmitting(false);
-      return;
-    }
-
-    toast.error("Selecciona o crea un cliente");
-  };
-
   // Determine footer action based on mode
   const getFooterAction = () => {
-    if (searchMode === "placa") {
-      return {
-        label: tipoMode === "ingreso" ? "📋 Ingresar a taller" : "Crear presupuesto",
-        disabled: isSubmitting || !canSubmit,
-        onClick: handleFinalSubmit,
-        className: tipoMode === "ingreso" ? "bg-green-500 hover:bg-green-600" : "",
-      };
-    }
-    // Client mode — if new client, create first then submit
-    if (isClienteNew) {
-      return {
-        label: tipoMode === "ingreso" ? "📋 Ingresar a taller" : "Crear presupuesto",
-        disabled: isSubmitting || !clienteForm.nombre || !clienteForm.cedula || !clienteForm.telefono,
-        onClick: handleSubmitPlacaMode,
-        className: tipoMode === "ingreso" ? "bg-green-500 hover:bg-green-600" : "",
-      };
-    }
     return {
-      label: tipoMode === "ingreso" ? "📋 Ingresar a taller" : "Crear presupuesto",
-      disabled: isSubmitting || !selectedCliente || (!selectedVehiculo && searchPlaca.length < 6),
+      label: tipoMode === "ingreso" ? "📋 Ingresar a taller" : tipoMode === "presupuesto" ? "Crear presupuesto" : "Crear orden de trabajo",
+      disabled: isSubmitting || !canSubmit,
       onClick: handleFinalSubmit,
       className: tipoMode === "ingreso" ? "bg-green-500 hover:bg-green-600" : "",
     };
@@ -771,7 +736,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4" onClick={handleBackdropClick}>
-      <div className="bg-white dark:bg-[var(--bg-card)] rounded-2xl w-full max-w-lg shadow-xl flex flex-col max-h-[90vh]">
+      <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl flex flex-col max-h-[90vh]">
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 pb-3">
@@ -787,15 +752,15 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
 
         {/* Search mode toggle */}
         <div className="px-5 pb-4">
-          <div className="flex rounded-lg overflow-hidden border border-[var(--border)] h-9 bg-slate-100 dark:bg-slate-800">
+          <div className="flex rounded-lg overflow-hidden border border-[var(--border)] h-9 bg-slate-100">
             <button
-              className={`flex-1 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${searchMode === "placa" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"}`}
+              className={`flex-1 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${searchMode === "placa" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-200"}`}
               onClick={() => handleSwitchMode("placa")}
             >
               <Car size={14} /> Buscar por placa
             </button>
             <button
-              className={`flex-1 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${searchMode === "cliente" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-200 dark:text-slate-400 dark:hover:bg-slate-700"}`}
+              className={`flex-1 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${searchMode === "cliente" ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-200"}`}
               onClick={() => handleSwitchMode("cliente")}
             >
               <User size={14} /> Buscar por cliente
@@ -809,7 +774,7 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-[var(--border)] flex justify-between items-center bg-slate-50 dark:bg-[var(--bg-secondary)] shrink-0">
+        <div className="p-4 border-t border-[var(--border)] flex justify-between items-center bg-slate-50 shrink-0">
           <button onClick={onClose} className="btn bg-white shadow-sm border border-[var(--border)]">
               Cancelar
             </button>

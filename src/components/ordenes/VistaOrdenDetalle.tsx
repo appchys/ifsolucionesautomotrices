@@ -101,15 +101,15 @@ const ESTADOS: EstadoOrden[] = [
 ];
 
 const ESTADO_COLORS: Record<EstadoOrden, string> = {
-  "Borrador": "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800/80 dark:bg-slate-900/50 dark:text-slate-400",
-  "En Diagnóstico": "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-400",
-  "Esperando Repuestos": "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400",
-  "Esperando Aprobación": "border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900/50 dark:bg-purple-950/30 dark:text-purple-400",
-  "En Reparación": "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900/50 dark:bg-cyan-950/30 dark:text-cyan-400",
-  "Completada": "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400",
-  "Listo para Entrega": "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900/50 dark:bg-teal-950/30 dark:text-teal-400",
-  "Entregada": "border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  "Cancelada": "border-zinc-200 bg-zinc-50 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-400",
+  "Borrador": "border-slate-200 bg-slate-50 text-slate-600",
+  "En Diagnóstico": "border-blue-200 bg-blue-50 text-blue-700",
+  "Esperando Repuestos": "border-amber-200 bg-amber-50 text-amber-700",
+  "Esperando Aprobación": "border-purple-200 bg-purple-50 text-purple-700",
+  "En Reparación": "border-cyan-200 bg-cyan-50 text-cyan-700",
+  "Completada": "border-emerald-200 bg-emerald-50 text-emerald-700",
+  "Listo para Entrega": "border-teal-200 bg-teal-50 text-teal-700",
+  "Entregada": "border-slate-300 bg-slate-100 text-slate-800",
+  "Cancelada": "border-zinc-200 bg-zinc-50 text-zinc-500",
 };
 
 const ESTADO_DOT_COLORS: Record<EstadoOrden, string> = {
@@ -975,7 +975,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   if (loading || !orden || !cliente || !vehiculo) {
     if (isSidebar) {
       return (
-        <div className="flex items-center justify-center h-full p-6 bg-slate-50 dark:bg-slate-900">
+        <div className="flex items-center justify-center h-full p-6 bg-slate-50">
           <Loader2 size={32} className="animate-spin text-blue-500" />
         </div>
       );
@@ -998,7 +998,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   const advisorPhoto = dbAdvisorUser?.photoURL || (advisorUser as any)?.photoURL;
 
   return (
-    <div className="flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900" style={isSidebar ? { height: "100%" } : { height: "calc(100vh - 2rem)" }}>
+    <div className="flex flex-col overflow-hidden bg-slate-50" style={isSidebar ? { height: "100%" } : { height: "calc(100vh - 2rem)" }}>
       {/* Top Header Navigation */}
       <div className={`flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] shadow-sm ${isSidebar ? "px-4 py-2.5 mb-3" : "px-6 py-3 mb-5"}`}>
         <div className="flex items-center gap-3">
@@ -1387,41 +1387,41 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             {activeTab === "Vehículo" && (
               <div className="space-y-4">
                 {/* Vehicle + Client unified card */}
-                <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
+                <div className="bg-white border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                       <Car size={12} className="text-blue-500 shrink-0" />
                       Vehículo
                     </h3>
                     <button
                       onClick={() => setIsVehiculoModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      className="p-1 hover:bg-slate-100 rounded text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
                       title="Editar vehículo"
                     >
                       <Edit2 size={14} />
                     </button>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 border border-blue-200/50">
-                      <Car size={24} className="text-blue-600 dark:text-blue-400" />
+                    <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0 border border-blue-200/50">
+                      <Car size={24} className="text-blue-600" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-extrabold text-base text-slate-800 dark:text-white truncate">
+                      <h4 className="font-extrabold text-base text-slate-800 truncate">
                         {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
                       </h4>
                       <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                        <span className="text-xs text-slate-555 dark:text-slate-400 font-mono uppercase bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
+                        <span className="text-xs text-slate-555 font-mono uppercase bg-slate-100 px-2 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
                           {vehiculo.placa}
                         </span>
                       </div>
                     </div>
                   </div>
                   <div className="pt-3 mt-1 border-t border-[var(--border-light)] flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400 font-bold shrink-0 uppercase text-[9px] border border-blue-200/50">
+                    <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase text-[9px] border border-blue-200/50">
                       {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
                     </div>
                     <div className="min-w-0 flex-1 flex items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                      <span className="text-xs font-semibold text-slate-700 truncate">
                         {cliente.nombre} {cliente.apellido || ""}
                       </span>
                       <a
@@ -1436,7 +1436,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                     </div>
                     <button
                       onClick={() => setIsClienteModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-blue-600 dark:text-blue-400 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
+                      className="p-1 hover:bg-slate-100 rounded text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
                       title="Cambiar cliente"
                     >
                       <Edit2 size={14} />
@@ -1446,21 +1446,21 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
 
                 {!isEditingIngreso ? (
                   /* Vista / Tarjeta Informativa */
-                  <div className="bg-white dark:bg-slate-900 border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4">
+                  <div className="bg-white border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                         <FileText size={12} className="text-blue-500 shrink-0" />
                         Detalles de Ingreso
                       </h3>
                       <button
                         onClick={() => setIsEditingIngreso(true)}
-                        className="text-xs text-blue-600 dark:text-blue-400 font-bold flex items-center gap-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/20 dark:hover:bg-blue-950/40 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-none"
+                        className="text-xs text-blue-600 font-bold flex items-center gap-1 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg transition-colors cursor-pointer border-none"
                       >
                         <Edit2 size={12} /> Editar
                       </button>
                     </div>
 
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                    <div className="divide-y divide-slate-100 text-xs">
                       {/* MOTIVO DE INGRESO */}
                       <div className="py-2.5">
                         <div className="flex items-center justify-between">
@@ -1475,7 +1475,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                             {tipoServicio}
                           </span>
                         </div>
-                        <p className="mt-1 text-sm font-bold text-slate-800 dark:text-slate-200 leading-relaxed">
+                        <p className="mt-1 text-sm font-bold text-slate-800 leading-relaxed">
                           {motivo || <span className="italic text-slate-400 font-normal">No especificado</span>}
                         </p>
                       </div>
@@ -1484,13 +1484,13 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                       <div className="grid grid-cols-2 gap-4 py-2.5">
                         <div>
                           <span className="font-semibold text-slate-400 block mb-0.5">Kilometraje</span>
-                          <span className="font-bold text-slate-800 dark:text-white">
+                          <span className="font-bold text-slate-800">
                             {km ? `${Number(km).toLocaleString("es-EC")} km` : <span className="italic font-normal text-slate-400">No registrado</span>}
                           </span>
                         </div>
                         <div>
                           <span className="font-semibold text-slate-400 block mb-0.5">Combustible</span>
-                          <span className="font-bold text-slate-800 dark:text-white">
+                          <span className="font-bold text-slate-800">
                             {nivelCombustible ? (NIVELES_COMBUSTIBLE.find(n => n.value === nivelCombustible)?.label || nivelCombustible) : <span className="italic font-normal text-slate-400">No registrado</span>}
                           </span>
                         </div>
@@ -1501,13 +1501,13 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                         <span className="font-semibold text-slate-400 block mb-1.5">Inspección Visual</span>
                         <div
                           onClick={() => setIsModalInspeccionOpen(true)}
-                          className="flex items-center gap-3 p-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/50 dark:hover:bg-slate-900 border border-[var(--border)] rounded-xl cursor-pointer transition-colors group shadow-sm"
+                          className="flex items-center gap-3 p-2.5 bg-slate-50 hover:bg-slate-100 border border-[var(--border)] rounded-xl cursor-pointer transition-colors group shadow-sm"
                         >
-                          <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-950/30 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0 border border-blue-100/20">
-                            <FileText size={18} className="text-blue-600 dark:text-blue-400" />
+                          <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 border border-blue-100/20">
+                            <FileText size={18} className="text-blue-600" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            <p className="text-xs font-bold text-slate-700 truncate group-hover:text-blue-600 transition-colors">
                               Inspección de Ingreso
                             </p>
                             <p className="text-[10px] text-[var(--text-muted)] mt-0.5 font-medium">
@@ -1516,7 +1516,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                                 : "Sin daños registrados"}
                             </p>
                           </div>
-                          <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity pr-1">
+                          <span className="text-[10px] font-bold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity pr-1">
                             Ver
                           </span>
                         </div>
@@ -1525,7 +1525,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                       {/* ESTADO GENERAL */}
                       <div className="py-2.5">
                         <span className="font-semibold text-slate-400 block">Estado General del Vehículo</span>
-                        <p className="mt-1 text-slate-700 dark:text-slate-350 font-medium leading-relaxed">
+                        <p className="mt-1 text-slate-700 font-medium leading-relaxed">
                           {estadoGeneral || <span className="italic text-slate-400">Sin observaciones</span>}
                         </p>
                       </div>
@@ -1536,7 +1536,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                         {checklist.length === 0 ? (
                           <p className="italic text-slate-400">Sin inventario registrado</p>
                         ) : (
-                          <div className="flex flex-col gap-1.5 mt-1 bg-slate-50 dark:bg-slate-900/50 p-2.5 rounded-lg border border-[var(--border-light)]">
+                          <div className="flex flex-col gap-1.5 mt-1 bg-slate-50 p-2.5 rounded-lg border border-[var(--border-light)]">
                             <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
                               <span>Artículos checklist</span>
                               <span>{checklist.filter(c => c.checked).length} de {checklist.length}</span>
@@ -1547,8 +1547,8 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                                   key={idx}
                                   className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
                                     item.checked
-                                      ? "bg-green-50 text-green-700 border-green-200 dark:bg-green-950/20 dark:text-green-400 dark:border-green-900/30"
-                                      : "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-750"
+                                      ? "bg-green-50 text-green-700 border-green-200"
+                                      : "bg-slate-100 text-slate-500 border-slate-200"
                                   }`}
                                 >
                                   {item.checked ? "✓ " : "✗ "}{item.label}

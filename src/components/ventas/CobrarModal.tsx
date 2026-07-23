@@ -110,7 +110,7 @@ export default function CobrarModal({ total, onClose, onConfirm }: Props) {
           </h2>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-500"
+            className="p-1.5 hover:bg-slate-100 rounded-full text-slate-500"
           >
             <X size={18} />
           </button>
@@ -119,15 +119,15 @@ export default function CobrarModal({ total, onClose, onConfirm }: Props) {
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {/* Totals info */}
           <div className="grid grid-cols-3 gap-3 text-center">
-            <div className="bg-slate-50 dark:bg-slate-900/10 p-2.5 rounded-lg border border-[var(--border)] text-xs">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-[var(--border)] text-xs">
               <p className="text-[var(--text-muted)] font-semibold uppercase">Total</p>
               <p className="font-extrabold text-[var(--text-primary)] mt-0.5">${total.toFixed(2)}</p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-900/10 p-2.5 rounded-lg border border-[var(--border)] text-xs">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-[var(--border)] text-xs">
               <p className="text-[var(--text-muted)] font-semibold uppercase">Cobrado</p>
               <p className="font-extrabold text-emerald-600 mt-0.5">${totalAbonado.toFixed(2)}</p>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-900/10 p-2.5 rounded-lg border border-[var(--border)] text-xs">
+            <div className="bg-slate-50 p-2.5 rounded-lg border border-[var(--border)] text-xs">
               <p className="text-[var(--text-muted)] font-semibold uppercase">Saldo</p>
               <p className="font-extrabold text-amber-600 mt-0.5">${saldoPendiente.toFixed(2)}</p>
             </div>
@@ -164,7 +164,7 @@ export default function CobrarModal({ total, onClose, onConfirm }: Props) {
           </div>
 
           {(metodoPago === "tarjeta_credito" || metodoPago === "tarjeta_debito") && montoPago && !isNaN(Number(montoPago)) ? (
-            <div className="bg-amber-50 dark:bg-amber-950/20 p-3 rounded-lg border border-amber-200 dark:border-amber-900/30 text-xs text-amber-800 dark:text-amber-400">
+            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-xs text-amber-800">
               <p className="font-bold flex justify-between">
                 <span>Recargo por tarjeta ({metodoPago === "tarjeta_credito" ? "8%" : "2%"}):</span>
                 <span>${(Number(montoPago) * (metodoPago === "tarjeta_credito" ? 0.08 : 0.02)).toFixed(2)}</span>
@@ -243,12 +243,12 @@ export default function CobrarModal({ total, onClose, onConfirm }: Props) {
               {pagos.map((p, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-2 rounded-lg bg-slate-50 dark:bg-slate-900/10 border border-[var(--border)] text-xs"
+                  className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-[var(--border)] text-xs"
                 >
                   <div>
-                    <p className="font-bold text-slate-800 dark:text-slate-200">
+                    <p className="font-bold text-slate-800">
                       ${(p.montoBase ?? p.monto).toFixed(2)}
-                      {p.recargo ? <span className="text-amber-600 dark:text-amber-400 font-semibold text-[10px] ml-1">(+${p.recargo.toFixed(2)} recargo)</span> : null}
+                      {p.recargo ? <span className="text-amber-600 font-semibold text-[10px] ml-1">(+${p.recargo.toFixed(2)} recargo)</span> : null}
                     </p>
                     <p className="text-[10px] text-slate-500 capitalize">
                       {p.metodoPago} {p.banco ? `· Banco: ${p.banco}` : ""} {p.referencia ? `· Ref: ${p.referencia}` : ""}
@@ -257,7 +257,7 @@ export default function CobrarModal({ total, onClose, onConfirm }: Props) {
                   <button
                     type="button"
                     onClick={() => handleDeletePago(idx)}
-                    className="text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 p-1.5 rounded transition-colors"
+                    className="text-red-500 hover:bg-red-50 p-1.5 rounded transition-colors"
                   >
                     <Trash2 size={12} />
                   </button>
@@ -273,7 +273,7 @@ export default function CobrarModal({ total, onClose, onConfirm }: Props) {
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 border-t border-[var(--border)] bg-slate-50 dark:bg-[var(--bg-secondary)] flex justify-between shrink-0">
+        <div className="p-4 border-t border-[var(--border)] bg-slate-50 flex justify-between shrink-0">
           <button
             type="button"
             onClick={onClose}

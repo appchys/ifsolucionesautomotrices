@@ -101,7 +101,7 @@ export default function ClienteSelectorModal({ onClose, onSelect, selectedClient
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[1000] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white dark:bg-[var(--bg-card)] rounded-2xl w-full max-w-md shadow-xl flex flex-col max-h-[85vh] overflow-hidden border border-[var(--border)]">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl flex flex-col max-h-[85vh] overflow-hidden border border-[var(--border)]">
         
         {/* Header */}
         <div className="flex items-center justify-between p-5 pb-3 border-b border-[var(--border)]">
@@ -274,7 +274,7 @@ export default function ClienteSelectorModal({ onClose, onSelect, selectedClient
                         }}
                         className={`w-full p-3 rounded-xl border text-left transition-colors flex items-center justify-between ${
                           isSelected 
-                            ? "border-[var(--accent)] bg-blue-50/50 dark:bg-blue-900/10" 
+                            ? "border-[var(--accent)] bg-blue-50/50" 
                             : "border-[var(--border)] hover:bg-[var(--bg-hover)]"
                         }`}
                       >

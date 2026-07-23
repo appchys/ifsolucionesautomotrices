@@ -173,7 +173,7 @@ function IngresosPageContent() {
               onClick={() => setFiltroActivo(f)}
               className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
                 filtroActivo === f 
-                  ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900" 
+                  ? "bg-slate-800 text-white" 
                   : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
               }`}
             >
@@ -209,7 +209,7 @@ function IngresosPageContent() {
                     return (
                       <tr key={o.id} className="hover:bg-[var(--bg-hover)] group cursor-pointer" onClick={() => setIngresoSidebarOpen(true, o.id)}>
                         <td>
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">
+                          <span className="font-semibold text-blue-600">
                             #ING-{String(getNumeroDocumento(o) ?? 0).padStart(5, "0")}
                           </span>
                         </td>
@@ -226,21 +226,21 @@ function IngresosPageContent() {
                           <span className="font-mono text-sm font-medium">{o.vehiculo?.placa ?? "—"}</span>
                         </td>
                         <td className="text-center">
-                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${inspeccionOk ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
+                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${inspeccionOk ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}></div>
                         </td>
                         <td className="text-center">
-                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tienePresupuesto ? 'bg-green-500 border-green-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
+                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tienePresupuesto ? 'bg-green-500 border-green-500' : 'border-gray-300'}`}></div>
                         </td>
                         <td className="text-center">
-                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tieneOrden ? 'bg-blue-500 border-blue-500' : 'border-gray-300 dark:border-gray-600'}`}></div>
+                          <div className={`w-4 h-4 rounded-full border-2 mx-auto ${tieneOrden ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}></div>
                         </td>
                         <td className="text-right">
                           {o.numeroOrden ? (
-                            <span className="badge bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
+                            <span className="badge bg-blue-50 text-blue-600">
                               ORD-{String(o.numeroOrden).padStart(5, "0")}
                             </span>
                           ) : (
-                            <span className="badge bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400">
+                            <span className="badge bg-purple-50 text-purple-600">
                               Recibido
                             </span>
                           )}
