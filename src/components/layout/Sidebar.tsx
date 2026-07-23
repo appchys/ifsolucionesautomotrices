@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Columns3, Users, Car, CreditCard,
   Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3,
-  FileDown, FileText, Receipt, Menu, MessageSquare, Vault
+  FileDown, FileText, Receipt, Menu, MessageSquare, Vault, Hammer
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -38,6 +38,7 @@ const navGroups = [
       { href: "/inventario", label: "Productos y Servicios", icon: Package, roles: ["admin","recepcion","contador"] },
       { href: "/clientes", label: "Clientes", icon: Users, roles: ["admin","recepcion","contador"] },
       { href: "/vehiculos", label: "Vehículos", icon: Car, roles: ["admin","recepcion"] },
+      { href: "/herramientas", label: "Herramientas", icon: Hammer, roles: ["admin","recepcion","tecnico","contador"] },
     ]
   },
   {

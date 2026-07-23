@@ -517,3 +517,25 @@ export interface MovimientoCajaUnificado {
   referencia?: string;
 }
 
+export type EstadoHerramienta = "excelente" | "bueno" | "regular" | "mantenimiento" | "dañado" | "perdido";
+
+export interface Herramienta {
+  id?: string;
+  codigo: string;
+  nombre: string;
+  categoria: string;
+  marca?: string;
+  modelo?: string;
+  numeroSerie?: string;
+  cantidad: number;
+  ubicacion?: string;
+  estado: EstadoHerramienta;
+  responsableId?: string;
+  responsableNombre?: string;
+  fechaAdquisicion?: string;
+  costoCompra?: number;
+  notas?: string;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+

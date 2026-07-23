@@ -53,6 +53,7 @@ import {
   Caja,
   CajaMovimientoManual,
   MovimientoCajaUnificado,
+  Herramienta,
 } from "@/types";
 
 export function normalizarMargenGanancia(value: unknown): number {
@@ -2309,4 +2310,57 @@ export function calcularResumenCaja(
     saldoEsperado: Number((montoApertura + totalIngresos - totalEgresos).toFixed(2)),
     desglosePorMetodo: desglose,
   };
+}
+
+/* ==========================================================================
+   HERRAMIENTAS SERVICES (INVENTARIO DE HERRAMIENTAS DEL TALLER)
+   ========================================================================== */
+
+export function subscribeHerramientas(callback: (herramientas: Herramienta[]) => void) {
+  const q = query(collection(db, "herramientas"), orderBy("nombre", "asc"));
+  return onSnapshot(q, (snapshot) => {
+    const list = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    })) as Herramienta[];
+    callback(list);
+  }, (error) => {
+    console.error("Error subscribing to herramientas:", error);
+  });
+}
+
+export async function getHerramientas(): Promise<Herramienta[]> {
+  const q = query(collection(db, "herramientas"), orderBy("nombre", "asc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Herramienta);
+}
+
+export async function createHerramienta(data: Omit<Herramienta, "id" | "createdAt" | "updatedAt">): Promise<string> {
+  const cleaned: Record<string, unknown> = {};
+  Object.entries(data).forEach(([k, v]) => {
+    if (v !== undefined) cleaned[k] = v;
+  });
+
+  const docRef = await addDoc(collection(db, "herramientas"), {
+    ...cleaned,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+export async function updateHerramienta(id: string, updates: Partial<Herramienta>): Promise<void> {
+  const cleaned: Record<string, unknown> = {};
+  Object.entries(updates).forEach(([k, v]) => {
+    if (v !== undefined) cleaned[k] = v;
+  });
+
+  await updateDoc(doc(db, "herramientas", id), {
+    ...cleaned,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteHerramienta(id: string): Promise<void> {
+  await deleteDoc(doc(db, "herramientas", id));
 }
