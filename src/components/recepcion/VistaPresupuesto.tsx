@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -15,12 +15,21 @@ import {
   updateItemOrden,
   getIngresoOrigenDePresupuesto,
   deleteOrden,
-  getDatosTaller
+  getDatosTaller,
+  uploadAdjuntoPresupuesto,
+  uploadOrdenFoto,
+  getCitasByPresupuesto,
+  deleteCita,
 } from "@/lib/services";
-import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden, DatosTaller } from "@/types";
+import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden, DatosTaller, DanoVehiculo, FotoDiagnostico, ChecklistItem, Cita } from "@/types";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
 import OpcionesItemPopover from "@/components/ordenes/OpcionesItemPopover";
+import ConfigurarTerminosModal from "@/components/configuracion/ConfigurarTerminosModal";
+import ModalInspeccion from "./ModalInspeccion";
+import ChecklistInventario from "./ChecklistInventario";
+import ModalAgendarCita from "./ModalAgendarCita";
+import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
 import { useUIStore } from "@/store";
 
 export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: { presupuestoId: string; isSidebar?: boolean }) {
@@ -39,6 +48,21 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   const [taller, setTaller] = useState<DatosTaller | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [activePopoverItemId, setActivePopoverItemId] = useState<string | null>(null);
+  const [isConfigTerminosOpen, setIsConfigTerminosOpen] = useState(false);
+  const [uploadingAdjunto, setUploadingAdjunto] = useState(false);
+
+  // Inspección & Checklist
+  const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
+  const [inspeccionSubTab, setInspeccionSubTab] = useState<"visual" | "checklist">("visual");
+  const [danos, setDanos] = useState<DanoVehiculo[]>([]);
+  const [fotos, setFotos] = useState<FotoDiagnostico[]>([]);
+  const [inspeccionObservaciones, setInspeccionObservaciones] = useState("");
+  const [checklist, setChecklist] = useState<ChecklistItem[]>(CHECKLIST_DEFAULT);
+
+  // Citas
+  const [citas, setCitas] = useState<Cita[]>([]);
+  const [loadingCitas, setLoadingCitas] = useState(false);
+  const [isModalCitaOpen, setIsModalCitaOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -57,11 +81,12 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
 
       setOrden(ordenData);
 
-      const [cData, vData, itemsData, tallerData] = await Promise.all([
+      const [cData, vData, itemsData, tallerData, citasData] = await Promise.all([
         ordenData.cliente || getClienteById(ordenData.clienteId),
         ordenData.vehiculo || getVehiculoById(ordenData.vehiculoId),
         getItemsOrden(presupuestoId),
-        getDatosTaller()
+        getDatosTaller(),
+        getCitasByPresupuesto(presupuestoId),
       ]);
  
       if (ordenData.esCotizacion) {
@@ -79,13 +104,19 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       setVehiculo(vData);
       setItems(itemsData);
       setTaller(tallerData);
+
+      setDanos(ordenData.inspeccionVisual?.danos || []);
+      setFotos(ordenData.fotosDiagnostico || []);
+      setInspeccionObservaciones(ordenData.inspeccionVisual?.notasGenerales || "");
+      setChecklist(getMergedChecklist(ordenData.checklistInventario));
+      setCitas(citasData);
     } catch (error) {
       console.error(error);
       toast.error("Error al cargar la información");
     } finally {
       setLoading(false);
     }
-  }, [presupuestoId, router]);
+  }, [presupuestoId, isSidebar, router, setPresupuestoSidebarOpen]);
 
   useEffect(() => {
     void loadData();
@@ -116,6 +147,34 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleUploadFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    const file = e.target.files[0];
+    try {
+      const toastId = toast.loading("Subiendo foto...");
+      const url = await uploadOrdenFoto(presupuestoId, file);
+      const nuevasFotos = [...fotos, { url, descripcion: "" }];
+      setFotos(nuevasFotos);
+      void handleSaveField({ fotosDiagnostico: nuevasFotos });
+      toast.success("Foto agregada", { id: toastId });
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al subir foto");
+    }
+  };
+
+  const handleUpdateFoto = (url: string, descripcion: string) => {
+    const nuevasFotos = fotos.map((f) => (f.url === url ? { ...f, descripcion } : f));
+    setFotos(nuevasFotos);
+    void handleSaveField({ fotosDiagnostico: nuevasFotos });
+  };
+
+  const handleRemoveFoto = (index: number) => {
+    const nuevasFotos = fotos.filter((_, i) => i !== index);
+    setFotos(nuevasFotos);
+    void handleSaveField({ fotosDiagnostico: nuevasFotos });
   };
 
   const handleAddItem = async (itemData: Omit<ItemOrden, "id" | "ordenId" | "subtotal">) => {
@@ -549,15 +608,15 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
               )}
             </button>
           </div>
-          <button className="btn bg-white border border-[var(--border)] shadow-sm font-semibold px-3.5 py-1.5 text-xs">
-             ✉ Solicitar
+          <button className="btn bg-white border border-[var(--border)] shadow-sm font-semibold px-3.5 py-1.5 text-xs flex items-center gap-1.5">
+             <Mail size={14} /> Solicitar
           </button>
           <button 
-            className="btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50 px-3.5 py-1.5 text-xs"
+            className="btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50 px-3.5 py-1.5 text-xs flex items-center gap-1.5"
             onClick={handleAprobar}
             disabled={saving || orden.presupuestoConfirmadoPorCliente}
           >
-             {saving ? <Loader2 size={12} className="animate-spin" /> : orden.presupuestoConfirmadoPorCliente ? "✓ Aprobado" : "✓ Aprobar"}
+             {saving ? <Loader2 size={12} className="animate-spin" /> : orden.presupuestoConfirmadoPorCliente ? <><Check size={12} /> Aprobado</> : <><Check size={12} /> Aprobar</>}
           </button>
           <div className="relative">
             <button 
@@ -599,7 +658,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
               </div>
               <div className="flex-1">
                 <p className="font-bold text-sm uppercase">{cliente.nombre} {cliente.apellido}</p>
-                <p className="text-xs text-[var(--text-muted)] flex items-center gap-1">📞 {cliente.telefono}</p>
+                <p className="text-xs text-[var(--text-muted)] flex items-center gap-1"><Phone size={12} className="text-slate-400" /> {cliente.telefono}</p>
               </div>
             </div>
 
@@ -758,8 +817,8 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                       <span className="font-bold">${subtotal.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <button className="text-blue-600 hover:underline flex items-center gap-1 text-xs">
-                        🏷 Aplicar descuento
+                      <button className="text-blue-600 hover:underline flex items-center gap-1 text-xs border-0 bg-transparent cursor-pointer">
+                        <Tag size={12} /> Aplicar descuento
                       </button>
                     </div>
                     <div className="flex justify-between text-sm">
@@ -781,18 +840,32 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
         <div className="w-full lg:w-[340px] flex flex-col lg:overflow-hidden pb-4 lg:shrink-0 pt-4 border-t border-[var(--border)] lg:pt-0 lg:border-t-0">
             
             {/* Tabs */}
-            <div className="flex border-b border-[var(--border)] mb-4 overflow-x-auto custom-scrollbar shrink-0">
-              {["Vehículo", "Condiciones", "Notas", "Inspección", "Citas", "Adjuntos"].map(tab => (
-                <button
-                  key={tab}
-                  className={`px-3 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition-colors ${
-                    activeTab === tab ? "border-blue-600 text-blue-600" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  }`}
-                  onClick={() => setActiveTab(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
+            <div className="flex border-b border-[var(--border)] mb-4 overflow-x-auto custom-scrollbar shrink-0 justify-between items-center px-1">
+              {[
+                { id: "Vehículo", label: "Vehículo", icon: Car },
+                { id: "Condiciones", label: "Condiciones", icon: FileText },
+                { id: "Notas", label: "Notas", icon: StickyNote },
+                { id: "Inspección", label: "Inspección", icon: ClipboardCheck },
+                { id: "Citas", label: "Citas", icon: Calendar },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`flex flex-col items-center justify-center px-2 py-1.5 text-xs font-semibold whitespace-nowrap border-b-2 transition-colors cursor-pointer ${
+                      isActive
+                        ? "border-blue-600 text-blue-600 font-bold"
+                        : "border-transparent text-slate-500 hover:text-slate-700"
+                    }`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    <Icon size={18} className="mb-0.5" />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
@@ -845,7 +918,517 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                 </div>
               )}
 
-              {activeTab !== "Vehículo" && (
+              {activeTab === "Condiciones" && (
+                <div className="space-y-4 py-1">
+                  {/* TÉRMINOS Y CONDICIONES */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                      TÉRMINOS Y CONDICIONES
+                    </label>
+                    <textarea
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[90px] text-slate-800 resize-y"
+                      placeholder="Términos, garantía, condiciones de pago..."
+                      value={orden.terminosYCondiciones || ""}
+                      onChange={(e) => setOrden({ ...orden, terminosYCondiciones: e.target.value })}
+                      onBlur={() => handleSaveField({ terminosYCondiciones: orden.terminosYCondiciones || "" })}
+                    />
+                    <div className="flex items-center justify-between mt-2">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 accent-blue-600 cursor-pointer"
+                          checked={orden.usarTerminosPredeterminados ?? true}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            const defaultText = taller?.terminosPredeterminados || "Los trabajos realizados tienen una garantía de 3 meses. El cliente debe retirar el vehículo dentro de los 5 días hábiles posteriores a la notificación de término.";
+                            const newTerminos = checked ? (orden.terminosYCondiciones || defaultText) : orden.terminosYCondiciones;
+                            setOrden({ ...orden, usarTerminosPredeterminados: checked, terminosYCondiciones: newTerminos });
+                            void handleSaveField({ usarTerminosPredeterminados: checked, terminosYCondiciones: newTerminos || "" });
+                          }}
+                        />
+                        <span className="text-xs text-slate-700 font-medium">Usar términos predeterminados</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsConfigTerminosOpen(true)}
+                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline font-semibold bg-transparent border-0 cursor-pointer p-0"
+                      >
+                        Configurar términos
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* TIEMPO ESTIMADO EN REPARACIÓN */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                      TIEMPO ESTIMADO EN REPARACIÓN
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="flex-1 bg-white border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-800"
+                        placeholder="Ej: 2"
+                        value={orden.tiempoEstimadoReparacion || ""}
+                        onChange={(e) => setOrden({ ...orden, tiempoEstimadoReparacion: e.target.value })}
+                        onBlur={() => handleSaveField({ tiempoEstimadoReparacion: orden.tiempoEstimadoReparacion || "" })}
+                      />
+                      <select
+                        className="w-28 bg-white border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-800 cursor-pointer"
+                        value={orden.unidadTiempoEstimado || "Días"}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setOrden({ ...orden, unidadTiempoEstimado: val });
+                          void handleSaveField({ unidadTiempoEstimado: val });
+                        }}
+                      >
+                        <option value="Días">Días</option>
+                        <option value="Horas">Horas</option>
+                        <option value="Semanas">Semanas</option>
+                        <option value="Meses">Meses</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* VALIDEZ DEL PRESUPUESTO */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                      VALIDEZ DEL PRESUPUESTO
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="flex-1 bg-white border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-800"
+                        placeholder="Ej: 30"
+                        value={orden.validezPresupuesto || ""}
+                        onChange={(e) => setOrden({ ...orden, validezPresupuesto: e.target.value })}
+                        onBlur={() => handleSaveField({ validezPresupuesto: orden.validezPresupuesto || "" })}
+                      />
+                      <select
+                        className="w-28 bg-white border border-slate-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-slate-800 cursor-pointer"
+                        value={orden.unidadValidezPresupuesto || "Días"}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setOrden({ ...orden, unidadValidezPresupuesto: val });
+                          void handleSaveField({ unidadValidezPresupuesto: val });
+                        }}
+                      >
+                        <option value="Días">Días</option>
+                        <option value="Horas">Horas</option>
+                        <option value="Semanas">Semanas</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* FORMAS DE PAGO DISPONIBLES */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                      FORMAS DE PAGO DISPONIBLES
+                    </label>
+                    <div className="space-y-2">
+                      {["Cheque", "Efectivo", "Tarjeta de crédito", "Tarjeta de débito", "Transferencia"].map((metodo) => {
+                        const formasActuales = orden.formasPagoDisponibles || [];
+                        const isChecked = formasActuales.includes(metodo);
+                        return (
+                          <label key={metodo} className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 accent-blue-600 cursor-pointer"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                let nuevasFormas: string[];
+                                if (e.target.checked) {
+                                  nuevasFormas = [...formasActuales, metodo];
+                                } else {
+                                  nuevasFormas = formasActuales.filter((f) => f !== metodo);
+                                }
+                                setOrden({ ...orden, formasPagoDisponibles: nuevasFormas });
+                                void handleSaveField({ formasPagoDisponibles: nuevasFormas });
+                              }}
+                            />
+                            <span className="text-xs font-semibold text-slate-800">{metodo}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* OBSERVACIÓN DE FORMA DE PAGO */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                      OBSERVACIÓN DE FORMA DE PAGO
+                    </label>
+                    <textarea
+                      className="w-full bg-white border border-slate-200 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none min-h-[70px] text-slate-800 resize-y"
+                      placeholder="Ej: Se requiere 50% adelanto..."
+                      value={orden.observacionFormaPago || ""}
+                      onChange={(e) => setOrden({ ...orden, observacionFormaPago: e.target.value })}
+                      onBlur={() => handleSaveField({ observacionFormaPago: orden.observacionFormaPago || "" })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "Notas" && (
+                <div className="space-y-6 py-1">
+                  {/* NOTAS INTERNAS */}
+                  <div>
+                    <h3 className="text-[11px] font-bold text-amber-800 uppercase tracking-wider block mb-0.5">
+                      NOTAS INTERNAS
+                    </h3>
+                    <p className="text-xs text-slate-500 mb-2">
+                      No se imprimen en el PDF, solo las ve tu equipo.
+                    </p>
+                    <textarea
+                      className="w-full bg-[#fefcf3] border border-amber-200/90 rounded-xl p-3 text-xs sm:text-sm font-medium text-slate-800 focus:ring-2 focus:ring-amber-400 focus:border-amber-400 outline-none min-h-[140px] resize-y shadow-sm transition-all placeholder:text-slate-400"
+                      placeholder="Escribe notas o recordatorios internos sobre este presupuesto..."
+                      value={orden.notasInternas || ""}
+                      onChange={(e) => setOrden({ ...orden, notasInternas: e.target.value })}
+                      onBlur={() => handleSaveField({ notasInternas: orden.notasInternas || "" })}
+                    />
+                  </div>
+
+                  {/* ADJUNTOS DE NOTAS */}
+                  <div className="pt-2 border-t border-slate-200">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <Paperclip size={14} className="text-blue-600" />
+                        ADJUNTOS
+                      </h3>
+                      <label className="cursor-pointer text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg border border-blue-200 transition-colors flex items-center gap-1.5">
+                        {uploadingAdjunto ? (
+                          <Loader2 size={13} className="animate-spin text-blue-600" />
+                        ) : (
+                          <Plus size={13} />
+                        )}
+                        <span>{uploadingAdjunto ? "Subiendo..." : "Subir adjunto"}</span>
+                        <input
+                          type="file"
+                          className="sr-only"
+                          disabled={uploadingAdjunto}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!file || !orden?.id) return;
+
+                            setUploadingAdjunto(true);
+                            const toastId = toast.loading("Subiendo archivo adjunto...");
+                            try {
+                              const nuevoAdjunto = await uploadAdjuntoPresupuesto(presupuestoId, file);
+                              const adjuntosActuales = orden.adjuntos || [];
+                              const nuevosAdjuntos = [...adjuntosActuales, nuevoAdjunto];
+
+                              setOrden({ ...orden, adjuntos: nuevosAdjuntos });
+                              await handleSaveField({ adjuntos: nuevosAdjuntos });
+                              toast.success("Archivo subido con éxito", { id: toastId });
+                            } catch (err) {
+                              console.error(err);
+                              toast.error("Error al subir archivo adjunto", { id: toastId });
+                            } finally {
+                              setUploadingAdjunto(false);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-slate-500 mb-3">
+                      Archivos o imágenes adjuntas a esta cotización.
+                    </p>
+
+                    {/* Lista de adjuntos */}
+                    {(!orden.adjuntos || orden.adjuntos.length === 0) ? (
+                      <div className="flex flex-col items-center justify-center p-5 border border-dashed border-slate-200 rounded-xl bg-slate-50 text-center">
+                        <Paperclip size={24} className="text-slate-300 mb-1.5" />
+                        <p className="text-xs font-medium text-slate-500">No hay archivos adjuntos</p>
+                        <p className="text-[11px] text-slate-400">Haz clic en &quot;Subir adjunto&quot; para agregar archivos o fotos.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {orden.adjuntos.map((adj) => (
+                          <div
+                            key={adj.id}
+                            className="flex items-center justify-between p-2.5 bg-white border border-slate-200 rounded-xl hover:border-slate-300 transition-colors shadow-2xs"
+                          >
+                            <div className="flex items-center gap-2.5 overflow-hidden flex-1 mr-2">
+                              {adj.tipo === "imagen" ? (
+                                <img
+                                  src={adj.url}
+                                  alt={adj.nombre}
+                                  className="w-9 h-9 object-cover rounded-lg border border-slate-200 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100 font-bold text-xs uppercase">
+                                  {adj.nombre.split('.').pop()?.substring(0, 4) || "DOC"}
+                                </div>
+                              )}
+                              <div className="flex-1 truncate">
+                                <p className="text-xs font-semibold text-slate-800 truncate" title={adj.nombre}>
+                                  {adj.nombre}
+                                </p>
+                                {adj.tamano ? (
+                                  <p className="text-[10px] text-slate-400">
+                                    {(adj.tamano / 1024).toFixed(1)} KB
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1 shrink-0">
+                              <a
+                                href={adj.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                title="Abrir / Descargar"
+                              >
+                                <ExternalLink size={14} />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!confirm("¿Eliminar este archivo adjunto?")) return;
+                                  const nuevosAdjuntos = (orden.adjuntos || []).filter((a) => a.id !== adj.id);
+                                  setOrden({ ...orden, adjuntos: nuevosAdjuntos });
+                                  await handleSaveField({ adjuntos: nuevosAdjuntos });
+                                  toast.success("Adjunto eliminado");
+                                }}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border-0 bg-transparent cursor-pointer"
+                                title="Eliminar"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "Inspección" && (
+                <div className="space-y-4 py-1">
+                  {/* Sub-pestañas: Inspección Visual vs Checklist */}
+                  <div className="flex border border-slate-200 bg-slate-100/70 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setInspeccionSubTab("visual")}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer border-0 ${
+                        inspeccionSubTab === "visual"
+                          ? "bg-white text-blue-600 shadow-xs"
+                          : "text-slate-500 hover:text-slate-700 bg-transparent"
+                      }`}
+                    >
+                      <Eye size={14} />
+                      Inspección Visual ({danos.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInspeccionSubTab("checklist")}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer border-0 ${
+                        inspeccionSubTab === "checklist"
+                          ? "bg-white text-blue-600 shadow-xs"
+                          : "text-slate-500 hover:text-slate-700 bg-transparent"
+                      }`}
+                    >
+                      <ClipboardCheck size={14} />
+                      Checklist ({checklist.filter((c) => c.checked).length}/{checklist.length})
+                    </button>
+                  </div>
+
+                  {/* Inspección Visual */}
+                  {inspeccionSubTab === "visual" && (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <Eye size={14} className="text-blue-600" />
+                            Inspección Visual de Daños
+                          </h4>
+                          <p className="text-[11px] text-slate-500 mt-0.5">
+                            Marcar daños gráficos en las 5 vistas del vehículo y fotos.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsModalInspeccionOpen(true)}
+                          className="btn-primary text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer border-0"
+                        >
+                          <Pencil size={13} />
+                          {danos.length > 0 ? "Ver / Editar" : "+ Registrar"}
+                        </button>
+                      </div>
+
+                      {danos.length === 0 ? (
+                        <div className="p-4 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center">
+                          <p className="text-xs text-slate-500">No se han registrado daños visuales aún.</p>
+                          <button
+                            type="button"
+                            onClick={() => setIsModalInspeccionOpen(true)}
+                            className="text-xs text-blue-600 hover:underline font-semibold mt-1 inline-block border-0 bg-transparent cursor-pointer"
+                          >
+                            Abrir editor de inspección visual
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {danos.map((d, i) => (
+                              <span
+                                key={d.id || i}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200"
+                              >
+                                <span className="capitalize">{d.tipo}</span>
+                                {d.vista ? <span className="opacity-70">({d.vista})</span> : null}
+                              </span>
+                            ))}
+                          </div>
+                          {fotos.length > 0 ? (
+                            <p className="text-xs text-slate-500 flex items-center gap-1 pt-1">
+                              <Camera size={13} className="text-blue-500" />
+                              {fotos.length} foto(s) de diagnóstico guardada(s)
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Checklist de Inventario */}
+                  {inspeccionSubTab === "checklist" && (
+                    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs space-y-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <ClipboardCheck size={14} className="text-blue-600" />
+                          Checklist de Inventario del Vehículo
+                        </h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Selecciona los accesorios y objetos presentes en el vehículo.
+                        </p>
+                      </div>
+                      <ChecklistInventario
+                        items={checklist}
+                        onChange={(updated) => {
+                          setChecklist(updated);
+                          void handleSaveField({ checklistInventario: updated });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "Citas" && (
+                <div className="space-y-4 py-1">
+                  <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <Calendar size={14} className="text-blue-600" />
+                          Citas Agendadas
+                        </h4>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Agenda reuniones, entregas o revisiones vinculadas a este presupuesto.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsModalCitaOpen(true)}
+                        className="btn-primary text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer border-0 text-white font-bold"
+                      >
+                        <Plus size={13} />
+                        Agendar cita
+                      </button>
+                    </div>
+
+                    {loadingCitas ? (
+                      <div className="flex items-center justify-center py-8 text-slate-400 gap-2 text-xs">
+                        <Loader2 size={16} className="animate-spin text-blue-600" />
+                        Cargando citas...
+                      </div>
+                    ) : citas.length === 0 ? (
+                      <div className="p-6 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center space-y-2">
+                        <Calendar size={32} className="text-slate-300 mx-auto" />
+                        <p className="text-xs font-semibold text-slate-700">No hay citas agendadas</p>
+                        <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                          Crea una cita para coordinar el ingreso o entrega del vehículo con el cliente.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setIsModalCitaOpen(true)}
+                          className="text-xs text-blue-600 hover:underline font-bold inline-flex items-center gap-1 mt-1 border-0 bg-transparent cursor-pointer"
+                        >
+                          <Plus size={13} />
+                          Agendar cita ahora
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {citas.map((c) => (
+                          <div
+                            key={c.id}
+                            className="p-3.5 bg-white border border-slate-200 rounded-xl shadow-2xs flex flex-col gap-2 hover:border-slate-300 transition-colors"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <h5 className="font-bold text-xs text-slate-800 truncate">{c.titulo}</h5>
+                                {c.descripcion && (
+                                  <p className="text-[11px] text-slate-600 mt-1 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                    {c.descripcion}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider">
+                                  {c.estado || "Agendada"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    if (!c.id) return;
+                                    if (!confirm("¿Deseas eliminar esta cita agendada?")) return;
+                                    await deleteCita(c.id);
+                                    setCitas((prev) => prev.filter((item) => item.id !== c.id));
+                                    toast.success("Cita eliminada");
+                                  }}
+                                  className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border-0 bg-transparent cursor-pointer"
+                                  title="Eliminar cita"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3 pt-2 text-[11px] text-slate-500 border-t border-slate-100">
+                              <div className="flex items-center gap-1">
+                                <Calendar size={13} className="text-blue-500" />
+                                <span className="font-semibold text-slate-700">{c.fecha}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Clock size={13} className="text-blue-500" />
+                                <span>
+                                  {c.horaInicio} - {c.horaFin}
+                                </span>
+                              </div>
+                              {c.agenda && (
+                                <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] font-medium text-slate-600">
+                                  {c.agenda}
+                                </span>
+                              )}
+                              {c.asignadoANombre && (
+                                <span className="text-slate-600 font-medium">
+                                  Asignado a: <strong className="text-slate-700">{c.asignadoANombre}</strong>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab !== "Vehículo" && activeTab !== "Condiciones" && activeTab !== "Notas" && activeTab !== "Inspección" && activeTab !== "Citas" && (
                 <div className="flex items-center justify-center h-40 text-sm text-[var(--text-muted)]">
                   Contenido de {activeTab} en construcción...
                 </div>
@@ -887,6 +1470,59 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
         <AgregarItemModal 
           onClose={() => setIsCatalogOpen(false)}
           onAdd={handleAddItem}
+        />
+      )}
+      {isConfigTerminosOpen && (
+        <ConfigurarTerminosModal
+          onClose={() => setIsConfigTerminosOpen(false)}
+          onSaved={(nuevosTerminos) => {
+            setTaller((prev) => prev ? { ...prev, terminosPredeterminados: nuevosTerminos } : prev);
+            if (orden?.usarTerminosPredeterminados ?? true) {
+              setOrden((prev) => prev ? { ...prev, terminosYCondiciones: nuevosTerminos } : prev);
+              void handleSaveField({ terminosYCondiciones: nuevosTerminos });
+            }
+          }}
+        />
+      )}
+      {isModalInspeccionOpen && vehiculo && (
+        <ModalInspeccion
+          isOpen={isModalInspeccionOpen}
+          onClose={() => setIsModalInspeccionOpen(false)}
+          vehiculo={vehiculo}
+          danos={danos}
+          onChangeDanos={(nuevosDanos) => {
+            setDanos(nuevosDanos);
+            void handleSaveField({
+              inspeccionVisual: { danos: nuevosDanos, notasGenerales: inspeccionObservaciones },
+            });
+          }}
+          onSave={() => {
+            void handleSaveField({
+              inspeccionVisual: { danos, notasGenerales: inspeccionObservaciones },
+              fotosDiagnostico: fotos,
+            });
+            toast.success("Inspección guardada");
+          }}
+          fotos={fotos}
+          onUploadFoto={handleUploadFoto}
+          onUpdateFoto={handleUpdateFoto}
+          onRemoveFoto={handleRemoveFoto}
+          observaciones={inspeccionObservaciones}
+          onChangeObservaciones={(val) => setInspeccionObservaciones(val)}
+        />
+      )}
+      {isModalCitaOpen && cliente && vehiculo && (
+        <ModalAgendarCita
+          isOpen={isModalCitaOpen}
+          onClose={() => setIsModalCitaOpen(false)}
+          presupuestoId={presupuestoId}
+          numeroPresupuesto={orden?.numeroCotizacion || orden?.numero || 0}
+          cliente={cliente}
+          vehiculo={vehiculo}
+          motivoInicial={orden?.motivo}
+          onCitaCreada={(nuevaCita) => {
+            setCitas((prev) => [...prev, nuevaCita]);
+          }}
         />
       )}
     </>

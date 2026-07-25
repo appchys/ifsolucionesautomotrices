@@ -28,6 +28,8 @@ import {
   Cliente,
   Vehiculo,
   OrdenTrabajo,
+  AdjuntoOrden,
+  Cita,
   ItemOrden,
   Pago,
   AppUser,
@@ -122,6 +124,7 @@ export const DATOS_TALLER_DEFAULT: DatosTaller = {
   telefono: "",
   email: "",
   logoUrl: "",
+  terminosPredeterminados: "Los trabajos realizados tienen una garantía de 3 meses. El cliente debe retirar el vehículo dentro de los 5 días hábiles posteriores a la notificación de término.",
 };
 
 const TALLER_DOC = () => doc(db, "configuracion", "taller");
@@ -153,6 +156,7 @@ export async function getDatosTaller(): Promise<DatosTaller> {
     telefono: String(d.telefono ?? ""),
     email: String(d.email ?? ""),
     logoUrl: String(d.logoUrl ?? ""),
+    terminosPredeterminados: String(d.terminosPredeterminados ?? DATOS_TALLER_DEFAULT.terminosPredeterminados),
   };
 }
 
@@ -166,6 +170,7 @@ export async function saveDatosTaller(data: DatosTaller): Promise<void> {
     telefono: data.telefono.trim(),
     email: data.email.trim(),
     logoUrl: data.logoUrl.trim(),
+    terminosPredeterminados: (data.terminosPredeterminados ?? "").trim(),
     updatedAt: serverTimestamp(),
   };
   if (!snap.exists()) payload.createdAt = serverTimestamp();
@@ -2363,4 +2368,61 @@ export async function updateHerramienta(id: string, updates: Partial<Herramienta
 
 export async function deleteHerramienta(id: string): Promise<void> {
   await deleteDoc(doc(db, "herramientas", id));
+}
+
+export async function uploadAdjuntoPresupuesto(
+  presupuestoId: string,
+  file: File
+): Promise<AdjuntoOrden> {
+  const sanitizeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const path = `ordenes/${presupuestoId}/adjuntos/${Date.now()}_${sanitizeName}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  const url = await getDownloadURL(storageRef);
+
+  let tipo = "archivo";
+  if (file.type.startsWith("image/")) tipo = "imagen";
+  else if (file.type.includes("pdf")) tipo = "pdf";
+
+  return {
+    id: Date.now().toString() + Math.random().toString(36).substring(2, 6),
+    nombre: file.name,
+    url,
+    tipo,
+    tamano: file.size,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function createCita(data: Omit<Cita, "id">): Promise<string> {
+  const cleaned = removeUndefinedFields(data);
+  const docRef = await addDoc(collection(db, "citas"), {
+    ...cleaned,
+    estado: data.estado || "Agendada",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  return docRef.id;
+}
+
+export async function getCitasByPresupuesto(presupuestoId: string): Promise<Cita[]> {
+  const q = query(
+    collection(db, "citas"),
+    where("presupuestoId", "==", presupuestoId)
+  );
+  const snap = await getDocs(q);
+  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cita);
+  return list.sort((a, b) => (a.fecha > b.fecha ? 1 : -1));
+}
+
+export async function updateCita(id: string, data: Partial<Cita>): Promise<void> {
+  const cleaned = removeUndefinedFields(data);
+  await updateDoc(doc(db, "citas", id), {
+    ...cleaned,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function deleteCita(id: string): Promise<void> {
+  await deleteDoc(doc(db, "citas", id));
 }

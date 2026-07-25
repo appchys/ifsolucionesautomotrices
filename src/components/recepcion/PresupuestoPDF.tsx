@@ -494,10 +494,30 @@ export default function PresupuestoPDF({
 
         {/* Condiciones */}
         <View style={styles.condicionesSection}>
-          <Text style={styles.condicionesLabel}>Condiciones</Text>
+          <Text style={styles.condicionesLabel}>Términos y Condiciones</Text>
           <Text style={styles.condicionesText}>
-            Los trabajos realizados tienen una garantía de 3 meses. El cliente debe retirar el vehículo dentro de los 5 días habiles posteriores a la notificación de termino.
+            {orden.terminosYCondiciones || taller?.terminosPredeterminados || "Los trabajos realizados tienen una garantía de 3 meses. El cliente debe retirar el vehículo dentro de los 5 días hábiles posteriores a la notificación de término."}
           </Text>
+          {orden.validezPresupuesto ? (
+            <Text style={[styles.condicionesText, { marginTop: 3 }]}>
+              Validez del presupuesto: {orden.validezPresupuesto} {orden.unidadValidezPresupuesto || "Días"}
+            </Text>
+          ) : null}
+          {orden.tiempoEstimadoReparacion ? (
+            <Text style={[styles.condicionesText, { marginTop: 2 }]}>
+              Tiempo estimado en reparación: {orden.tiempoEstimadoReparacion} {orden.unidadTiempoEstimado || "Días"}
+            </Text>
+          ) : null}
+          {orden.formasPagoDisponibles && orden.formasPagoDisponibles.length > 0 ? (
+            <Text style={[styles.condicionesText, { marginTop: 2 }]}>
+              Formas de pago disponibles: {orden.formasPagoDisponibles.join(", ")}
+            </Text>
+          ) : null}
+          {orden.observacionFormaPago ? (
+            <Text style={[styles.condicionesText, { marginTop: 2 }]}>
+              Observación de forma de pago: {orden.observacionFormaPago}
+            </Text>
+          ) : null}
         </View>
       </Page>
     </Document>

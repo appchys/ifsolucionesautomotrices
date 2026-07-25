@@ -250,14 +250,30 @@ export default function DatosTallerForm() {
             </label>
             <textarea
               id="direccion"
-              className="input min-h-[100px]"
+              className="input min-h-[80px]"
               placeholder="Calle, número, ciudad, referencia..."
-              rows={4}
+              rows={3}
               {...register("direccion", { required: "Indica la dirección del taller" })}
             />
             {errors.direccion && (
               <span className="text-xs text-red-500">{errors.direccion.message}</span>
             )}
+          </div>
+
+          <div className="form-group sm:col-span-2">
+            <label className="label" htmlFor="terminosPredeterminados">
+              Términos y condiciones predeterminados
+            </label>
+            <p className="text-xs mb-1.5 text-slate-500">
+              Estos términos se aplicarán por defecto al crear o editar presupuestos e impresiones cuando se elija usar términos predeterminados.
+            </p>
+            <textarea
+              id="terminosPredeterminados"
+              className="input min-h-[100px]"
+              placeholder="Ej. Los trabajos realizados tienen una garantía de 3 meses..."
+              rows={4}
+              {...register("terminosPredeterminados")}
+            />
           </div>
 
           <div className="sm:col-span-2 flex flex-wrap gap-3 justify-end pt-1">

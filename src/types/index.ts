@@ -127,6 +127,36 @@ export interface FotoDiagnostico {
   descripcion?: string;
 }
 
+export interface AdjuntoOrden {
+  id: string;
+  nombre: string;
+  url: string;
+  tipo: string;
+  tamano?: number;
+  createdAt?: string;
+}
+
+export interface Cita {
+  id?: string;
+  presupuestoId?: string;
+  ordenId?: string;
+  clienteId?: string;
+  clienteNombre?: string;
+  vehiculoId?: string;
+  vehiculoPlaca?: string;
+  titulo: string;
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  agenda?: string;
+  asignadoAId?: string;
+  asignadoANombre?: string;
+  descripcion?: string;
+  estado?: "Agendada" | "Completada" | "Cancelada";
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
 export interface OrdenTrabajo {
   id?: string;
   vehiculoId: string;
@@ -157,6 +187,7 @@ export interface OrdenTrabajo {
   }[];
   fotoUrls?: string[];
   fotosDiagnostico?: FotoDiagnostico[];
+  adjuntos?: AdjuntoOrden[];
   esCotizacion?: boolean;
   archivado?: boolean;
   firmaClienteUrl?: string;
@@ -165,6 +196,14 @@ export interface OrdenTrabajo {
   updatedAt?: Timestamp;
   fechaEntrega?: Timestamp;
   facturaManual?: string;
+  terminosYCondiciones?: string;
+  usarTerminosPredeterminados?: boolean;
+  tiempoEstimadoReparacion?: string | number;
+  unidadTiempoEstimado?: string;
+  validezPresupuesto?: string | number;
+  unidadValidezPresupuesto?: string;
+  formasPagoDisponibles?: string[];
+  observacionFormaPago?: string;
 }
 
 export interface ItemOrden {
@@ -307,6 +346,7 @@ export interface DatosTaller {
   email: string;
   /** URL en Firebase Storage (subida desde configuración) */
   logoUrl: string;
+  terminosPredeterminados?: string;
 }
 
 export interface Producto {

@@ -29,6 +29,8 @@ export const VISTAS: { label: string; value: VehiculoVista }[] = [
 export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan" }: Props) {
   const [vistaSeleccionada, setVistaSeleccionada] = useState<VehiculoVista>("superior");
   const [imagenes, setImagenes] = useState<VehicleViewImage[]>([]);
+  const [sedanImagenes, setSedanImagenes] = useState<VehicleViewImage[]>([]);
+  const [failedImageUrls, setFailedImageUrls] = useState<Record<string, boolean>>({});
   const [loadingImages, setLoadingImages] = useState(true);
   const [loadedImageUrl, setLoadedImageUrl] = useState("");
   const nextIdRef = useRef(0);
@@ -39,13 +41,26 @@ export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan"
   const [menuStep, setMenuStep] = useState<"tipo" | "otro">("tipo");
   const [otroTexto, setOtroTexto] = useState("");
 
+  const lowerTipo = tipoVehiculo.toLowerCase();
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         setLoadingImages(true);
-        const config = await getVehicleViewImages(tipoVehiculo.toLowerCase());
-        if (!cancelled) setImagenes(config?.imagenes ?? []);
+        const [config, sedanConfig] = await Promise.all([
+          getVehicleViewImages(lowerTipo),
+          lowerTipo !== "sedan" ? getVehicleViewImages("sedan") : Promise.resolve(null),
+        ]);
+
+        if (!cancelled) {
+          setImagenes(config?.imagenes ?? []);
+          if (sedanConfig?.imagenes) {
+            setSedanImagenes(sedanConfig.imagenes);
+          } else if (lowerTipo === "sedan") {
+            setSedanImagenes(config?.imagenes ?? []);
+          }
+        }
       } catch (error) {
         console.error(`Error cargando imagenes ${tipoVehiculo} para inspeccion visual`, error);
         if (!cancelled) setImagenes([]);
@@ -54,12 +69,22 @@ export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan"
       }
     })();
     return () => { cancelled = true; };
-  }, [tipoVehiculo]);
+  }, [lowerTipo, tipoVehiculo]);
 
-  const imagenActual = useMemo(
-    () => imagenes.find((img) => img.vista === vistaSeleccionada && img.imageUrl.trim()),
-    [imagenes, vistaSeleccionada]
-  );
+  const imagenActual = useMemo(() => {
+    const primary = imagenes.find(
+      (img) => img.vista === vistaSeleccionada && img.imageUrl.trim() && !failedImageUrls[img.imageUrl]
+    );
+    if (primary) return primary;
+
+    if (lowerTipo !== "sedan") {
+      const fallback = sedanImagenes.find(
+        (img) => img.vista === vistaSeleccionada && img.imageUrl.trim() && !failedImageUrls[img.imageUrl]
+      );
+      if (fallback) return fallback;
+    }
+    return undefined;
+  }, [imagenes, sedanImagenes, vistaSeleccionada, failedImageUrls, lowerTipo]);
 
   const imageReady = loadedImageUrl === imagenActual?.imageUrl;
   const danosVistaActual = danos.filter((d) => (d.vista ?? "superior") === vistaSeleccionada);
@@ -108,7 +133,9 @@ export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan"
     <div>
       <div className="flex flex-wrap gap-2 mb-3">
         {VISTAS.map((vista) => {
-          const hasImage = imagenes.some((img) => img.vista === vista.value && img.imageUrl.trim());
+          const hasImage =
+            imagenes.some((img) => img.vista === vista.value && img.imageUrl.trim() && !failedImageUrls[img.imageUrl]) ||
+            sedanImagenes.some((img) => img.vista === vista.value && img.imageUrl.trim() && !failedImageUrls[img.imageUrl]);
           const isActive = vistaSeleccionada === vista.value;
           return (
             <button
@@ -153,11 +180,15 @@ export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan"
               >
                 <img
                   src={imagenActual.imageUrl}
-                  alt={`Vista ${vistaSeleccionada} SUV`}
+                  alt={`Vista ${vistaSeleccionada}`}
                   className="block max-w-full select-none"
                   style={{ maxHeight: viewerHeight }}
                   draggable={false}
                   onLoad={() => setLoadedImageUrl(imagenActual.imageUrl)}
+                  onError={() => {
+                    console.warn(`Imagen de vista ${vistaSeleccionada} (${imagenActual.imageUrl}) no pudo ser cargada. Recurriendo a Sedán.`);
+                    setFailedImageUrls((prev) => ({ ...prev, [imagenActual.imageUrl]: true }));
+                  }}
                 />
                 {imageReady &&
                   danosVistaActual.map((d) => {
@@ -186,7 +217,7 @@ export default function DamageSelector({ danos, onChange, tipoVehiculo = "sedan"
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
               <ImageOff size={34} style={{ color: "var(--text-muted)", opacity: 0.45 }} />
               <p className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
-                No hay imagen SUV para esta vista
+                No hay imagen disponible para la vista {vistaSeleccionada}
               </p>
               <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                 Sube la imagen en Configuración para usarla en la inspección visual.
