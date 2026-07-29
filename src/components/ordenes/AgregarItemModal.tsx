@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import { X, Search, Box, PenTool, Package, Calendar } from "lucide-react";
+import { X, Search, Box, PenTool, Package, Calendar, Check, Plus, Loader2 } from "lucide-react";
 import { getProductos, getServicios } from "@/lib/services";
 import { Producto, Servicio, ItemOrden } from "@/types";
 import { useUIStore } from "@/store";
@@ -105,16 +105,43 @@ export default function AgregarItemModal({ onClose, onAdd, tipoInicial }: Agrega
 
   const CatalogItemRow = ({ item, isProd, outOfStock, stockActual }: { item: Producto | Servicio, isProd: boolean, outOfStock: boolean, stockActual: number }) => {
     const [cantidad, setCantidad] = useState(1);
-    
+    const [isAdded, setIsAdded] = useState(false);
+    const [isAdding, setIsAdding] = useState(false);
+
+    const handleAdd = async () => {
+      if (isAdding || outOfStock) return;
+      setIsAdding(true);
+      try {
+        await handleSelectItem(item, cantidad);
+        setIsAdded(true);
+        setCantidad(1);
+        setTimeout(() => {
+          setIsAdded(false);
+        }, 1200);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsAdding(false);
+      }
+    };
+
     return (
       <div
-        className={`w-full flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg transition-colors text-left border border-transparent gap-2 ${
-          outOfStock ? "opacity-50 bg-slate-50 dark:bg-slate-900" : "bg-white dark:bg-transparent hover:bg-blue-50/50 hover:border-blue-100 dark:hover:bg-blue-900/20"
+        className={`w-full flex flex-col sm:flex-row sm:items-center justify-between p-2 rounded-lg transition-all duration-200 text-left border gap-2 ${
+          outOfStock 
+            ? "opacity-50 bg-slate-50 dark:bg-slate-900 border-transparent" 
+            : isAdded
+            ? "bg-emerald-50/70 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800"
+            : "bg-white dark:bg-transparent hover:bg-blue-50/50 hover:border-blue-100 dark:hover:bg-blue-900/20 border-transparent"
         }`}
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-blue-600 shrink-0">
-            {isProd ? <Box size={18} /> : <PenTool size={18} />}
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+            isAdded
+              ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400"
+              : "bg-slate-100 dark:bg-slate-800 text-blue-600"
+          }`}>
+            {isAdded ? <Check size={18} /> : isProd ? <Box size={18} /> : <PenTool size={18} />}
           </div>
           <div>
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -122,6 +149,11 @@ export default function AgregarItemModal({ onClose, onAdd, tipoInicial }: Agrega
               {item.aplicaIva && (
                 <span className="text-[8px] bg-blue-100 text-blue-700 px-1 py-0.2 rounded font-bold uppercase tracking-wider border border-blue-200">
                   IVA
+                </span>
+              )}
+              {isAdded && (
+                <span className="text-[9px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200 px-1.5 py-0.5 rounded-full font-extrabold animate-pulse">
+                  Agregado
                 </span>
               )}
             </div>
@@ -148,6 +180,7 @@ export default function AgregarItemModal({ onClose, onAdd, tipoInicial }: Agrega
             <div className="flex items-center gap-2">
               <div className="flex items-center border border-[var(--border)] rounded-lg bg-white dark:bg-slate-800 overflow-hidden shadow-sm h-7">
                 <button 
+                  type="button"
                   onClick={() => setCantidad(Math.max(1, cantidad - 1))} 
                   className="px-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[var(--text-muted)] font-bold transition-colors text-xs h-full border-0 cursor-pointer"
                 >
@@ -163,6 +196,7 @@ export default function AgregarItemModal({ onClose, onAdd, tipoInicial }: Agrega
                   }}
                 />
                 <button 
+                  type="button"
                   onClick={() => setCantidad(Math.min(stockActual, cantidad + 1))} 
                   className="px-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[var(--text-muted)] font-bold transition-colors text-xs h-full border-0 cursor-pointer"
                 >
@@ -170,13 +204,31 @@ export default function AgregarItemModal({ onClose, onAdd, tipoInicial }: Agrega
                 </button>
               </div>
               <button 
-                onClick={() => {
-                  handleSelectItem(item, cantidad);
-                  setCantidad(1);
-                }} 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors flex items-center gap-1 border-none cursor-pointer"
+                type="button"
+                disabled={isAdding}
+                onClick={handleAdd} 
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold shadow-sm transition-all duration-200 flex items-center gap-1 border-none cursor-pointer ${
+                  isAdded
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white scale-105"
+                    : "bg-blue-600 hover:bg-blue-700 text-white active:scale-95"
+                }`}
               >
-                Agregar
+                {isAdded ? (
+                  <>
+                    <Check size={14} />
+                    <span>¡Agregado!</span>
+                  </>
+                ) : isAdding ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Agregando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={14} />
+                    <span>Agregar</span>
+                  </>
+                )}
               </button>
             </div>
           )}

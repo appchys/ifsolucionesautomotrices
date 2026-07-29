@@ -24,6 +24,7 @@ import {
 import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden, DatosTaller, DanoVehiculo, FotoDiagnostico, ChecklistItem, Cita } from "@/types";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
+import AgregarItemManualModal from "@/components/ordenes/AgregarItemManualModal";
 import OpcionesItemPopover from "@/components/ordenes/OpcionesItemPopover";
 import ConfigurarTerminosModal from "@/components/configuracion/ConfigurarTerminosModal";
 import ModalInspeccion from "./ModalInspeccion";
@@ -45,6 +46,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   const [activeTab, setActiveTab] = useState("Vehículo");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [taller, setTaller] = useState<DatosTaller | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [activePopoverItemId, setActivePopoverItemId] = useState<string | null>(null);
@@ -178,20 +180,29 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   };
 
   const handleAddItem = async (itemData: Omit<ItemOrden, "id" | "ordenId" | "subtotal">) => {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const subtotal = itemData.cantidad * itemData.precioUnitario;
+    const itemOptimista: ItemOrden = {
+      ...itemData,
+      id: tempId,
+      ordenId: presupuestoId,
+      subtotal,
+    };
+    
+    // Actualización optimista de estado local instantánea
+    setItems((prev) => [...prev, itemOptimista]);
+    toast.success("Ítem agregado", { duration: 1500 });
+
     try {
-      const subtotal = itemData.cantidad * itemData.precioUnitario;
-      const newItem: Omit<ItemOrden, "id"> = {
-        ...itemData,
-        ordenId: presupuestoId,
-        subtotal
-      };
-      
-      const id = await addItemOrden(presupuestoId, newItem);
-      setItems([...items, { ...newItem, id }]);
-      toast.success("Agregado");
+      const { id: _, ...itemPayload } = itemOptimista;
+      const realId = await addItemOrden(presupuestoId, itemPayload);
+      setItems((prev) =>
+        prev.map((it) => (it.id === tempId ? { ...it, id: realId } : it))
+      );
     } catch (error) {
       console.error(error);
-      toast.error("Error al agregar");
+      setItems((prev) => prev.filter((it) => it.id !== tempId));
+      toast.error("Error al agregar ítem");
     }
   };
 
@@ -675,10 +686,19 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                 />
               </div>
               <button 
+                type="button"
                 className="btn-primary bg-blue-600 hover:bg-blue-700 shadow-sm flex items-center gap-2"
                 onClick={() => setIsCatalogOpen(true)}
               >
                 <Search size={16} /> Catálogo
+              </button>
+              <button 
+                type="button"
+                className="btn bg-white hover:bg-slate-50 border border-[var(--border)] shadow-sm flex items-center gap-2 text-slate-700 hover:text-blue-700 font-semibold cursor-pointer"
+                onClick={() => setIsManualModalOpen(true)}
+                title="Agregar producto o servicio creado manualmente"
+              >
+                <Plus size={16} className="text-blue-600" /> Manual
               </button>
             </div>
 
@@ -1469,6 +1489,12 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       {isCatalogOpen && (
         <AgregarItemModal 
           onClose={() => setIsCatalogOpen(false)}
+          onAdd={handleAddItem}
+        />
+      )}
+      {isManualModalOpen && (
+        <AgregarItemManualModal
+          onClose={() => setIsManualModalOpen(false)}
           onAdd={handleAddItem}
         />
       )}
