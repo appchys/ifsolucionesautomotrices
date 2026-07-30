@@ -7,6 +7,7 @@ import {
   getVehiculos,
   getItemsOrden,
   deleteOrden,
+  convertirPresupuestoAOrden,
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden } from "@/types";
 import { format } from "date-fns";
@@ -23,6 +24,8 @@ import {
   Clock,
   CheckCircle2,
   FileCheck,
+  Wrench,
+  Eye,
 } from "lucide-react";
 import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
 import { toast } from "react-hot-toast";
@@ -49,6 +52,7 @@ function PresupuestosPageContent() {
     {}
   );
   const [totalesMap, setTotalesMap] = useState<Record<string, number>>({});
+  const [ordenesVinculadasMap, setOrdenesVinculadasMap] = useState<Record<string, OrdenTrabajo>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filtroActivo, setFiltroActivo] =
@@ -56,10 +60,11 @@ function PresupuestosPageContent() {
   const [showModal, setShowModal] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuPosition | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [convertingId, setConvertingId] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const idParam = searchParams.get("id");
-  const { setPresupuestoSidebarOpen } = useUIStore();
+  const { setPresupuestoSidebarOpen, setOrdenSidebarOpen } = useUIStore();
 
   useEffect(() => {
     if (idParam) {
@@ -121,6 +126,25 @@ function PresupuestosPageContent() {
     const unsub = subscribeOrdenes(
       (data) => {
         const presupuestos = data.filter((o) => o.esCotizacion === true);
+        const ordenesReales = data.filter((o) => o.esCotizacion !== true);
+
+        const vincMap: Record<string, OrdenTrabajo> = {};
+        presupuestos.forEach((p) => {
+          if (!p.id) return;
+          const numCot = p.numeroCotizacion || p.numero;
+          const numStr = numCot ? String(numCot) : null;
+          const match = ordenesReales.find(
+            (o) =>
+              (numStr && String(o.motivo || "").includes(numStr)) ||
+              (o.vehiculoId === p.vehiculoId && p.presupuestoConfirmadoPorCliente && o.estado !== "Borrador") ||
+              (o.numeroIngreso && String(p.motivo || "").includes(String(o.numeroIngreso)))
+          );
+          if (match) {
+            vincMap[p.id] = match;
+          }
+        });
+        setOrdenesVinculadasMap(vincMap);
+
         setOrdenes(presupuestos);
         setLoading(false);
         void loadTotales(presupuestos);
@@ -172,6 +196,29 @@ function PresupuestosPageContent() {
       const timeB = toDate(b.createdAt)?.getTime() || 0;
       return timeB - timeA;
     });
+
+  const crearOrdenDesdePresupuesto = async (orden: OrdenTrabajo) => {
+    const id = orden.id;
+    if (!id || convertingId) return;
+    const numero = String(orden.numeroCotizacion ?? orden.numero ?? 0).padStart(4, "0");
+    const confirmed = window.confirm(
+      `¿Crear una Orden de Trabajo a partir del presupuesto #PRE-${numero}?`
+    );
+    if (!confirmed) return;
+    setConvertingId(id);
+    setOpenMenu(null);
+    const toastId = toast.loading("Creando Orden de Trabajo...");
+    try {
+      const ordenIdResult = await convertirPresupuestoAOrden(id);
+      toast.success("Orden de Trabajo creada con éxito", { id: toastId });
+      setOrdenSidebarOpen(true, ordenIdResult);
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al crear la orden de trabajo", { id: toastId });
+    } finally {
+      setConvertingId(null);
+    }
+  };
 
   const eliminarPresupuesto = async (orden: OrdenTrabajo) => {
     const id = orden.id;
@@ -456,28 +503,60 @@ function PresupuestosPageContent() {
       </div>
 
       {/* Context Menu */}
-      {openMenu ? (
-        <div
-          className="fixed z-[1200] w-36 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-1 shadow-xl"
-          style={{ top: openMenu.top, left: openMenu.left }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 disabled:opacity-60"
-            disabled={deletingId === openMenu.id}
-            onClick={() => {
-              const orden = filtered.find(
-                (item) => item.id === openMenu.id
-              );
-              if (orden) void eliminarPresupuesto(orden);
-            }}
+      {openMenu ? (() => {
+        const ordenVinculada = openMenu.id ? ordenesVinculadasMap[openMenu.id] : null;
+        const numOt = ordenVinculada ? String(ordenVinculada.numeroOrden || ordenVinculada.numero || 0).padStart(4, "0") : "";
+        return (
+          <div
+            className="fixed z-[1200] w-48 rounded-md border border-[var(--border)] bg-[var(--bg-card)] p-1 shadow-xl"
+            style={{ top: openMenu.top, left: openMenu.left }}
+            onClick={(event) => event.stopPropagation()}
           >
-            <Trash2 size={14} />
-            Eliminar
-          </button>
-        </div>
-      ) : null}
+            {ordenVinculada ? (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs font-semibold text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20"
+                onClick={() => {
+                  setOpenMenu(null);
+                  setOrdenSidebarOpen(true, ordenVinculada.id!);
+                }}
+              >
+                <Eye size={14} />
+                Ver Orden #OT-{numOt}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs font-semibold text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/20 disabled:opacity-60"
+                disabled={convertingId === openMenu.id}
+                onClick={() => {
+                  const orden = filtered.find(
+                    (item) => item.id === openMenu.id
+                  );
+                  if (orden) void crearOrdenDesdePresupuesto(orden);
+                }}
+              >
+                <Wrench size={14} />
+                Crear Orden
+              </button>
+            )}
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 disabled:opacity-60"
+              disabled={deletingId === openMenu.id}
+              onClick={() => {
+                const orden = filtered.find(
+                  (item) => item.id === openMenu.id
+                );
+                if (orden) void eliminarPresupuesto(orden);
+              }}
+            >
+              <Trash2 size={14} />
+              Eliminar
+            </button>
+          </div>
+        );
+      })() : null}
 
       {showModal && (
         <ModalNuevoIngreso

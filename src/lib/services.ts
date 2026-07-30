@@ -774,6 +774,87 @@ export async function convertirIngresoAOrden(ingresoId: string): Promise<number>
   return numeroOrden;
 }
 
+/** Convierte un presupuesto en orden de trabajo, o procesa el ingreso de origen si existía uno. Devuelve el ID de la orden resultante. */
+export async function convertirPresupuestoAOrden(presupuestoId: string): Promise<string> {
+  const presupuestoRef = doc(db, "ordenesTrabajo", presupuestoId);
+  const presupuestoSnap = await getDoc(presupuestoRef);
+
+  if (!presupuestoSnap.exists()) {
+    throw new Error("PRESUPUESTO_NO_ENCONTRADO");
+  }
+
+  const presupuesto = { id: presupuestoSnap.id, ...presupuestoSnap.data() } as OrdenTrabajo;
+
+  // 1. Si este presupuesto fue creado a partir de un ingreso previo
+  const ingresoOrigen = await getIngresoOrigenDePresupuesto(presupuesto);
+  if (ingresoOrigen?.id) {
+    await convertirIngresoAOrden(ingresoOrigen.id);
+    await updateDoc(presupuestoRef, {
+      presupuestoConfirmadoPorCliente: true,
+      updatedAt: serverTimestamp(),
+    });
+    return ingresoOrigen.id;
+  }
+
+  // 2. Si el presupuesto fue creado directamente en primer lugar:
+  await updateOrden(presupuestoId, {
+    esCotizacion: false,
+    estado: "En Reparación",
+    presupuestoConfirmadoPorCliente: true,
+  });
+
+  return presupuestoId;
+}
+
+/** Busca presupuestos activos (cotización) para un vehículo específico. */
+export async function getPresupuestosPendientesByVehiculo(vehiculoId: string): Promise<OrdenTrabajo[]> {
+  if (!vehiculoId) return [];
+  const snap = await getDocs(
+    query(
+      collection(db, "ordenesTrabajo"),
+      where("esCotizacion", "==", true),
+      where("vehiculoId", "==", vehiculoId)
+    )
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo));
+}
+
+/** Busca la Orden de Trabajo vinculada a un Presupuesto (si existe). */
+export async function getOrdenVinculadaAPresupuesto(presupuesto: OrdenTrabajo): Promise<OrdenTrabajo | null> {
+  // 1. Si el presupuesto mismo fue convertido a orden (esCotizacion === false)
+  if (presupuesto.esCotizacion === false) {
+    return presupuesto;
+  }
+
+  // 2. Si proviene de un ingreso que fue convertido a orden (numeroOrden !== undefined)
+  const ingresoOrigen = await getIngresoOrigenDePresupuesto(presupuesto);
+  if (ingresoOrigen && (ingresoOrigen.numeroOrden || (ingresoOrigen.esCotizacion === false && ingresoOrigen.numero))) {
+    return ingresoOrigen;
+  }
+
+  // 3. Si existe alguna orden de trabajo para el mismo vehículo vinculada
+  if (presupuesto.vehiculoId) {
+    const numCotizacion = presupuesto.numeroCotizacion || presupuesto.numero;
+    const snap = await getDocs(
+      query(
+        collection(db, "ordenesTrabajo"),
+        where("esCotizacion", "==", false),
+        where("vehiculoId", "==", presupuesto.vehiculoId)
+      )
+    );
+    const ordenes = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo));
+    const numStr = numCotizacion ? String(numCotizacion) : null;
+    const found = ordenes.find((o) => 
+      (numStr && String(o.motivo || "").includes(numStr)) ||
+      (o.numeroIngreso && String(presupuesto.motivo || "").includes(String(o.numeroIngreso))) ||
+      (presupuesto.presupuestoConfirmadoPorCliente && o.estado !== "Borrador")
+    );
+    if (found) return found;
+  }
+
+  return null;
+}
+
 export async function updateOrden(id: string, data: Partial<OrdenTrabajo>): Promise<void> {
   const numeroOrdenConversion =
     data.esCotizacion === false && data.numero === undefined

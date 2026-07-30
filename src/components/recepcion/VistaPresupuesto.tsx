@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock, Wrench, Package } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock, Wrench, Package, CheckCircle2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -14,6 +14,8 @@ import {
   deleteItemOrden,
   updateItemOrden,
   getIngresoOrigenDePresupuesto,
+  getOrdenVinculadaAPresupuesto,
+  convertirPresupuestoAOrden,
   deleteOrden,
   getDatosTaller,
   getLogoAsBase64Png,
@@ -36,11 +38,13 @@ import { useUIStore } from "@/store";
 
 export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: { presupuestoId: string; isSidebar?: boolean }) {
   const router = useRouter();
-  const { setPresupuestoSidebarOpen } = useUIStore();
+  const { setPresupuestoSidebarOpen, setOrdenSidebarOpen } = useUIStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [convertingToOrden, setConvertingToOrden] = useState(false);
   
   const [orden, setOrden] = useState<OrdenTrabajo | null>(null);
+  const [ordenVinculada, setOrdenVinculada] = useState<OrdenTrabajo | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
   const [items, setItems] = useState<ItemOrden[]>([]);
@@ -84,13 +88,15 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
 
       setOrden(ordenData);
 
-      const [cData, vData, itemsData, tallerData, citasData] = await Promise.all([
+      const [cData, vData, itemsData, tallerData, citasData, ordenVin] = await Promise.all([
         ordenData.cliente || getClienteById(ordenData.clienteId),
         ordenData.vehiculo || getVehiculoById(ordenData.vehiculoId),
         getItemsOrden(presupuestoId),
         getDatosTaller(),
         getCitasByPresupuesto(presupuestoId),
+        getOrdenVinculadaAPresupuesto(ordenData),
       ]);
+      setOrdenVinculada(ordenVin);
  
       if (ordenData.esCotizacion) {
         const ingresoOrigen = await getIngresoOrigenDePresupuesto(ordenData);
@@ -521,6 +527,31 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
     }
   };
 
+  const handleCrearOrden = async () => {
+    if (!orden) return;
+    const confirmed = window.confirm("¿Deseas crear una Orden de Trabajo a partir de este presupuesto?");
+    if (!confirmed) return;
+
+    setConvertingToOrden(true);
+    const toastId = toast.loading("Creando Orden de Trabajo...");
+    try {
+      const ordenIdResult = await convertirPresupuestoAOrden(presupuestoId);
+      toast.success("Orden de Trabajo creada con éxito", { id: toastId });
+
+      if (isSidebar) {
+        setPresupuestoSidebarOpen(false);
+        setOrdenSidebarOpen(true, ordenIdResult);
+      } else {
+        router.push(`/ordenes?id=${ordenIdResult}`);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al crear la orden de trabajo", { id: toastId });
+    } finally {
+      setConvertingToOrden(false);
+    }
+  };
+
   const handleAprobar = async () => {
     if (!orden) return;
     if (confirm("¿Estás seguro de aprobar este presupuesto?")) {
@@ -662,6 +693,39 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
           >
              {saving ? <Loader2 size={12} className="animate-spin" /> : orden.presupuestoConfirmadoPorCliente ? <><Check size={12} /> Aprobado</> : <><Check size={12} /> Aprobar</>}
           </button>
+          {ordenVinculada || orden.esCotizacion === false ? (
+            <button 
+              type="button"
+              className="btn bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm font-semibold px-3.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer rounded-lg transition-colors"
+              onClick={() => {
+                const targetId = ordenVinculada?.id || orden.id!;
+                if (isSidebar) {
+                  setPresupuestoSidebarOpen(false);
+                  setOrdenSidebarOpen(true, targetId);
+                } else {
+                  router.push(`/ordenes?id=${targetId}`);
+                }
+              }}
+            >
+              <CheckCircle2 size={13} className="text-emerald-600" />
+              Ver Orden #OT-{String((ordenVinculada?.numeroOrden ?? ordenVinculada?.numero ?? orden.numeroOrden ?? orden.numero) || 0).padStart(4, "0")}
+            </button>
+          ) : (
+            <button 
+              type="button"
+              className="btn-primary bg-blue-600 hover:bg-blue-700 border-none text-white shadow disabled:opacity-50 px-3.5 py-1.5 text-xs flex items-center gap-1.5 cursor-pointer font-semibold rounded-lg"
+              onClick={handleCrearOrden}
+              disabled={convertingToOrden || saving}
+              title="Crear Orden de Trabajo a partir de este presupuesto"
+            >
+              {convertingToOrden ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Wrench size={13} />
+              )}
+              Crear Orden
+            </button>
+          )}
           <div className="relative">
             <button 
               type="button"
@@ -674,7 +738,38 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             {isMenuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setIsMenuOpen(false)}></div>
-                <div className="absolute right-0 mt-2 w-42 bg-white border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                <div className="absolute right-0 mt-2 w-48 bg-white border border-[var(--border)] rounded-xl shadow-xl z-20 py-1 overflow-hidden">
+                  {ordenVinculada || orden.esCotizacion === false ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        const targetId = ordenVinculada?.id || orden.id!;
+                        if (isSidebar) {
+                          setPresupuestoSidebarOpen(false);
+                          setOrdenSidebarOpen(true, targetId);
+                        } else {
+                          router.push(`/ordenes?id=${targetId}`);
+                        }
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-50 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                    >
+                      <Eye size={12} />
+                      Ver Orden #OT-{String((ordenVinculada?.numeroOrden ?? ordenVinculada?.numero ?? orden.numeroOrden ?? orden.numero) || 0).padStart(4, "0")}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        void handleCrearOrden();
+                      }}
+                      className="w-full text-left px-4 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                    >
+                      <Wrench size={12} />
+                      Crear Orden de Trabajo
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleEliminarPresupuesto}
