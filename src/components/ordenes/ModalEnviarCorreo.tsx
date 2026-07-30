@@ -6,6 +6,7 @@ import { toast } from "react-hot-toast";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden, Pago, DatosTaller } from "@/types";
+import { obtenerLogoMarcaBase64 } from "@/lib/services";
 
 interface ModalEnviarCorreoProps {
   isOpen: boolean;
@@ -115,6 +116,7 @@ export default function ModalEnviarCorreo({
         // Dynamically import PDF renderer and the Client PDF template
         const { pdf } = await import("@react-pdf/renderer");
         const OrdenClientePDF = (await import("@/components/recepcion/OrdenClientePDF")).default;
+        const marcaLogoUrl = await obtenerLogoMarcaBase64(vehiculo.marca);
 
         const pdfBlob = await pdf(
           <OrdenClientePDF
@@ -124,6 +126,7 @@ export default function ModalEnviarCorreo({
             items={items}
             pagos={pagos}
             taller={taller}
+            marcaLogoUrl={marcaLogoUrl}
           />
         ).toBlob();
 

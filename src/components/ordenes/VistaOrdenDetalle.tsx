@@ -21,6 +21,9 @@ import {
   getPresupuestoPorIngreso,
   getDatosTaller,
   getLogoAsBase64Png,
+  obtenerLogoMarcaBase64,
+  getMarcasVehiculo,
+  MARCAS_ECUADOR_POPULARES,
   getProductos,
   getServicios,
   sendMensajeOrden,
@@ -156,6 +159,29 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
 
   // Linking State
   const [linkedPresupuesto, setLinkedPresupuesto] = useState<OrdenTrabajo | null>(null);
+  const [marcaLogo, setMarcaLogo] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (vehiculo?.marca) {
+      let isMounted = true;
+      getMarcasVehiculo().then((marcasList) => {
+        if (!isMounted) return;
+        const target = vehiculo.marca.trim().toLowerCase();
+        const found = marcasList.find((m) => m.nombre.trim().toLowerCase() === target);
+        if (found?.logoUrl) {
+          setMarcaLogo(found.logoUrl);
+        } else {
+          const pop = MARCAS_ECUADOR_POPULARES.find((m) => m.nombre.trim().toLowerCase() === target);
+          if (pop?.logoUrl) {
+            setMarcaLogo(pop.logoUrl);
+          } else {
+            setMarcaLogo(null);
+          }
+        }
+      });
+      return () => { isMounted = false; };
+    }
+  }, [vehiculo?.marca]);
 
   // Edit / Form State
   const [motivo, setMotivo] = useState("");
@@ -823,6 +849,8 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
         if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
       }
 
+      const marcaLogoUrl = await obtenerLogoMarcaBase64(vehiculo.marca);
+
       let blob;
       if (type === "cliente") {
         const OrdenClientePDF = (await import("@/components/recepcion/OrdenClientePDF")).default;
@@ -834,6 +862,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             items={items}
             pagos={pagos}
             taller={tallerConLogo}
+            marcaLogoUrl={marcaLogoUrl}
           />
         ).toBlob();
       } else {
@@ -845,6 +874,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             vehiculo={vehiculo}
             items={items}
             taller={tallerConLogo}
+            marcaLogoUrl={marcaLogoUrl}
           />
         ).toBlob();
       }
@@ -882,6 +912,8 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
         if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
       }
 
+      const marcaLogoUrl = await obtenerLogoMarcaBase64(vehiculo.marca);
+
       let blob;
       if (type === "cliente") {
         const OrdenClientePDF = (await import("@/components/recepcion/OrdenClientePDF")).default;
@@ -893,6 +925,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             items={items}
             pagos={pagos}
             taller={tallerConLogo}
+            marcaLogoUrl={marcaLogoUrl}
           />
         ).toBlob();
       } else {
@@ -904,6 +937,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             vehiculo={vehiculo}
             items={items}
             taller={tallerConLogo}
+            marcaLogoUrl={marcaLogoUrl}
           />
         ).toBlob();
       }
@@ -1435,8 +1469,12 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                     </button>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0 border border-blue-200/50">
-                      <Car size={24} className="text-blue-600" />
+                    <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 border border-slate-200 p-1.5 overflow-hidden">
+                      {marcaLogo ? (
+                        <img src={marcaLogo} alt={vehiculo.marca} className="w-full h-full object-contain" />
+                      ) : (
+                        <Car size={24} className="text-blue-600" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <h4 className="font-extrabold text-base text-slate-800 truncate">

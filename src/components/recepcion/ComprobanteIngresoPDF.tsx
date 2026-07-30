@@ -236,12 +236,71 @@ const formatFecha = (timestamp: any) => {
   return `${date.getDate()} ${mesesEs[date.getMonth()]} ${date.getFullYear()}`;
 };
 
+const BrandLogo = ({ brand, logoUrl }: { brand: string; logoUrl?: string }) => {
+  if (logoUrl && logoUrl.trim()) {
+    return (
+      <Image
+        src={logoUrl}
+        style={{
+          width: 32,
+          height: 32,
+          objectFit: "contain",
+          marginRight: 10,
+          marginTop: 2,
+        }}
+      />
+    );
+  }
+
+  const cleanBrand = (brand || "").toLowerCase().trim();
+
+  if (cleanBrand.includes("changan")) {
+    return (
+      <Svg width="30" height="30" viewBox="0 0 40 40" style={{ marginRight: 10, marginTop: 2 }}>
+        <Rect x="0" y="0" width="40" height="40" rx="20" ry="20" fill="#0c4a6e" />
+        <Rect x="3" y="3" width="34" height="34" rx="17" ry="17" fill="none" stroke="#e2e8f0" strokeWidth="1" />
+        <Path d="M13 15 L20 28 L27 15 L24 15 L20 23 L16 15 Z" fill="#ffffff" />
+      </Svg>
+    );
+  }
+
+  if (cleanBrand.includes("chevrolet")) {
+    return (
+      <Svg width="30" height="30" viewBox="0 0 40 40" style={{ marginRight: 10, marginTop: 2 }}>
+        <Rect x="0" y="0" width="40" height="40" rx="20" ry="20" fill="#b45309" />
+        <Path d="M10 17 H15 V12 H25 V17 H30 L28 23 H25 V28 H15 V23 H10 Z" fill="#f59e0b" stroke="#ffffff" strokeWidth="1.5" strokeLinejoin="round" />
+      </Svg>
+    );
+  }
+
+  if (cleanBrand.includes("toyota")) {
+    return (
+      <Svg width="30" height="30" viewBox="0 0 40 40" style={{ marginRight: 10, marginTop: 2 }}>
+        <Rect x="0" y="0" width="40" height="40" rx="20" ry="20" fill="#991b1b" />
+        <Rect x="8" y="12" width="24" height="16" rx="8" ry="8" fill="none" stroke="#ffffff" strokeWidth="1.5" />
+        <Rect x="13" y="12" width="14" height="16" rx="7" ry="8" fill="none" stroke="#ffffff" strokeWidth="1.5" />
+        <Path d="M8 20 H32" stroke="#ffffff" strokeWidth="1.5" />
+      </Svg>
+    );
+  }
+
+  return (
+    <Svg width="30" height="30" viewBox="0 0 40 40" style={{ marginRight: 10, marginTop: 2 }}>
+      <Rect x="0" y="0" width="40" height="40" rx="20" ry="20" fill="#475569" />
+      <Rect x="4" y="4" width="32" height="32" rx="16" ry="16" fill="none" stroke="#ffffff" strokeWidth="1.5" />
+      <Path d="M20 4 V36 M4 20 H36" stroke="#ffffff" strokeWidth="1" />
+      <Rect x="15" y="15" width="10" height="10" rx="5" ry="5" fill="#475569" stroke="#ffffff" strokeWidth="1" />
+    </Svg>
+  );
+};
+
 interface ComprobanteIngresoPDFProps {
   orden: OrdenTrabajo;
   cliente: Cliente;
   vehiculo: Vehiculo;
   taller: DatosTaller | null;
   tecnicoName: string;
+  marcaLogoUrl?: string;
 }
 
 export default function ComprobanteIngresoPDF({
@@ -250,6 +309,7 @@ export default function ComprobanteIngresoPDF({
   vehiculo,
   taller,
   tecnicoName,
+  marcaLogoUrl,
 }: ComprobanteIngresoPDFProps) {
   const numIngreso = String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0");
   const dateFormatted = formatFecha(orden.createdAt);
@@ -275,7 +335,10 @@ export default function ComprobanteIngresoPDF({
                 {taller?.razonSocial || "I.F. SOLUCIONES AUTOMOTRICES"}
               </Text>
               <Text style={styles.workshopDetail}>
-                {taller?.ruc || "593988731879"}
+                RUC: {taller?.ruc || "0927405092001"}
+              </Text>
+              <Text style={styles.workshopDetail}>
+                {taller?.telefono || "593988731879"}
               </Text>
               <Text style={styles.workshopDetail}>
                 {taller?.email || "i.f.solucionesautomotrices@outlook.com"}
@@ -305,17 +368,22 @@ export default function ComprobanteIngresoPDF({
 
           {/* Columna Vehículo */}
           <View style={styles.column}>
-            <Text style={styles.sectionLabel}>Vehículo</Text>
-            <Text style={styles.boldText}>
-              {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
-            </Text>
-            <View style={styles.badgeContainer}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{vehiculo.placa}</Text>
+            <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+              <BrandLogo brand={vehiculo.marca} logoUrl={marcaLogoUrl} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sectionLabel}>Vehículo</Text>
+                <Text style={styles.boldText}>
+                  {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
+                </Text>
+                <View style={styles.badgeContainer}>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{vehiculo.placa}</Text>
+                  </View>
+                </View>
+                <Text style={styles.infoText}>Color: {vehiculo.color || "—"}</Text>
+                <Text style={styles.infoText}>Chasis: {vehiculo.vin || "—"}</Text>
               </View>
             </View>
-            <Text style={styles.infoText}>Color: {vehiculo.color || "—"}</Text>
-            <Text style={styles.infoText}>Chasis: {vehiculo.vin || "—"}</Text>
           </View>
         </View>
 

@@ -41,6 +41,23 @@ export interface VehicleViewImagesConfig {
   updatedAt?: Timestamp;
 }
 
+export interface ModeloVehiculo {
+  id?: string;
+  nombre: string;
+  logoUrl?: string;
+  tipoVehiculo?: TipoVehiculo;
+}
+
+export interface MarcaVehiculo {
+  id?: string;
+  nombre: string;
+  logoUrl?: string;
+  modelos: ModeloVehiculo[];
+  popularidadEcuador?: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
 export interface Vehiculo {
   id?: string;
   clienteId: string;

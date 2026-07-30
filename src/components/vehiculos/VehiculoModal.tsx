@@ -3,8 +3,10 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { X, Loader2, UserPlus } from "lucide-react";
 import { Vehiculo, Cliente, TipoVehiculo } from "@/types";
-import { getClientes, createCliente, createVehiculo, updateVehiculo, getTiposVehiculo } from "@/lib/services";
+import { getClientes, createCliente, createVehiculo, updateVehiculo, getTiposVehiculo, detectarTipoVehiculo } from "@/lib/services";
 import { toast } from "react-hot-toast";
+import MarcaAutocompleteSelect from "./MarcaAutocompleteSelect";
+import ModeloAutocompleteSelect from "./ModeloAutocompleteSelect";
 
 interface Props {
   isOpen: boolean;
@@ -42,7 +44,18 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
   const [tiposVehiculo, setTiposVehiculo] = useState<string[]>([]);
   const [ownerMode, setOwnerMode] = useState<"existente" | "nuevo">("existente");
   const [saving, setSaving] = useState(false);
-  const { register, handleSubmit, reset, setValue } = useForm<VehiculoFormValues>();
+  const { register, handleSubmit, reset, setValue, watch } = useForm<VehiculoFormValues>();
+  const selectedMarcaVal = watch("marca");
+  const selectedModeloVal = watch("modelo");
+
+  // Autodetectar Tipo de Vehículo al seleccionar marca / modelo
+  useEffect(() => {
+    if (!selectedModeloVal || editingVehiculo) return;
+    const tipoDetectado = detectarTipoVehiculo(selectedMarcaVal, selectedModeloVal);
+    if (tipoDetectado) {
+      setValue("tipoVehiculo", tipoDetectado, { shouldValidate: true });
+    }
+  }, [selectedMarcaVal, selectedModeloVal, setValue, editingVehiculo]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -54,16 +67,37 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
         
         if (editingVehiculo) {
           reset({
-            ...editingVehiculo,
+            clienteId: editingVehiculo.clienteId || "",
+            placa: editingVehiculo.placa || "",
+            marca: editingVehiculo.marca || "",
+            modelo: editingVehiculo.modelo || "",
+            anio: editingVehiculo.anio || new Date().getFullYear(),
+            color: editingVehiculo.color || "",
+            vin: editingVehiculo.vin || "",
+            tipoVehiculo: editingVehiculo.tipoVehiculo || tipos[0] || "sedan",
           });
           setOwnerMode(editingVehiculo.clienteId ? "existente" : "nuevo");
         } else {
-          reset({});
+          reset({
+            clienteId: "",
+            nuevoClienteNombre: "",
+            nuevoClienteApellido: "",
+            nuevoClienteIdentificacion: "",
+            nuevoClienteTelefono: "",
+            nuevoClienteEmail: "",
+            nuevoClienteDireccion: "",
+            placa: "",
+            marca: "",
+            modelo: "",
+            anio: new Date().getFullYear(),
+            color: "",
+            vin: "",
+            tipoVehiculo: tipos[0] || "sedan",
+          });
           setOwnerMode("existente");
         }
       })
       .catch(console.error);
-
   }, [isOpen, editingVehiculo, reset]);
 
   const onSubmit = async (data: VehiculoFormValues) => {
@@ -166,17 +200,61 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
             )}
           </div>
 
-          {VEHICULO_FIELDS.map((f) => (
-            <div key={f.name} className="form-group">
-              <label className="label">{f.label}</label>
-              <input
-                className={`input ${f.upper ? "uppercase" : ""}`}
-                type={f.type ?? "text"}
-                placeholder={f.placeholder}
-                {...register(f.name, { required: f.name !== "vin" })}
-              />
-            </div>
-          ))}
+          <div className="form-group">
+            <label className="label">Placa *</label>
+            <input
+              className="input uppercase"
+              placeholder="ABC-1234"
+              {...register("placa", { required: true })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">Marca *</label>
+            <MarcaAutocompleteSelect
+              value={selectedMarcaVal || ""}
+              onChange={(val) => setValue("marca", val, { shouldValidate: true })}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">Modelo *</label>
+            <ModeloAutocompleteSelect
+              marcaNombre={selectedMarcaVal || ""}
+              value={selectedModeloVal || ""}
+              onChange={(val) => setValue("modelo", val, { shouldValidate: true })}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">Año *</label>
+            <input
+              className="input"
+              type="number"
+              placeholder="2020"
+              {...register("anio", { required: true })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">Color *</label>
+            <input
+              className="input"
+              placeholder="Blanco"
+              {...register("color", { required: true })}
+            />
+          </div>
+
+          <div className="form-group">
+            <label className="label">Chasis / VIN</label>
+            <input
+              className="input"
+              placeholder="Opcional"
+              {...register("vin")}
+            />
+          </div>
           <div className="form-group">
             <label className="label">Tipo *</label>
             <select className="input capitalize" {...register("tipoVehiculo", { required: true })}>

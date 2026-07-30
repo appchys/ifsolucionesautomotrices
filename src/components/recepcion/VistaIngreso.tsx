@@ -16,6 +16,9 @@ import {
   getPresupuestoPorIngreso,
   getDatosTaller,
   getLogoAsBase64Png,
+  obtenerLogoMarcaBase64,
+  getMarcasVehiculo,
+  MARCAS_ECUADOR_POPULARES,
   sendMensajeOrden
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, AppUser, NivelCombustible, ChecklistItem, FotoDiagnostico, DatosTaller } from "@/types";
@@ -88,7 +91,30 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   const [tempTecnicosAsignados, setTempTecnicosAsignados] = useState<AppUser[]>([]);
   const [isTecnicosPopoverOpen, setIsTecnicosPopoverOpen] = useState(false);
   const [taller, setTaller] = useState<DatosTaller | null>(null);
+  const [marcaLogo, setMarcaLogo] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  useEffect(() => {
+    if (vehiculo?.marca) {
+      let isMounted = true;
+      getMarcasVehiculo().then((marcasList) => {
+        if (!isMounted) return;
+        const target = vehiculo.marca.trim().toLowerCase();
+        const found = marcasList.find((m) => m.nombre.trim().toLowerCase() === target);
+        if (found?.logoUrl) {
+          setMarcaLogo(found.logoUrl);
+        } else {
+          const pop = MARCAS_ECUADOR_POPULARES.find((m) => m.nombre.trim().toLowerCase() === target);
+          if (pop?.logoUrl) {
+            setMarcaLogo(pop.logoUrl);
+          } else {
+            setMarcaLogo(null);
+          }
+        }
+      });
+      return () => { isMounted = false; };
+    }
+  }, [vehiculo?.marca]);
 
   // Formularios Locales
   const [tecnicoId, setTecnicoId] = useState("");
@@ -515,6 +541,8 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
       }
 
+      const marcaLogoUrl = await obtenerLogoMarcaBase64(vehiculo.marca);
+
       const blob = await pdf(
         <ComprobanteIngresoPDF
           orden={orden}
@@ -522,6 +550,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
           vehiculo={vehiculo}
           taller={tallerConLogo}
           tecnicoName={tecnicoName}
+          marcaLogoUrl={marcaLogoUrl}
         />
       ).toBlob();
 
@@ -560,6 +589,8 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
       }
 
+      const marcaLogoUrl = await obtenerLogoMarcaBase64(vehiculo.marca);
+
       const blob = await pdf(
         <ComprobanteIngresoPDF
           orden={orden}
@@ -567,6 +598,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
           vehiculo={vehiculo}
           taller={tallerConLogo}
           tecnicoName={tecnicoName}
+          marcaLogoUrl={marcaLogoUrl}
         />
       ).toBlob();
 
@@ -957,8 +989,12 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                 </div>
                 
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase text-xs border border-blue-200/50">
-                    <Car size={20} className="text-blue-600" />
+                  <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 border border-slate-200 p-1 overflow-hidden">
+                    {marcaLogo ? (
+                      <img src={marcaLogo} alt={vehiculo.marca} className="w-full h-full object-contain" />
+                    ) : (
+                      <Car size={20} className="text-blue-600" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <h4 className="font-bold text-sm text-slate-800 truncate">

@@ -56,6 +56,8 @@ import {
   CajaMovimientoManual,
   MovimientoCajaUnificado,
   Herramienta,
+  MarcaVehiculo,
+  ModeloVehiculo,
 } from "@/types";
 
 export function normalizarMargenGanancia(value: unknown): number {
@@ -276,6 +278,40 @@ export function convertFileToBase64(file: File): Promise<string> {
   });
 }
 
+function convertSvgDataUriToPngBase64(svgDataUri: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 200;
+        canvas.height = 200;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.clearRect(0, 0, 200, 200);
+          ctx.drawImage(img, 0, 0, 200, 200);
+          resolve(canvas.toDataURL("image/png"));
+          return;
+        }
+      } catch (e) {
+        console.error("Error al convertir SVG a PNG:", e);
+      }
+      resolve(null);
+    };
+    img.onerror = () => resolve(null);
+    if (svgDataUri.includes("utf8,")) {
+      const parts = svgDataUri.split("utf8,");
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(parts[1]);
+    } else {
+      img.src = svgDataUri;
+    }
+  });
+}
+
 /**
  * Convierte cualquier URL de logo (PNG, JPG, WebP, SVG, Firebase Storage URL)
  * a una Data URI base64 en formato PNG compatible 100% con @react-pdf/renderer.
@@ -286,8 +322,39 @@ export async function getLogoAsBase64Png(url: string): Promise<string> {
 
   if (typeof window === "undefined") return trimmedUrl;
 
-  if (trimmedUrl.startsWith("data:image/")) {
+  // Si ya es un PNG o JPEG Data URI listo, retornarlo directamente
+  if (trimmedUrl.startsWith("data:image/png") || trimmedUrl.startsWith("data:image/jpeg")) {
     return trimmedUrl;
+  }
+
+  // Si es un SVG Data URI (ej: logos precargados), convertirlo a PNG Base64 para react-pdf
+  if (trimmedUrl.startsWith("data:image/svg+xml")) {
+    const pngConverted = await convertSvgDataUriToPngBase64(trimmedUrl);
+    if (pngConverted) return pngConverted;
+  }
+
+  // Si es una URL HTTP / Firebase Storage, intentar fetch + FileReader para obtener Base64 puro
+  if (trimmedUrl.startsWith("http")) {
+    try {
+      const res = await fetch(trimmedUrl);
+      const blob = await res.blob();
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string || "");
+        reader.onerror = () => resolve("");
+        reader.readAsDataURL(blob);
+      });
+
+      if (base64) {
+        if (base64.startsWith("data:image/svg+xml")) {
+          const pngConverted = await convertSvgDataUriToPngBase64(base64);
+          if (pngConverted) return pngConverted;
+        }
+        return base64;
+      }
+    } catch {
+      /* fetch directo con fallbacks de canvas */
+    }
   }
 
   const tryLoadBase64 = (srcUrl: string, useCrossOrigin = true): Promise<string | null> => {
@@ -2622,3 +2689,561 @@ export async function updateCita(id: string, data: Partial<Cita>): Promise<void>
 export async function deleteCita(id: string): Promise<void> {
   await deleteDoc(doc(db, "citas", id));
 }
+
+// ─── MARCAS Y MODELOS DE VEHÍCULOS (ECUADOR) ─────────────────────────
+
+let cacheMarcasVehiculo: MarcaVehiculo[] | null = null;
+
+export const MARCAS_ECUADOR_POPULARES: Omit<MarcaVehiculo, "id">[] = [
+  {
+    nombre: "Chevrolet",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><path fill='%23D4AF37' d='M20 22h14l8-10h16l-8 10h30v16H66l-8 10H42l8-10H20V22z'/><path fill='%23B8860B' d='M22 24h12l7-8h14l-7 8h30v12H64l-7 8H44l7-8H22V24z'/></svg>",
+    modelos: [
+      { nombre: "D-Max" },
+      { nombre: "Aveo" },
+      { nombre: "Sail" },
+      { nombre: "Spark" },
+      { nombre: "Tracker" },
+      { nombre: "Captiva" },
+      { nombre: "Onix" },
+      { nombre: "Trailblazer" },
+      { nombre: "N400" },
+      { nombre: "Equinox" },
+      { nombre: "Cavalier" },
+      { nombre: "Blazer" },
+    ],
+  },
+  {
+    nombre: "Toyota",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><ellipse cx='50' cy='30' rx='42' ry='24' fill='none' stroke='%23CC0000' stroke-width='6'/><ellipse cx='50' cy='30' rx='28' ry='12' fill='none' stroke='%23CC0000' stroke-width='5'/><ellipse cx='50' cy='30' rx='10' ry='22' fill='none' stroke='%23CC0000' stroke-width='5'/></svg>",
+    modelos: [
+      { nombre: "Hilux" },
+      { nombre: "Fortuner" },
+      { nombre: "RAV4" },
+      { nombre: "Yaris" },
+      { nombre: "Corolla" },
+      { nombre: "Land Cruiser" },
+      { nombre: "Prado" },
+      { nombre: "Rush" },
+      { nombre: "Raize" },
+      { nombre: "Avanza" },
+      { nombre: "Yaris Cross" },
+      { nombre: "Hilux Stout" },
+    ],
+  },
+  {
+    nombre: "Hyundai",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><ellipse cx='50' cy='30' rx='42' ry='25' fill='none' stroke='%23002C6C' stroke-width='5'/><path fill='%23002C6C' d='M35 15h8v13c4-2 10-3 14 0V15h8v30h-8V31c-4 2-10 3-14 0v14h-8V15z' transform='rotate(-10 50 30)'/></svg>",
+    modelos: [
+      { nombre: "Tucson" },
+      { nombre: "Accent" },
+      { nombre: "Creta" },
+      { nombre: "Santa Fe" },
+      { nombre: "Grand i10" },
+      { nombre: "H-1" },
+      { nombre: "Elantra" },
+      { nombre: "Venue" },
+      { nombre: "Kona" },
+      { nombre: "Palisade" },
+      { nombre: "Staria" },
+    ],
+  },
+  {
+    nombre: "Kia",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><ellipse cx='50' cy='30' rx='44' ry='22' fill='none' stroke='%23BB162B' stroke-width='5'/><text x='50' y='38' font-family='Arial,sans-serif' font-weight='900' font-size='24' fill='%23BB162B' text-anchor='middle'>KIA</text></svg>",
+    modelos: [
+      { nombre: "Sportage" },
+      { nombre: "Rio" },
+      { nombre: "Picanto" },
+      { nombre: "Seltos" },
+      { nombre: "Soluto" },
+      { nombre: "Sorento" },
+      { nombre: "Sonet" },
+      { nombre: "Cerato" },
+      { nombre: "Stonic" },
+      { nombre: "Carnival" },
+      { nombre: "K3" },
+    ],
+  },
+  {
+    nombre: "Nissan",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><circle cx='50' cy='30' r='24' fill='none' stroke='%23C0C0C0' stroke-width='6'/><rect x='10' y='22' width='80' height='16' rx='3' fill='%23222222'/><text x='50' y='34' font-family='Arial,sans-serif' font-weight='bold' font-size='11' fill='%23FFFFFF' text-anchor='middle'>NISSAN</text></svg>",
+    modelos: [
+      { nombre: "Frontier" },
+      { nombre: "Kicks" },
+      { nombre: "Versa" },
+      { nombre: "Sentra" },
+      { nombre: "X-Trail" },
+      { nombre: "Qashqai" },
+      { nombre: "Pathfinder" },
+      { nombre: "Urvan" },
+      { nombre: "March" },
+    ],
+  },
+  {
+    nombre: "Suzuki",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><path fill='%23E31B23' d='M30 12h40l-25 18h25l-40 18h25'/></svg>",
+    modelos: [
+      { nombre: "Grand Vitara" },
+      { nombre: "Swift" },
+      { nombre: "Jimny" },
+      { nombre: "S-Cross" },
+      { nombre: "Vitara" },
+      { nombre: "Alto" },
+      { nombre: "XL7" },
+      { nombre: "Spresso" },
+      { nombre: "Baleno" },
+      { nombre: "Ertiga" },
+    ],
+  },
+  {
+    nombre: "Great Wall",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><path fill='%23C0C0C0' stroke='%23333' stroke-width='2' d='M50 10 L80 22 L80 45 L50 54 L20 45 L20 22 Z'/><path fill='%23CC0000' d='M44 20 h12 v20 h-12 z'/></svg>",
+    modelos: [
+      { nombre: "Poer" },
+      { nombre: "Wingle 5" },
+      { nombre: "Wingle 7" },
+      { nombre: "Haval H6" },
+      { nombre: "Haval Jolion" },
+      { nombre: "Haval H2" },
+      { nombre: "M4" },
+      { nombre: "Tank 300" },
+    ],
+  },
+  {
+    nombre: "Chery",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><ellipse cx='50' cy='30' rx='36' ry='20' fill='none' stroke='%23AA0000' stroke-width='5'/><path fill='none' stroke='%23AA0000' stroke-width='4' d='M30 30 L50 15 L70 30 L50 45 Z'/></svg>",
+    modelos: [
+      { nombre: "Tiggo 2" },
+      { nombre: "Tiggo 4" },
+      { nombre: "Tiggo 7 Pro" },
+      { nombre: "Tiggo 8 Pro" },
+      { nombre: "Arrizo 5" },
+      { nombre: "Tiggo 2 Pro" },
+      { nombre: "Arrizo 6 Pro" },
+    ],
+  },
+  {
+    nombre: "Ford",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><ellipse cx='50' cy='30' rx='44' ry='22' fill='%23002B66' stroke='%23C0C0C0' stroke-width='4'/><text x='50' y='37' font-family='Georgia,serif' font-style='italic' font-weight='bold' font-size='22' fill='%23FFFFFF' text-anchor='middle'>Ford</text></svg>",
+    modelos: [
+      { nombre: "F-150" },
+      { nombre: "Ranger" },
+      { nombre: "Explorer" },
+      { nombre: "Escape" },
+      { nombre: "Edge" },
+      { nombre: "Bronco" },
+      { nombre: "Expedition" },
+      { nombre: "Territory" },
+      { nombre: "Mustang" },
+    ],
+  },
+  {
+    nombre: "Mazda",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><ellipse cx='50' cy='30' rx='40' ry='24' fill='none' stroke='%23111' stroke-width='4'/><path fill='none' stroke='%23111' stroke-width='4' d='M25 32 Q50 12 75 32 Q50 24 25 32 Z'/></svg>",
+    modelos: [
+      { nombre: "CX-5" },
+      { nombre: "Mazda 3" },
+      { nombre: "CX-30" },
+      { nombre: "BT-50" },
+      { nombre: "Mazda 2" },
+      { nombre: "CX-9" },
+      { nombre: "CX-50" },
+      { nombre: "CX-90" },
+    ],
+  },
+  {
+    nombre: "Volkswagen",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><circle cx='50' cy='30' r='24' fill='%23001E50'/><circle cx='50' cy='30' r='21' fill='none' stroke='%23FFFFFF' stroke-width='2'/><path fill='none' stroke='%23FFFFFF' stroke-width='3' d='M36 18 L50 36 L64 18 M38 42 L50 26 L62 42'/></svg>",
+    modelos: [
+      { nombre: "Amarok" },
+      { nombre: "Gol" },
+      { nombre: "Polo" },
+      { nombre: "Virtus" },
+      { nombre: "Tiguan" },
+      { nombre: "T-Cross" },
+      { nombre: "Saveiro" },
+      { nombre: "Nivus" },
+      { nombre: "Taos" },
+      { nombre: "Jetta" },
+    ],
+  },
+  {
+    nombre: "Renault",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><path fill='%23FFCC00' stroke='%23333' stroke-width='3' d='M50 8 L78 30 L50 52 L22 30 Z M50 18 L66 30 L50 42 L34 30 Z'/></svg>",
+    modelos: [
+      { nombre: "Duster" },
+      { nombre: "Stepway" },
+      { nombre: "Logan" },
+      { nombre: "Sandero" },
+      { nombre: "Kwid" },
+      { nombre: "Oroch" },
+      { nombre: "Koleos" },
+      { nombre: "Master" },
+      { nombre: "Kangoo" },
+    ],
+  },
+  {
+    nombre: "Honda",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><rect x='20' y='10' width='60' height='40' rx='8' fill='none' stroke='%23CC0000' stroke-width='4'/><path fill='%23CC0000' d='M32 18 h10 v10 h16 v-10 h10 v24 h-10 v-9 h-16 v9 h-10 z'/></svg>",
+    modelos: [
+      { nombre: "CR-V" },
+      { nombre: "Civic" },
+      { nombre: "HR-V" },
+      { nombre: "Pilot" },
+      { nombre: "City" },
+      { nombre: "Fit" },
+      { nombre: "Accord" },
+      { nombre: "ZR-V" },
+    ],
+  },
+  {
+    nombre: "JAC",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><polygon points='50,10 59,27 78,28 64,41 68,59 50,49 32,59 36,41 22,28 41,27' fill='%23CC0000'/></svg>",
+    modelos: [
+      { nombre: "JS4" },
+      { nombre: "T8" },
+      { nombre: "JS2" },
+      { nombre: "Sunray" },
+      { nombre: "T6" },
+      { nombre: "JS3" },
+      { nombre: "JS8" },
+    ],
+  },
+  {
+    nombre: "Soueast",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><circle cx='50' cy='30' r='22' fill='%230055AA'/><path fill='%23FFFFFF' d='M38 30 L62 18 L54 30 L62 42 Z'/></svg>",
+    modelos: [
+      { nombre: "DX3" },
+      { nombre: "DX7" },
+      { nombre: "DX5" },
+    ],
+  },
+  {
+    nombre: "Mitsubishi",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><polygon points='50,10 37,30 63,30' fill='%23E60012'/><polygon points='37,30 11,30 24,50' fill='%23E60012'/><polygon points='63,30 89,30 76,50' fill='%23E60012'/></svg>",
+    modelos: [
+      { nombre: "L200" },
+      { nombre: "Montero" },
+      { nombre: "Outlander" },
+      { nombre: "ASX" },
+      { nombre: "Eclipse Cross" },
+      { nombre: "Xpander" },
+    ],
+  },
+  {
+    nombre: "Peugeot",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><path fill='%23001F5B' stroke='%23FFF' stroke-width='2' d='M30 10 L70 10 L80 50 L50 56 L20 50 Z'/><path fill='%23FFFFFF' d='M42 20 L58 20 L54 32 L62 32 L56 44 L44 44 Z'/></svg>",
+    modelos: [
+      { nombre: "208" },
+      { nombre: "3008" },
+      { nombre: "2008" },
+      { nombre: "5008" },
+      { nombre: "Partner" },
+      { nombre: "Landtrek" },
+      { nombre: "308" },
+    ],
+  },
+  {
+    nombre: "BMW",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><circle cx='50' cy='30' r='24' fill='%23000'/><circle cx='50' cy='30' r='18' fill='%23FFF'/><path d='M50 30 L50 12 A18 18 0 0 1 68 30 Z' fill='%230066B1'/><path d='M50 30 L32 30 A18 18 0 0 1 50 48 Z' fill='%230066B1'/></svg>",
+    modelos: [
+      { nombre: "Serie 3" },
+      { nombre: "X1" },
+      { nombre: "X3" },
+      { nombre: "X5" },
+      { nombre: "Serie 1" },
+      { nombre: "Serie 5" },
+      { nombre: "X4" },
+      { nombre: "X6" },
+    ],
+  },
+  {
+    nombre: "Mercedes-Benz",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><circle cx='50' cy='30' r='24' fill='none' stroke='%23333' stroke-width='4'/><polygon points='50,10 44,28 50,30' fill='%23333'/><polygon points='50,10 56,28 50,30' fill='%23666'/><polygon points='67,40 52,34 50,30' fill='%23333'/><polygon points='67,40 50,42 50,30' fill='%23666'/><polygon points='33,40 48,34 50,30' fill='%23666'/><polygon points='33,40 50,42 50,30' fill='%23333'/></svg>",
+    modelos: [
+      { nombre: "Clase C" },
+      { nombre: "GLC" },
+      { nombre: "GLA" },
+      { nombre: "Clase E" },
+      { nombre: "Sprinter" },
+      { nombre: "Clase A" },
+      { nombre: "GLE" },
+      { nombre: "Vito" },
+    ],
+  },
+  {
+    nombre: "Audi",
+    popularidadEcuador: true,
+    logoUrl: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'><circle cx='32' cy='30' r='10' fill='none' stroke='%23111' stroke-width='3'/><circle cx='44' cy='30' r='10' fill='none' stroke='%23111' stroke-width='3'/><circle cx='56' cy='30' r='10' fill='none' stroke='%23111' stroke-width='3'/><circle cx='68' cy='30' r='10' fill='none' stroke='%23111' stroke-width='3'/></svg>",
+    modelos: [
+      { nombre: "A3" },
+      { nombre: "A4" },
+      { nombre: "Q3" },
+      { nombre: "Q5" },
+      { nombre: "Q7" },
+      { nombre: "A5" },
+      { nombre: "Q8" },
+    ],
+  },
+];
+
+let sembradoMarcasEnProgreso: Promise<void> | null = null;
+
+export async function getMarcasVehiculo(): Promise<MarcaVehiculo[]> {
+  if (cacheMarcasVehiculo) return cacheMarcasVehiculo;
+
+  if (sembradoMarcasEnProgreso) {
+    await sembradoMarcasEnProgreso;
+  }
+
+  const snap = await getDocs(query(collection(db, "marcas_vehiculo"), orderBy("nombre", "asc")));
+  let docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as MarcaVehiculo));
+
+  if (docs.length === 0) {
+    if (!sembradoMarcasEnProgreso) {
+      sembradoMarcasEnProgreso = sembrarMarcasEcuador();
+    }
+    await sembradoMarcasEnProgreso;
+    sembradoMarcasEnProgreso = null;
+    const newSnap = await getDocs(query(collection(db, "marcas_vehiculo"), orderBy("nombre", "asc")));
+    docs = newSnap.docs.map((d) => ({ id: d.id, ...d.data() } as MarcaVehiculo));
+  }
+
+  // Deduplicar en memoria por nombre para evitar duplicados en la interfaz
+  const mapUnico = new Map<string, MarcaVehiculo>();
+  for (const m of docs) {
+    const key = (m.nombre || "").trim().toLowerCase();
+    if (!key) continue;
+    if (!mapUnico.has(key)) {
+      mapUnico.set(key, m);
+    } else {
+      const existing = mapUnico.get(key)!;
+      // Conservar el registro que tenga más información/modelos/logo
+      if ((m.modelos?.length || 0) > (existing.modelos?.length || 0) || (m.logoUrl && !existing.logoUrl)) {
+        mapUnico.set(key, m);
+      }
+    }
+  }
+
+  const result = Array.from(mapUnico.values()).sort((a, b) =>
+    a.nombre.localeCompare(b.nombre)
+  );
+
+  cacheMarcasVehiculo = result;
+  return result;
+}
+
+export async function createMarcaVehiculo(data: Omit<MarcaVehiculo, "id">): Promise<string> {
+  const cleanData = removeUndefinedFields({
+    ...data,
+    nombre: data.nombre.trim(),
+    modelos: data.modelos || [],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  const docRef = await addDoc(collection(db, "marcas_vehiculo"), cleanData);
+  cacheMarcasVehiculo = null;
+  return docRef.id;
+}
+
+export async function updateMarcaVehiculo(id: string, data: Partial<MarcaVehiculo>): Promise<void> {
+  const cleanData = removeUndefinedFields({
+    ...data,
+    updatedAt: serverTimestamp(),
+  });
+  await updateDoc(doc(db, "marcas_vehiculo", id), cleanData);
+  cacheMarcasVehiculo = null;
+}
+
+export async function deleteMarcaVehiculo(id: string): Promise<void> {
+  await deleteDoc(doc(db, "marcas_vehiculo", id));
+  cacheMarcasVehiculo = null;
+}
+
+export async function agregarModeloAMarca(marcaId: string, modelo: ModeloVehiculo): Promise<void> {
+  const marcaRef = doc(db, "marcas_vehiculo", marcaId);
+  const snap = await getDoc(marcaRef);
+  if (!snap.exists()) return;
+
+  const marca = snap.data() as MarcaVehiculo;
+  const modelos = marca.modelos || [];
+
+  if (modelos.some((m) => m.nombre.toLowerCase() === modelo.nombre.toLowerCase())) {
+    return;
+  }
+
+  modelos.push({ ...modelo, nombre: modelo.nombre.trim() });
+  const cleanModelos = removeUndefinedFields(modelos);
+  await updateDoc(marcaRef, { modelos: cleanModelos, updatedAt: serverTimestamp() });
+  cacheMarcasVehiculo = null;
+}
+
+export async function eliminarModeloDeMarca(marcaId: string, modeloNombre: string): Promise<void> {
+  const marcaRef = doc(db, "marcas_vehiculo", marcaId);
+  const snap = await getDoc(marcaRef);
+  if (!snap.exists()) return;
+
+  const marca = snap.data() as MarcaVehiculo;
+  const modelos = (marca.modelos || []).filter((m) => m.nombre.toLowerCase() !== modeloNombre.toLowerCase());
+  await updateDoc(marcaRef, { modelos: cleanModelos(modelos), updatedAt: serverTimestamp() });
+  cacheMarcasVehiculo = null;
+}
+
+function cleanModelos(modelos: ModeloVehiculo[]) {
+  return modelos.map((m) => removeUndefinedFields(m));
+}
+
+export async function subirLogoMarca(file: File, pathSuffix: string): Promise<string> {
+  const ext = file.name.split(".").pop() || "png";
+  const path = `marcas/logos/${Date.now()}_${pathSuffix}.${ext}`;
+  const storageRef = ref(storage, path);
+  await uploadBytes(storageRef, file);
+  return getDownloadURL(storageRef);
+}
+
+export async function sembrarMarcasEcuador(overwrite = false): Promise<void> {
+  const colRef = collection(db, "marcas_vehiculo");
+  const snap = await getDocs(colRef);
+
+  if (!snap.empty && !overwrite) {
+    // Limpieza automática de duplicados existentes en Firestore
+    const agrupados = new Map<string, typeof snap.docs>();
+    snap.docs.forEach((doc) => {
+      const data = doc.data() as MarcaVehiculo;
+      const key = (data.nombre || "").trim().toLowerCase();
+      if (!key) return;
+      if (!agrupados.has(key)) agrupados.set(key, []);
+      agrupados.get(key)!.push(doc);
+    });
+
+    let huboDuplicados = false;
+    const batch = writeBatch(db);
+    agrupados.forEach((docs) => {
+      if (docs.length > 1) {
+        huboDuplicados = true;
+        // Conservar solo el primer documento y eliminar los duplicados restantes
+        for (let i = 1; i < docs.length; i++) {
+          batch.delete(docs[i].ref);
+        }
+      }
+    });
+
+    if (huboDuplicados) {
+      await batch.commit();
+      cacheMarcasVehiculo = null;
+    }
+    return;
+  }
+
+  if (overwrite) {
+    const batch = writeBatch(db);
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+
+  for (const item of MARCAS_ECUADOR_POPULARES) {
+    const cleaned = removeUndefinedFields({
+      ...item,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await addDoc(colRef, cleaned);
+  }
+
+  cacheMarcasVehiculo = null;
+}
+
+export function detectarTipoVehiculo(marcaNombre?: string, modeloNombre?: string, marcasData?: MarcaVehiculo[]): TipoVehiculo | null {
+  if (!modeloNombre?.trim()) return null;
+  const modLower = modeloNombre.trim().toLowerCase();
+  const marcaLower = (marcaNombre || "").trim().toLowerCase();
+
+  // 1. Buscar en los datos registrados de la marca en Firestore/Catálogo si la marca/modelo coinciden exactamente
+  if (marcasData && marcasData.length > 0) {
+    const marcaFound = marcasData.find((m) => m.nombre.trim().toLowerCase() === marcaLower);
+    if (marcaFound?.modelos) {
+      const modFound = marcaFound.modelos.find((m) => m.nombre.trim().toLowerCase() === modLower);
+      if (modFound?.tipoVehiculo) {
+        return modFound.tipoVehiculo;
+      }
+    }
+  }
+
+  // 2. Reglas de inferencia inteligente según palabras clave populares en Ecuador
+  const pickupKeywords = ["hilux", "d-max", "frontier", "poer", "wingle", "ranger", "f-150", "amarok", "bt-50", "l200", "saveiro", "oroch", "landtrek", "t8", "t6", "pickup"];
+  if (pickupKeywords.some((k) => modLower.includes(k))) return "pickup";
+
+  const suvKeywords = [
+    "tucson", "sportage", "rav4", "fortuner", "tracker", "captiva", "trailblazer", "equinox", "blazer",
+    "vitara", "jimny", "s-cross", "creta", "santa fe", "kicks", "x-trail", "qashqai", "pathfinder",
+    "haval", "jolion", "tiggo", "explorer", "escape", "bronco", "expedition", "territory",
+    "cx-", "suv", "t-cross", "nivus", "taos", "tiguan", "duster", "stepway", "koleos",
+    "cr-v", "hr-v", "pilot", "wr-v", "zr-v", "js4", "js2", "js3", "js8", "dx3", "dx7", "dx5",
+    "montero", "outlander", "asx", "eclipse", "pajero", "3008", "2008", "5008",
+    "x1", "x3", "x4", "x5", "x6", "x7", "glc", "gla", "gle", "gls", "q3", "q5", "q7", "q8"
+  ];
+  if (suvKeywords.some((k) => modLower.includes(k))) return "suv";
+
+  const camionetaKeywords = ["n400", "urvan", "h-1", "staria", "transporter", "master", "kangoo", "partner", "sunray", "sprinter", "vito", "van"];
+  if (camionetaKeywords.some((k) => modLower.includes(k))) return "camioneta";
+
+  const motoKeywords = ["moto", "pulsar", "yamaha", "cbr", "gsx", "shineray", "ducati", "vespa", "ktm", "bmw gs", "tvs", "bajaj", "hero", "haojue"];
+  if (motoKeywords.some((k) => modLower.includes(k))) return "moto";
+
+  const sedanKeywords = [
+    "spark", "aveo", "sail", "onix", "cavalier", "yaris", "corolla", "raize", "avanza",
+    "accent", "grand i10", "elantra", "sonata", "rio", "picanto", "soluto", "cerato", "k3",
+    "versa", "sentra", "march", "note", "swift", "alto", "spresso", "baleno", "ertiga",
+    "arrizo", "mustang", "mazda 3", "mazda 2", "gol", "polo", "virtus", "jetta",
+    "logan", "sandero", "kwid", "civic", "city", "fit", "accord", "mirage", "xpander",
+    "208", "308", "408", "serie 3", "serie 1", "serie 5", "clase c", "clase e", "clase a", "a3", "a4", "a5"
+  ];
+  if (sedanKeywords.some((k) => modLower.includes(k))) return "sedan";
+
+  return null;
+}
+
+export async function obtenerLogoMarcaBase64(marcaNombre?: string): Promise<string | undefined> {
+  if (!marcaNombre?.trim()) return undefined;
+  const target = marcaNombre.trim().toLowerCase();
+  try {
+    const marcas = await getMarcasVehiculo();
+    let foundUrl = marcas.find(
+      (m) => m.nombre.trim().toLowerCase() === target
+    )?.logoUrl;
+
+    if (!foundUrl) {
+      foundUrl = MARCAS_ECUADOR_POPULARES.find(
+        (m) => m.nombre.trim().toLowerCase() === target
+      )?.logoUrl;
+    }
+
+    if (!foundUrl) return undefined;
+    const base64 = await getLogoAsBase64Png(foundUrl);
+    return base64 || foundUrl;
+  } catch (err) {
+    console.error("Error al obtener logo base64 de marca:", err);
+    return undefined;
+  }
+}
+

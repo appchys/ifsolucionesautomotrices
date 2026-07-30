@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { getVehiculos, getClientes, createVehiculo, updateVehiculo } from "@/lib/services";
 import { Vehiculo, Cliente, TipoVehiculo } from "@/types";
-import { Car, Plus, Search, Pencil, Calendar, Palette } from "lucide-react";
+import { Car, Plus, Search, Pencil, Calendar, Palette, Tag } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { useForm } from "react-hook-form";
 import { X, Loader2 } from "lucide-react";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
+import GestionMarcasModal from "@/components/vehiculos/GestionMarcasModal";
 
 const TIPOS: TipoVehiculo[] = ["sedan", "suv", "pickup", "camioneta", "moto", "otro"];
 
@@ -17,10 +18,8 @@ export default function VehiculosPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [gestionarMarcasOpen, setGestionarMarcasOpen] = useState(false);
   const [editing, setEditing] = useState<Vehiculo | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const { register, handleSubmit, reset, setValue } = useForm<Omit<Vehiculo, "id">>();
 
   const load = async () => {
     setLoading(true);
@@ -30,32 +29,13 @@ export default function VehiculosPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const openModal = (v?: Vehiculo) => {
     setEditing(v ?? null);
-    if (v) {
-      Object.entries(v).forEach(([k, val]) => setValue(k as any, val));
-    } else {
-      reset();
-    }
     setModalOpen(true);
-  };
-
-  const onSubmit = async (data: Omit<Vehiculo, "id">) => {
-    setSaving(true);
-    try {
-      if (editing?.id) {
-        await updateVehiculo(editing.id, data);
-        toast.success("Vehículo actualizado");
-      } else {
-        await createVehiculo({ ...data, placa: data.placa.toUpperCase() });
-        toast.success("Vehículo registrado");
-      }
-      setModalOpen(false);
-      load();
-    } catch { toast.error("Error al guardar"); }
-    finally { setSaving(false); }
   };
 
   const getClienteNombre = (clienteId: string) => {
@@ -78,9 +58,14 @@ export default function VehiculosPage() {
           <h1 className="page-title">Vehículos</h1>
           <p className="page-subtitle">{vehiculos.length} vehículos registrados</p>
         </div>
-        <button className="btn-primary" onClick={() => openModal()}>
-          <Plus size={16} /> Nuevo Vehículo
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="btn-secondary" onClick={() => setGestionarMarcasOpen(true)}>
+            <Tag size={16} /> Gestionar Marcas
+          </button>
+          <button className="btn-primary" onClick={() => openModal()}>
+            <Plus size={16} /> Nuevo Vehículo
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -138,6 +123,12 @@ export default function VehiculosPage() {
         onClose={() => setModalOpen(false)} 
         editingVehiculo={editing} 
         onSuccess={load} 
+      />
+
+      <GestionMarcasModal
+        isOpen={gestionarMarcasOpen}
+        onClose={() => setGestionarMarcasOpen(false)}
+        onUpdated={load}
       />
     </AppShell>
   );

@@ -13,10 +13,13 @@ import {
   convertirIngresoAOrden,
   getTiposVehiculo,
   searchVehiculosByPlacaPrefix,
+  detectarTipoVehiculo,
 } from "@/lib/services";
 import ClienteModal from "@/components/clientes/ClienteModal";
 import { Cliente, Vehiculo, TipoVehiculo } from "@/types";
 import { useUIStore } from "@/store";
+import MarcaAutocompleteSelect from "@/components/vehiculos/MarcaAutocompleteSelect";
+import ModeloAutocompleteSelect from "@/components/vehiculos/ModeloAutocompleteSelect";
 
 interface Props {
   onClose: () => void;
@@ -91,6 +94,15 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
       mounted = false;
     };
   }, []);
+
+  // Autodetectar Tipo de Vehículo al ingresar marca y modelo
+  useEffect(() => {
+    if (!vehiculoForm.modelo.trim() || selectedVehiculo) return;
+    const tipoDetectado = detectarTipoVehiculo(vehiculoForm.marca, vehiculoForm.modelo);
+    if (tipoDetectado) {
+      setVehiculoForm(prev => ({ ...prev, tipoVehiculo: tipoDetectado }));
+    }
+  }, [vehiculoForm.marca, vehiculoForm.modelo, selectedVehiculo]);
 
   // Filter clients for autocomplete
   const filteredClientes = useMemo(() => {
@@ -408,14 +420,21 @@ export default function ModalNuevoIngreso({ onClose, tipoMode = "ingreso" }: Pro
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs font-semibold mb-1 block text-[var(--text-muted)]">Marca</label>
-            <input type="text" className="input w-full text-sm" placeholder="Ej: Chevrolet"
-              value={vehiculoForm.marca} onChange={(e) => setVehiculoForm({ ...vehiculoForm, marca: e.target.value })} />
+            <label className="text-xs font-semibold mb-1 block text-[var(--text-muted)]">Marca *</label>
+            <MarcaAutocompleteSelect
+              value={vehiculoForm.marca}
+              onChange={(val) => setVehiculoForm({ ...vehiculoForm, marca: val })}
+              required
+            />
           </div>
           <div>
-            <label className="text-xs font-semibold mb-1 block text-[var(--text-muted)]">Modelo</label>
-            <input type="text" className="input w-full text-sm" placeholder="Ej: Spark"
-              value={vehiculoForm.modelo} onChange={(e) => setVehiculoForm({ ...vehiculoForm, modelo: e.target.value })} />
+            <label className="text-xs font-semibold mb-1 block text-[var(--text-muted)]">Modelo *</label>
+            <ModeloAutocompleteSelect
+              marcaNombre={vehiculoForm.marca}
+              value={vehiculoForm.modelo}
+              onChange={(val) => setVehiculoForm({ ...vehiculoForm, modelo: val })}
+              required
+            />
           </div>
           <div>
             <label className="text-xs font-semibold mb-1 block text-[var(--text-muted)]">Año</label>

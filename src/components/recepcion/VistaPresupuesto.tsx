@@ -19,6 +19,9 @@ import {
   deleteOrden,
   getDatosTaller,
   getLogoAsBase64Png,
+  obtenerLogoMarcaBase64,
+  getMarcasVehiculo,
+  MARCAS_ECUADOR_POPULARES,
   uploadAdjuntoPresupuesto,
   uploadOrdenFoto,
   getCitasByPresupuesto,
@@ -53,7 +56,30 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [taller, setTaller] = useState<DatosTaller | null>(null);
+  const [marcaLogo, setMarcaLogo] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  useEffect(() => {
+    if (vehiculo?.marca) {
+      let isMounted = true;
+      getMarcasVehiculo().then((marcasList) => {
+        if (!isMounted) return;
+        const target = vehiculo.marca.trim().toLowerCase();
+        const found = marcasList.find((m) => m.nombre.trim().toLowerCase() === target);
+        if (found?.logoUrl) {
+          setMarcaLogo(found.logoUrl);
+        } else {
+          const pop = MARCAS_ECUADOR_POPULARES.find((m) => m.nombre.trim().toLowerCase() === target);
+          if (pop?.logoUrl) {
+            setMarcaLogo(pop.logoUrl);
+          } else {
+            setMarcaLogo(null);
+          }
+        }
+      });
+      return () => { isMounted = false; };
+    }
+  }, [vehiculo?.marca]);
   const [activePopoverItemId, setActivePopoverItemId] = useState<string | null>(null);
   const [isConfigTerminosOpen, setIsConfigTerminosOpen] = useState(false);
   const [uploadingAdjunto, setUploadingAdjunto] = useState(false);
@@ -430,6 +456,8 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
         if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
       }
 
+      const marcaLogoUrl = await obtenerLogoMarcaBase64(vehiculo.marca);
+
       const blob = await pdf(
         <PresupuestoPDF
           orden={orden}
@@ -437,6 +465,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
           vehiculo={vehiculo}
           items={items}
           taller={tallerConLogo}
+          marcaLogoUrl={marcaLogoUrl}
         />
       ).toBlob();
 
@@ -473,6 +502,8 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
         if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
       }
 
+      const marcaLogoUrl = await obtenerLogoMarcaBase64(vehiculo.marca);
+
       const blob = await pdf(
         <PresupuestoPDF
           orden={orden}
@@ -480,6 +511,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
           vehiculo={vehiculo}
           items={items}
           taller={tallerConLogo}
+          marcaLogoUrl={marcaLogoUrl}
         />
       ).toBlob();
 
@@ -683,9 +715,6 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
               )}
             </button>
           </div>
-          <button className="btn bg-white border border-[var(--border)] shadow-sm font-semibold px-3.5 py-1.5 text-xs flex items-center gap-1.5">
-             <Mail size={14} /> Solicitar
-          </button>
           <button 
             className="btn-primary bg-green-500 hover:bg-green-600 border-none shadow disabled:opacity-50 px-3.5 py-1.5 text-xs flex items-center gap-1.5"
             onClick={handleAprobar}
@@ -1135,12 +1164,16 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
               {activeTab === "Vehículo" && (
                 <div className="space-y-5">
-                  <div className="card flex items-center gap-4 bg-white shadow-sm border border-[var(--border)]">
-                    <div className="w-10 h-10 bg-slate-900 rounded-lg flex items-center justify-center shrink-0">
-                      <span className="text-white font-bold text-xl leading-none">V</span>
+                  <div className="card flex items-center gap-4 bg-white shadow-sm border border-[var(--border)] p-3 rounded-xl">
+                    <div className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center shrink-0 border border-slate-200 p-1.5 overflow-hidden">
+                      {marcaLogo ? (
+                        <img src={marcaLogo} alt={vehiculo.marca} className="w-full h-full object-contain" />
+                      ) : (
+                        <Car size={22} className="text-slate-600" />
+                      )}
                     </div>
-                    <div className="flex-1">
-                      <h4 className="font-bold text-sm leading-tight">{vehiculo.marca} {vehiculo.modelo}</h4>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-bold text-sm leading-tight text-slate-800 truncate">{vehiculo.marca} {vehiculo.modelo}</h4>
                       <div className="badge badge-gray font-mono uppercase text-[10px] mt-1">{vehiculo.placa}</div>
                     </div>
                     <ChevronLeft size={16} className="rotate-[-90deg] text-[var(--text-muted)]" />
@@ -1701,9 +1734,6 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
 
             {/* Bottom Actions */}
             <div className="mt-4 pt-4 border-t border-[var(--border)] flex justify-end gap-2 shrink-0">
-              <button className="btn bg-white border border-[var(--border)] shadow-sm flex items-center gap-2">
-                <Mail size={16} /> Enviar
-              </button>
               <button 
                 type="button"
                 className="btn bg-white border border-[var(--border)] shadow-sm flex items-center gap-2 text-slate-700 hover:text-blue-600"

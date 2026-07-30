@@ -193,8 +193,23 @@ const styles = StyleSheet.create({
   },
 });
 
-const BrandLogo = ({ brand }: { brand: string }) => {
-  const cleanBrand = brand.toLowerCase().trim();
+const BrandLogo = ({ brand, logoUrl }: { brand: string; logoUrl?: string }) => {
+  if (logoUrl && logoUrl.trim()) {
+    return (
+      <Image
+        src={logoUrl}
+        style={{
+          width: 32,
+          height: 32,
+          objectFit: "contain",
+          marginRight: 10,
+          marginTop: 2,
+        }}
+      />
+    );
+  }
+
+  const cleanBrand = (brand || "").toLowerCase().trim();
   
   if (cleanBrand.includes("changan")) {
     return (
@@ -263,6 +278,7 @@ interface OrdenTecnicoPDFProps {
   vehiculo: Vehiculo;
   items: ItemOrden[];
   taller: DatosTaller | null;
+  marcaLogoUrl?: string;
 }
 
 export default function OrdenTecnicoPDF({
@@ -271,6 +287,7 @@ export default function OrdenTecnicoPDF({
   vehiculo,
   items,
   taller,
+  marcaLogoUrl,
 }: OrdenTecnicoPDFProps) {
   const numOt = String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0");
   const dateFormatted = formatFecha(orden.createdAt);
@@ -289,7 +306,7 @@ export default function OrdenTecnicoPDF({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.title}>ORDEN DE TRABAJO</Text>
+            <Text style={styles.title}>ORDEN DE TRABAJO (TÉCNICO)</Text>
             <Text style={styles.subtitle}>#OT-{numOt}</Text>
             <Text style={styles.dateText}>{dateFormatted}</Text>
           </View>
@@ -329,7 +346,7 @@ export default function OrdenTecnicoPDF({
 
           {/* Columna Vehículo */}
           <View style={styles.columnRight}>
-            <BrandLogo brand={vehiculo.marca} />
+            <BrandLogo brand={vehiculo.marca} logoUrl={marcaLogoUrl} />
             <View style={styles.vehicleDetails}>
               <Text style={styles.sectionLabel}>Vehículo</Text>
               <Text style={styles.boldText}>

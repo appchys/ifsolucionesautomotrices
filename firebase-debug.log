@@ -1,0 +1,616 @@
+[debug] [2026-07-30T19:43:27.850Z] ----------------------------------------------------------------------
+[debug] [2026-07-30T19:43:27.854Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Lenovo\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-07-30T19:43:27.855Z] CLI Version:   15.22.3
+[debug] [2026-07-30T19:43:27.855Z] Platform:      win32
+[debug] [2026-07-30T19:43:27.855Z] Node Version:  v22.14.0
+[debug] [2026-07-30T19:43:27.856Z] Detected Agent: antigravity
+[debug] [2026-07-30T19:43:27.856Z] Time:          Thu Jul 30 2026 14:43:27 GMT-0500 (hora estándar de Colombia)
+[debug] [2026-07-30T19:43:27.856Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-30T19:43:27.861Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-07-30T19:43:31.565Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-30T19:43:31.565Z] > authorizing via signed-in user (appchys.ec@gmail.com)
+[debug] [2026-07-30T19:43:31.566Z] [iam] checking project ifsolucionesautomotrices for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-30T19:43:31.567Z] Checked if tokens are valid: false, expires at: 1785435167741
+[debug] [2026-07-30T19:43:31.567Z] Checked if tokens are valid: false, expires at: 1785435167741
+[debug] [2026-07-30T19:43:31.567Z] > refreshing access token with scopes: []
+[debug] [2026-07-30T19:43:31.569Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-07-30T19:43:31.569Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-30T19:43:31.804Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-07-30T19:43:31.804Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-30T19:43:31.814Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions [none]
+[debug] [2026-07-30T19:43:31.814Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions  x-goog-user-project=ifsolucionesautomotrices
+[debug] [2026-07-30T19:43:31.815Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-30T19:43:31.919Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-07-30T19:43:31.919Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2026-07-30T19:43:32.536Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions 200
+[debug] [2026-07-30T19:43:32.536Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-30T19:43:32.537Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:32.537Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:32.537Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices [none]
+[debug] [2026-07-30T19:43:33.152Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices 200
+[debug] [2026-07-30T19:43:33.152Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices {"projectId":"ifsolucionesautomotrices","projectNumber":"610108589353","displayName":"ifsolucionesautomotrices","name":"projects/ifsolucionesautomotrices","resources":{"hostingSite":"ifsolucionesautomotrices"},"state":"ACTIVE","labels":{"firebase":"enabled","firebase/storage-default-bucket":"created"},"etag":"1_82d2bd46-f6d3-442d-aca3-3a2a0937cdb8"}
+[debug] [2026-07-30T19:43:36.499Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:36.499Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:36.499Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites pageToken=&pageSize=10
+[debug] [2026-07-30T19:43:37.920Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites 200
+[debug] [2026-07-30T19:43:37.920Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites {"sites":[{"name":"projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices","defaultUrl":"https://ifsolucionesautomotrices.web.app","appId":"1:610108589353:web:528c3d4d141edc52be6338","type":"DEFAULT_SITE"}]}
+[debug] [2026-07-30T19:43:37.921Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:37.921Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:37.921Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:610108589353:web:528c3d4d141edc52be6338/config [none]
+[debug] [2026-07-30T19:43:38.430Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:610108589353:web:528c3d4d141edc52be6338/config 200
+[debug] [2026-07-30T19:43:38.430Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:610108589353:web:528c3d4d141edc52be6338/config {"projectId":"ifsolucionesautomotrices","appId":"1:610108589353:web:528c3d4d141edc52be6338","storageBucket":"ifsolucionesautomotrices.firebasestorage.app","apiKey":"AIzaSyDxgUn0XDS_EpfkVb6PKKTHkIBS7AeGnRc","authDomain":"ifsolucionesautomotrices.firebaseapp.com","messagingSenderId":"610108589353","projectNumber":"610108589353","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-07-30T19:43:46.488Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:46.489Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:43:46.489Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices [none]
+[debug] [2026-07-30T19:43:47.748Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices 200
+[debug] [2026-07-30T19:43:47.748Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices {"name":"projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices","defaultUrl":"https://ifsolucionesautomotrices.web.app","appId":"1:610108589353:web:528c3d4d141edc52be6338","type":"DEFAULT_SITE"}
+[info] ▲ Next.js 16.2.6 (Turbopack)
+
+[info] - Environments: .env.local
+
+[info] 
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 10.0s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 15.9s ...
+
+[info]   Collecting page data using 7 workers ...
+
+[info]   Generating static pages using 7 workers (0/27) ...
+
+[info]   Generating static pages using 7 workers (6/27) 
+
+[info]   Generating static pages using 7 workers (13/27) 
+
+[info]   Generating static pages using 7 workers (20/27) 
+
+[info] ✓ Generating static pages using 7 workers (27/27) in 727ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/gmail/attachments
+├ ƒ /api/gmail/auth
+├ ƒ /api/gmail/callback
+├ ƒ /api/gmail/labels
+├ ƒ /api/gmail/send
+├ ƒ /api/gmail/status
+├ ○ /clientes
+├ ○ /compras
+├ ƒ /configuracion
+├ ○ /dashboard
+├ ○ /herramientas
+├ ○ /ingresos
+├ ○ /inventario
+├ ○ /login
+├ ○ /ordenes
+├ ○ /ordenes/tablero
+├ ○ /pagos
+├ ○ /presupuestos
+├ ○ /progreso
+├ ○ /reporte-financiero
+├ ○ /setup
+├ ○ /vehiculos
+└ ○ /ventas
+
+
+[info] 
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/gmail/attachments/route
+[info]  • non-static component /api/gmail/auth/route
+[info]  • non-static component /api/gmail/callback/route
+[info]  • non-static component /api/gmail/labels/route
+[info]  • non-static component /api/gmail/send/route
+[debug] [2026-07-30T19:44:20.936Z]  • non-static component /api/gmail/status/route
+[debug] [2026-07-30T19:44:20.936Z]  • non-static component /configuracion/page
+[info]  • and 2 other reasons, use --debug to see more
+[info] 
+[debug] [2026-07-30T19:44:28.986Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:28.986Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:28.986Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices [none]
+[debug] [2026-07-30T19:44:30.048Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices 200
+[debug] [2026-07-30T19:44:30.048Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices {"name":"projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices","defaultUrl":"https://ifsolucionesautomotrices.web.app","appId":"1:610108589353:web:528c3d4d141edc52be6338","type":"DEFAULT_SITE"}
+[debug] [2026-07-30T19:44:54.187Z] [web frameworks] effective firebase.json:  {
+  "hosting": [
+    {
+      "source": ".",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "frameworksBackend": {},
+      "site": "ifsolucionesautomotrices",
+      "rewrites": [
+        {
+          "source": "**",
+          "function": {
+            "functionId": "ssrifsolucionesautomotr",
+            "region": "us-central1",
+            "pinTag": true
+          }
+        }
+      ],
+      "redirects": [],
+      "headers": [
+        {
+          "source": "/manifest.json",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/manifest+json"
+            }
+          ]
+        },
+        {
+          "source": "/_global-error",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/_global-error/layout,_N_T_/_global-error/page,_N_T_/_global-error"
+            }
+          ]
+        },
+        {
+          "source": "/_not-found",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/_not-found/layout,_N_T_/_not-found/page,_N_T_/_not-found"
+            }
+          ]
+        },
+        {
+          "source": "/clientes",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/clientes/layout,_N_T_/clientes/page,_N_T_/clientes"
+            }
+          ]
+        },
+        {
+          "source": "/compras",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/compras/layout,_N_T_/compras/page,_N_T_/compras"
+            }
+          ]
+        },
+        {
+          "source": "/dashboard",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/dashboard/layout,_N_T_/dashboard/page,_N_T_/dashboard"
+            }
+          ]
+        },
+        {
+          "source": "/herramientas",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/herramientas/layout,_N_T_/herramientas/page,_N_T_/herramientas"
+            }
+          ]
+        },
+        {
+          "source": "/favicon.ico",
+          "headers": [
+            {
+              "key": "cache-control",
+              "value": "public, max-age=0, must-revalidate"
+            },
+            {
+              "key": "content-type",
+              "value": "image/x-icon"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/favicon.ico/layout,_N_T_/favicon.ico/route,_N_T_/favicon.ico"
+            }
+          ]
+        },
+        {
+          "source": "/ingresos",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/ingresos/layout,_N_T_/ingresos/page,_N_T_/ingresos"
+            }
+          ]
+        },
+        {
+          "source": "/inventario",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/inventario/layout,_N_T_/inventario/page,_N_T_/inventario"
+            }
+          ]
+        },
+        {
+          "source": "/login",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/login/layout,_N_T_/login/page,_N_T_/login"
+            }
+          ]
+        },
+        {
+          "source": "/ordenes",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/ordenes/layout,_N_T_/ordenes/page,_N_T_/ordenes"
+            }
+          ]
+        },
+        {
+          "source": "/ordenes/tablero",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/ordenes/layout,_N_T_/ordenes/tablero/layout,_N_T_/ordenes/tablero/page,_N_T_/ordenes/tablero"
+            }
+          ]
+        },
+        {
+          "source": "/pagos",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/pagos/layout,_N_T_/pagos/page,_N_T_/pagos"
+            }
+          ]
+        },
+        {
+          "source": "/presupuestos",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/presupuestos/layout,_N_T_/presupuestos/page,_N_T_/presupuestos"
+            }
+          ]
+        },
+        {
+          "source": "/progreso",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/progreso/layout,_N_T_/progreso/page,_N_T_/progreso"
+            }
+          ]
+        },
+        {
+          "source": "/reporte-financiero",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/reporte-financiero/layout,_N_T_/reporte-financiero/page,_N_T_/reporte-financiero"
+            }
+          ]
+        },
+        {
+          "source": "/setup",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/setup/layout,_N_T_/setup/page,_N_T_/setup"
+            }
+          ]
+        },
+        {
+          "source": "/vehiculos",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/vehiculos/layout,_N_T_/vehiculos/page,_N_T_/vehiculos"
+            }
+          ]
+        },
+        {
+          "source": "/ventas",
+          "headers": [
+            {
+              "key": "x-nextjs-stale-time",
+              "value": "300"
+            },
+            {
+              "key": "x-nextjs-prerender",
+              "value": "1"
+            },
+            {
+              "key": "x-next-cache-tags",
+              "value": "_N_T_/layout,_N_T_/ventas/layout,_N_T_/ventas/page,_N_T_/ventas"
+            }
+          ]
+        },
+        {
+          "source": "**/*.[jt]s",
+          "headers": [
+            {
+              "key": "Set-Cookie",
+              "value": "__FIREBASE_DEFAULTS__=eyJjb25maWciOnsicHJvamVjdElkIjoiaWZzb2x1Y2lvbmVzYXV0b21vdHJpY2VzIiwiYXBwSWQiOiIxOjYxMDEwODU4OTM1Mzp3ZWI6NTI4YzNkNGQxNDFlZGM1MmJlNjMzOCIsInN0b3JhZ2VCdWNrZXQiOiJpZnNvbHVjaW9uZXNhdXRvbW90cmljZXMuZmlyZWJhc2VzdG9yYWdlLmFwcCIsImFwaUtleSI6IkFJemFTeUR4Z1VuMFhEU19FcGZrVmI2UEtLVEhrSUJTN0FlR25SYyIsImF1dGhEb21haW4iOiJpZnNvbHVjaW9uZXNhdXRvbW90cmljZXMuZmlyZWJhc2VhcHAuY29tIiwibWVzc2FnaW5nU2VuZGVySWQiOiI2MTAxMDg1ODkzNTMiLCJwcm9qZWN0TnVtYmVyIjoiNjEwMTA4NTg5MzUzIiwidmVyc2lvbiI6IjIifSwiX2F1dGhUb2tlblN5bmNVUkwiOiIvX19zZXNzaW9uIn0; SameSite=Strict; Expires=2028-06-24T06:24:54.187Z; Path=/;"
+            }
+          ]
+        }
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "public": ".firebase\\ifsolucionesautomotrices\\hosting",
+      "webFramework": "next_ssr"
+    }
+  ],
+  "functions": [
+    {
+      "source": ".firebase\\ifsolucionesautomotrices\\functions",
+      "codebase": "firebase-frameworks-ifsolucionesautomotrices"
+    }
+  ]
+}
+[debug] [2026-07-30T19:44:54.188Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-30T19:44:54.188Z] > authorizing via signed-in user (appchys.ec@gmail.com)
+[debug] [2026-07-30T19:44:54.189Z] [iam] checking project ifsolucionesautomotrices for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2026-07-30T19:44:54.189Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:54.189Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:54.189Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions [none]
+[debug] [2026-07-30T19:44:54.189Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions  x-goog-user-project=ifsolucionesautomotrices
+[debug] [2026-07-30T19:44:54.189Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-07-30T19:44:54.782Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions 200
+[debug] [2026-07-30T19:44:54.782Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-07-30T19:44:54.783Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:54.783Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:54.783Z] >>> [apiv2][query] GET https://cloudfunctions.googleapis.com/v1/projects/ifsolucionesautomotrices/locations/-/functions [none]
+[debug] [2026-07-30T19:44:55.908Z] <<< [apiv2][status] GET https://cloudfunctions.googleapis.com/v1/projects/ifsolucionesautomotrices/locations/-/functions 200
+[debug] [2026-07-30T19:44:55.909Z] <<< [apiv2][body] GET https://cloudfunctions.googleapis.com/v1/projects/ifsolucionesautomotrices/locations/-/functions {}
+[debug] [2026-07-30T19:44:55.910Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:55.910Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:55.912Z] >>> [apiv2][query] GET https://cloudfunctions.googleapis.com/v2/projects/ifsolucionesautomotrices/locations/-/functions filter=environment%3D%22GEN_2%22
+[debug] [2026-07-30T19:44:56.450Z] <<< [apiv2][status] GET https://cloudfunctions.googleapis.com/v2/projects/ifsolucionesautomotrices/locations/-/functions 200
+[debug] [2026-07-30T19:44:56.450Z] <<< [apiv2][body] GET https://cloudfunctions.googleapis.com/v2/projects/ifsolucionesautomotrices/locations/-/functions {"functions":[{"name":"projects/ifsolucionesautomotrices/locations/us-central1/functions/ssrifsolucionesautomotr","buildConfig":{"build":"projects/610108589353/locations/us-central1/builds/44f9c045-1ad0-42ff-b73e-21409a1142b5","runtime":"nodejs22","entryPoint":"ssrifsolucionesautomotr","source":{"storageSource":{"bucket":"gcf-v2-sources-610108589353-us-central1","object":"ssrifsolucionesautomotr/function-source.zip","generation":"1785432939247898"}},"environmentVariables":{"GOOGLE_NODE_RUN_SCRIPTS":""},"dockerRepository":"projects/ifsolucionesautomotrices/locations/us-central1/repositories/gcf-artifacts","sourceProvenance":{"resolvedStorageSource":{"bucket":"gcf-v2-sources-610108589353-us-central1","object":"ssrifsolucionesautomotr/function-source.zip","generation":"1785432939247898"}},"dockerRegistry":"ARTIFACT_REGISTRY","serviceAccount":"projects/ifsolucionesautomotrices/serviceAccounts/610108589353-compute@developer.gserviceaccount.com","automaticUpdatePolicy":{}},"serviceConfig":{"service":"projects/ifsolucionesautomotrices/locations/us-central1/services/ssrifsolucionesautomotr","timeoutSeconds":60,"environmentVariables":{"VERCEL_URL":"ifsolucionesautomotrices.web.app","__FIREBASE_FRAMEWORKS_ENTRY__":"next.js","__FIREBASE_DEFAULTS__":"{\"config\":{\"projectId\":\"ifsolucionesautomotrices\",\"appId\":\"1:610108589353:web:528c3d4d141edc52be6338\",\"storageBucket\":\"ifsolucionesautomotrices.firebasestorage.app\",\"apiKey\":\"AIzaSyDxgUn0XDS_EpfkVb6PKKTHkIBS7AeGnRc\",\"authDomain\":\"ifsolucionesautomotrices.firebaseapp.com\",\"messagingSenderId\":\"610108589353\",\"projectNumber\":\"610108589353\",\"version\":\"2\"},\"_authTokenSyncURL\":\"/__session\"}","FIREBASE_CONFIG":"{\"projectId\":\"ifsolucionesautomotrices\",\"storageBucket\":\"ifsolucionesautomotrices.firebasestorage.app\"}","GCLOUD_PROJECT":"ifsolucionesautomotrices","EVENTARC_CLOUD_EVENT_SOURCE":"projects/ifsolucionesautomotrices/locations/us-central1/services/ssrifsolucionesautomotr","FUNCTION_TARGET":"ssrifsolucionesautomotr","LOG_EXECUTION_ID":"true"},"maxInstanceCount":20,"ingressSettings":"ALLOW_ALL","uri":"https://ssrifsolucionesautomotr-uffy4j5e2q-uc.a.run.app","serviceAccountEmail":"610108589353-compute@developer.gserviceaccount.com","availableMemory":"256Mi","allTrafficOnLatestRevision":true,"revision":"ssrifsolucionesautomotr-00090-zuf","maxInstanceRequestConcurrency":80,"availableCpu":"1"},"state":"ACTIVE","updateTime":"2026-07-30T17:43:58.227624497Z","labels":{"deployment-tool":"cli-firebase","firebase-functions-codebase":"firebase-frameworks-ifsolucionesautomotrices","firebase-functions-hash":"ca85715f97afd6cfbfe821ff3efe62c178d63fd6"},"environment":"GEN_2","url":"https://us-central1-ifsolucionesautomotrices.cloudfunctions.net/ssrifsolucionesautomotr","createTime":"2026-05-21T22:11:36.498688882Z","satisfiesPzi":true}]}
+[info] i  hosting: The following function(s) are pinned to site ifsolucionesautomotrices and will be deployed as well: ssrifsolucionesautomotr 
+[info] 
+[info] === Deploying to 'ifsolucionesautomotrices'...
+[info] 
+[info] i  deploying functions, hosting 
+[debug] [2026-07-30T19:44:56.456Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:56.456Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:56.456Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices [none]
+[debug] [2026-07-30T19:44:56.636Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices 200
+[debug] [2026-07-30T19:44:56.637Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices {"projectNumber":"610108589353","projectId":"ifsolucionesautomotrices","lifecycleState":"ACTIVE","name":"ifsolucionesautomotrices","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2026-05-14T16:22:38.655Z"}
+[info] i  functions: preparing codebase firebase-frameworks-ifsolucionesautomotrices for deployment 
+[info] i  functions: ensuring required API cloudfunctions.googleapis.com is enabled... 
+[info] i  functions: ensuring required API cloudbuild.googleapis.com is enabled... 
+[info] i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled... 
+[debug] [2026-07-30T19:44:56.645Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:56.645Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:56.645Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/adminSdkConfig [none]
+[debug] [2026-07-30T19:44:57.113Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/adminSdkConfig 200
+[debug] [2026-07-30T19:44:57.114Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/adminSdkConfig {"projectId":"ifsolucionesautomotrices","storageBucket":"ifsolucionesautomotrices.firebasestorage.app"}
+[debug] [2026-07-30T19:44:57.114Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:57.114Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:44:57.114Z] >>> [apiv2][query] GET https://runtimeconfig.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/configs [none]
+[debug] [2026-07-30T19:44:57.638Z] <<< [apiv2][status] GET https://runtimeconfig.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/configs 200
+[debug] [2026-07-30T19:44:57.638Z] <<< [apiv2][body] GET https://runtimeconfig.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/configs {}
+[debug] [2026-07-30T19:44:57.640Z] Validating nodejs source
+[warn] !  functions: package.json indicates an outdated version of firebase-functions. Please upgrade using npm install --save firebase-functions@latest in your functions directory. 
+[warn] !  functions: Please note that there will be breaking changes when you upgrade. 
+[debug] [2026-07-30T19:44:59.236Z] > [functions] package.json contents: {
+  "name": "if-soluciones",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-progress": "^1.1.8",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@react-pdf/renderer": "^4.5.1",
+    "date-fns": "^4.1.0",
+    "firebase": "^12.13.0",
+    "lucide-react": "^1.16.0",
+    "next": "16.2.6",
+    "puppeteer": "^25.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "react-hook-form": "^7.75.0",
+    "react-hot-toast": "^2.6.0",
+    "zustand": "^5.0.13",
+    "firebase-frameworks": "^0.11.0",
+    "firebase-functions": "^6.0.1",
+    "firebase-admin": "^11.11.1"
+  },
+  "main": "server.js",
+  "engines": {
+    "node": "22"
+  }
+}
+[debug] [2026-07-30T19:44:59.236Z] Building nodejs source
+[info] i  functions: Loading and analyzing source code for codebase firebase-frameworks-ifsolucionesautomotrices to determine what to deploy 
+[debug] [2026-07-30T19:44:59.238Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-07-30T19:44:59.254Z] Found firebase-functions binary at 'C:\Users\Lenovo\if-soluciones\.firebase\ifsolucionesautomotrices\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8686
+
+[debug] [2026-07-30T19:45:00.253Z] Got response from /__/functions.yaml {"endpoints":{"ssrifsolucionesautomotr":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","labels":{},"httpsTrigger":{},"entryPoint":"ssrifsolucionesautomotr"}},"specVersion":"v1alpha1","requiredAPIs":[],"extensions":{}}
+[info] i  extensions: ensuring required API firebaseextensions.googleapis.com is enabled... 
+[debug] [2026-07-30T19:45:04.312Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-30T19:45:04.313Z] > authorizing via signed-in user (appchys.ec@gmail.com)
+[debug] [2026-07-30T19:45:04.313Z] [iam] checking project ifsolucionesautomotrices for permissions ["firebase.projects.get","firebaseextensions.instances.list"]
+[debug] [2026-07-30T19:45:04.313Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:45:04.313Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:45:04.313Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions [none]
+[debug] [2026-07-30T19:45:04.313Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions  x-goog-user-project=ifsolucionesautomotrices
+[debug] [2026-07-30T19:45:04.313Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["firebase.projects.get","firebaseextensions.instances.list"]}
+[debug] [2026-07-30T19:45:04.842Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions 200
+[debug] [2026-07-30T19:45:04.842Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["firebase.projects.get","firebaseextensions.instances.list"]}
+[debug] [2026-07-30T19:45:04.843Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:45:04.843Z] Checked if tokens are valid: true, expires at: 1785444210804
+[debug] [2026-07-30T19:45:04.843Z] >>> [apiv2][query] GET https://firebaseextensions.googleapis.com/v1beta/projects/ifsolucionesautomotrices/instances pageSize=100&pageToken=
+[debug] [2026-07-30T19:45:05.823Z] <<< [apiv2][status] GET https://firebaseextensions.googleapis.com/v1beta/projects/ifsolucionesautomotrices/instances 200
+[debug] [2026-07-30T19:45:05.823Z] <<< [apiv2][body] GET https://firebaseextensions.googleapis.com/v1beta/projects/ifsolucionesautomotrices/instances {}
+[info] i  functions: Loaded environment variables from .env. 
+[info] i  functions: preparing .firebase\ifsolucionesautomotrices\functions directory for uploading... 

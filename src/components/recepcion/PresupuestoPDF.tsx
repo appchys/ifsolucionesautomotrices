@@ -287,8 +287,23 @@ const styles = StyleSheet.create({
   },
 });
 
-const BrandLogo = ({ brand }: { brand: string }) => {
-  const cleanBrand = brand.toLowerCase().trim();
+const BrandLogo = ({ brand, logoUrl }: { brand: string; logoUrl?: string }) => {
+  if (logoUrl && logoUrl.trim()) {
+    return (
+      <Image
+        src={logoUrl}
+        style={{
+          width: 32,
+          height: 32,
+          objectFit: "contain",
+          marginRight: 10,
+          marginTop: 2,
+        }}
+      />
+    );
+  }
+
+  const cleanBrand = (brand || "").toLowerCase().trim();
   
   if (cleanBrand.includes("changan")) {
     return (
@@ -357,6 +372,7 @@ interface PresupuestoPDFProps {
   vehiculo: Vehiculo;
   items: ItemOrden[];
   taller: DatosTaller | null;
+  marcaLogoUrl?: string;
 }
 
 export default function PresupuestoPDF({
@@ -365,6 +381,7 @@ export default function PresupuestoPDF({
   vehiculo,
   items,
   taller,
+  marcaLogoUrl,
 }: PresupuestoPDFProps) {
   const numPre = String(orden.numeroCotizacion || orden.numero || 0).padStart(4, "0");
   const dateFormatted = formatFecha(orden.createdAt);
@@ -433,7 +450,7 @@ export default function PresupuestoPDF({
 
           {/* Columna Vehículo */}
           <View style={styles.columnRight}>
-            <BrandLogo brand={vehiculo.marca} />
+            <BrandLogo brand={vehiculo.marca} logoUrl={marcaLogoUrl} />
             <View style={styles.vehicleDetails}>
               <Text style={styles.sectionLabel}>Vehículo</Text>
               <Text style={styles.boldText}>
