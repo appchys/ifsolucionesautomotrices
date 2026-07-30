@@ -5,6 +5,7 @@ import type { ChangeEvent, DragEvent } from "react";
 import { createPortal } from "react-dom";
 import AppShell from "@/components/layout/AppShell";
 import GmailXmlSidebar from "@/components/compras/GmailXmlSidebar";
+import NuevaCompraManualModal from "@/components/compras/NuevaCompraManualModal";
 import type { PendingCompraDraft } from "@/components/compras/GmailXmlSidebar";
 import { useUIStore } from "@/store";
 import {
@@ -451,6 +452,7 @@ export default function ComprasPage() {
   const [selected, setSelected] = useState<Compra | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [showManualCompraModal, setShowManualCompraModal] = useState(false);
   const [draggingUpload, setDraggingUpload] = useState(false);
   const [gmailStatus, setGmailStatus] = useState<GmailStatus>({ connected: false });
   const [gmailLoading, setGmailLoading] = useState(true);
@@ -2228,6 +2230,16 @@ export default function ComprasPage() {
         </div>
         
         <div className="relative z-10 flex flex-col sm:flex-row gap-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowManualCompraModal(true)}
+            disabled={uploading}
+            className="px-4 py-2.5 rounded-xl font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition-all duration-300 shadow-[0_4px_20px_rgba(16,185,129,0.25)] hover:shadow-[0_4px_25px_rgba(16,185,129,0.45)] hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2 cursor-pointer"
+            title="Registrar una compra manual e incrementar el stock del catálogo"
+          >
+            <Plus size={16} className="text-white" />
+            <span>Compra Manual</span>
+          </button>
           <input
             ref={inputRef}
             type="file"
@@ -3504,6 +3516,14 @@ export default function ComprasPage() {
         </div>,
         modalRoot
       )}
+      <NuevaCompraManualModal
+        isOpen={showManualCompraModal}
+        onClose={() => setShowManualCompraModal(false)}
+        onCompraCreada={(nuevaCompra) => {
+          setCompras((prev) => [nuevaCompra, ...prev]);
+          setSelected(nuevaCompra);
+        }}
+      />
     </AppShell>
   );
 }
