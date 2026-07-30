@@ -230,6 +230,109 @@ export async function deleteTallerLogoFile(url: string): Promise<void> {
   }
 }
 
+/**
+ * Convierte un archivo de imagen (File) a una Data URI base64 en formato PNG
+ * optimizada para logos (máximo 300px de dimensión).
+ */
+export function convertFileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      if (typeof window === "undefined") {
+        resolve(result);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxDim = 300;
+        let width = img.width || 250;
+        let height = img.height || 250;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/png"));
+        } else {
+          resolve(result);
+        }
+      };
+      img.onerror = () => resolve(result);
+      img.src = result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Convierte cualquier URL de logo (PNG, JPG, WebP, SVG, Firebase Storage URL)
+ * a una Data URI base64 en formato PNG compatible 100% con @react-pdf/renderer.
+ */
+export async function getLogoAsBase64Png(url: string): Promise<string> {
+  if (!url || !url.trim()) return "";
+  const trimmedUrl = url.trim();
+
+  if (typeof window === "undefined") return trimmedUrl;
+
+  if (trimmedUrl.startsWith("data:image/")) {
+    return trimmedUrl;
+  }
+
+  const tryLoadBase64 = (srcUrl: string, useCrossOrigin = true): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      if (useCrossOrigin) {
+        img.crossOrigin = "anonymous";
+      }
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth || img.width || 250;
+          canvas.height = img.naturalHeight || img.height || 250;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL("image/png"));
+            return;
+          }
+        } catch {
+          /* canvas tainteado por CORS */
+        }
+        resolve(null);
+      };
+      img.onerror = () => resolve(null);
+      img.src = srcUrl;
+    });
+  };
+
+  // 1. Intentar cargar directo con CORS
+  let result = await tryLoadBase64(trimmedUrl, true);
+  if (result) return result;
+
+  // 2. Si falla por CORS de Firebase Storage, intentar a través de proxy de CORS público
+  if (trimmedUrl.startsWith("http")) {
+    result = await tryLoadBase64(`https://api.allorigins.win/raw?url=${encodeURIComponent(trimmedUrl)}`, true);
+    if (result) return result;
+
+    result = await tryLoadBase64(`https://corsproxy.io/?${encodeURIComponent(trimmedUrl)}`, true);
+    if (result) return result;
+  }
+
+  return trimmedUrl;
+}
+
 // ─── CONFIGURACIÓN DE TIPOS DE VEHÍCULO ──────────────────────────────────────────
 export async function getTiposVehiculo(): Promise<string[]> {
   const snap = await getDoc(doc(db, "configuracion", "tiposVehiculo"));
@@ -1138,15 +1241,18 @@ export async function getProductoBySku(sku: string): Promise<Producto | null> {
 
 export async function createProducto(data: Omit<Producto, "id">): Promise<string> {
   const margenGanancia = normalizarMargenGanancia(data.margenGanancia);
-  const ref = await addDoc(collection(db, "productos"), {
-    ...data,
-    margenGanancia,
-    precioBase: calcularPrecioVenta(data.costoBase, margenGanancia, data.aplicaIva),
-    sku: data.sku.trim().toUpperCase(),
-    stockActual: Math.floor(Number(data.stockActual ?? 0)),
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  const ref = await addDoc(
+    collection(db, "productos"),
+    removeUndefinedFields({
+      ...data,
+      margenGanancia,
+      precioBase: calcularPrecioVenta(data.costoBase, margenGanancia, data.aplicaIva),
+      sku: data.sku.trim().toUpperCase(),
+      stockActual: Math.floor(Number(data.stockActual ?? 0)),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
   return ref.id;
 }
 
@@ -1168,7 +1274,10 @@ export async function updateProducto(id: string, data: Partial<Producto>): Promi
     payload.margenGanancia = margenGanancia;
     payload.precioBase = calcularPrecioVenta(costoBase, margenGanancia, aplicaIva);
   }
-  await updateDoc(doc(db, "productos", id), { ...payload, updatedAt: serverTimestamp() });
+  await updateDoc(
+    doc(db, "productos", id),
+    removeUndefinedFields({ ...payload, updatedAt: serverTimestamp() })
+  );
 }
 
 export async function registrarMovimientoStockManual(
@@ -1254,16 +1363,22 @@ export async function getServicios(): Promise<Servicio[]> {
 }
 
 export async function createServicio(data: Omit<Servicio, "id">): Promise<string> {
-  const ref = await addDoc(collection(db, "servicios"), {
-    ...data,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  const ref = await addDoc(
+    collection(db, "servicios"),
+    removeUndefinedFields({
+      ...data,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
   return ref.id;
 }
 
 export async function updateServicio(id: string, data: Partial<Servicio>): Promise<void> {
-  await updateDoc(doc(db, "servicios", id), { ...data, updatedAt: serverTimestamp() });
+  await updateDoc(
+    doc(db, "servicios", id),
+    removeUndefinedFields({ ...data, updatedAt: serverTimestamp() })
+  );
 }
 
 export async function deleteServicio(id: string): Promise<void> {

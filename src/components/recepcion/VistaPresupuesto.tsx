@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock, Wrench, Package } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -16,6 +16,7 @@ import {
   getIngresoOrigenDePresupuesto,
   deleteOrden,
   getDatosTaller,
+  getLogoAsBase64Png,
   uploadAdjuntoPresupuesto,
   uploadOrdenFoto,
   getCitasByPresupuesto,
@@ -417,13 +418,19 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       const { pdf } = await import("@react-pdf/renderer");
       const PresupuestoPDF = (await import("./PresupuestoPDF")).default;
 
+      let tallerConLogo = taller;
+      if (taller?.logoUrl) {
+        const logoBase64 = await getLogoAsBase64Png(taller.logoUrl);
+        if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
+      }
+
       const blob = await pdf(
         <PresupuestoPDF
           orden={orden}
           cliente={cliente}
           vehiculo={vehiculo}
           items={items}
-          taller={taller}
+          taller={tallerConLogo}
         />
       ).toBlob();
 
@@ -454,30 +461,56 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       const { pdf } = await import("@react-pdf/renderer");
       const PresupuestoPDF = (await import("./PresupuestoPDF")).default;
 
+      let tallerConLogo = taller;
+      if (taller?.logoUrl) {
+        const logoBase64 = await getLogoAsBase64Png(taller.logoUrl);
+        if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
+      }
+
       const blob = await pdf(
         <PresupuestoPDF
           orden={orden}
           cliente={cliente}
           vehiculo={vehiculo}
           items={items}
-          taller={taller}
+          taller={tallerConLogo}
         />
       ).toBlob();
 
       const url = URL.createObjectURL(blob);
       const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.style.visibility = "hidden";
+
+      const cleanup = () => {
+        try {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+          URL.revokeObjectURL(url);
+        } catch (e) {}
+      };
+
+      iframe.onload = () => {
+        try {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.onafterprint = cleanup;
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          }
+        } catch (e) {
+          console.error("Error al ejecutar impresión:", e);
+        }
+        setTimeout(cleanup, 120000);
+      };
+
       iframe.src = url;
       document.body.appendChild(iframe);
-      
-      iframe.onload = () => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-          URL.revokeObjectURL(url);
-        }, 1000);
-      };
       
       toast.success("Ventana de impresión abierta", { id: toastId });
     } catch (error) {
@@ -733,15 +766,6 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
 
             {/* Items Table */}
             <div className="border border-[var(--border)] rounded-xl bg-white overflow-visible">
-              <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold text-[var(--text-muted)] uppercase border-b border-[var(--border)]">
-                <div className="col-span-4">Descripción</div>
-                <div className="col-span-2 text-center">Cant</div>
-                <div className="col-span-2 text-right">Precio</div>
-                <div className="col-span-1 text-center">IVA</div>
-                <div className="col-span-1 text-center">Dcto</div>
-                <div className="col-span-2 text-right">Total</div>
-              </div>
-              
               <div className="overflow-visible">
                 {items.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)] p-8 text-center">
@@ -749,82 +773,207 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                     <p className="text-xs">Busca un producto o servicio arriba para agregarlo.</p>
                   </div>
                 ) : (
-                  items.map((item, idx) => (
-                    <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
-                      <div className="col-span-4 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
-                      <div className="col-span-2 flex items-center justify-center gap-1">
-                        <button 
-                          className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
-                          onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
-                        >
-                          -
-                        </button>
-                        <input 
-                          type="number" 
-                          className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs" 
-                          value={item.cantidad} 
-                          onChange={(e) => {
-                            const newItems = [...items];
-                            newItems[idx].cantidad = Number(e.target.value);
-                            setItems(newItems);
-                          }}
-                          onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Number(e.target.value))}
-                        />
-                        <button 
-                          className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
-                          onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <div className="col-span-2 text-right">
-                        <input 
-                          type="number" 
-                          className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs" 
-                          value={item.precioUnitario} 
-                          onChange={(e) => {
-                            const newItems = [...items];
-                            newItems[idx].precioUnitario = Number(e.target.value);
-                            setItems(newItems);
-                          }}
-                          onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
-                        />
-                      </div>
-                      <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
-                      <div className="col-span-1 text-center text-xs">0</div>
-                      <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
-                        ${(item.precioUnitario * item.cantidad).toFixed(2)}
-                        <button
-                          type="button"
-                          onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
-                          className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
-                            activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
-                          }`}
-                          title="Opciones de ítem"
-                        >
-                          <MoreVertical size={14} />
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteItem(item.id)}
-                          className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
-                          title="Eliminar ítem"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                  <>
+                    {/* Sección Mano de obra */}
+                    {items.filter((it) => it.tipo === "servicio").length > 0 && (
+                      <div>
+                        <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                          <div className="col-span-4 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                            <Wrench size={14} className="text-blue-600" />
+                            Mano de obra
+                          </div>
+                          <div className="col-span-2 text-center text-slate-500">Cant</div>
+                          <div className="col-span-2 text-right text-slate-500">Precio</div>
+                          <div className="col-span-1 text-center text-slate-500">IVA</div>
+                          <div className="col-span-1 text-center text-slate-500">Dcto</div>
+                          <div className="col-span-2 text-right text-slate-500">Total</div>
+                        </div>
+                        {items.filter((it) => it.tipo === "servicio").map((item) => {
+                          const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
+                          return (
+                            <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
+                              <div className="col-span-4 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
+                              <div className="col-span-2 flex items-center justify-center gap-1">
+                                <button 
+                                  className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                  onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                                >
+                                  -
+                                </button>
+                                <input 
+                                  type="number" 
+                                  className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs" 
+                                  value={item.cantidad} 
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    if (idx !== -1) {
+                                      newItems[idx].cantidad = Number(e.target.value);
+                                      setItems(newItems);
+                                    }
+                                  }}
+                                  onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Number(e.target.value))}
+                                />
+                                <button 
+                                  className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                  onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <div className="col-span-2 text-right">
+                                <input 
+                                  type="number" 
+                                  className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs" 
+                                  value={item.precioUnitario} 
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    if (idx !== -1) {
+                                      newItems[idx].precioUnitario = Number(e.target.value);
+                                      setItems(newItems);
+                                    }
+                                  }}
+                                  onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                                />
+                              </div>
+                              <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
+                              <div className="col-span-1 text-center text-xs">0</div>
+                              <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
+                                ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                                  className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                                    activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                                  }`}
+                                  title="Opciones de ítem"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteItem(item.id)}
+                                  className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
+                                  title="Eliminar ítem"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
 
-                        {activePopoverItemId === item.id && (
-                          <OpcionesItemPopover
-                            item={item}
-                            onClose={() => setActivePopoverItemId(null)}
-                            onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
-                            onLocalUpdate={(updates) => {
-                              setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
-                            }}
-                          />
-                        )}
+                                {activePopoverItemId === item.id && (
+                                  <OpcionesItemPopover
+                                    item={item}
+                                    onClose={() => setActivePopoverItemId(null)}
+                                    onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                                    onLocalUpdate={(updates) => {
+                                      setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    </div>
-                  ))
+                    )}
+
+                    {/* Sección Repuestos */}
+                    {items.filter((it) => it.tipo !== "servicio").length > 0 && (
+                      <div>
+                        <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                          <div className="col-span-4 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                            <Package size={14} className="text-amber-600" />
+                            Repuestos
+                          </div>
+                          <div className="col-span-2 text-center text-slate-500">Cant</div>
+                          <div className="col-span-2 text-right text-slate-500">Precio</div>
+                          <div className="col-span-1 text-center text-slate-500">IVA</div>
+                          <div className="col-span-1 text-center text-slate-500">Dcto</div>
+                          <div className="col-span-2 text-right text-slate-500">Total</div>
+                        </div>
+                        {items.filter((it) => it.tipo !== "servicio").map((item) => {
+                          const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
+                          return (
+                            <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
+                              <div className="col-span-4 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
+                              <div className="col-span-2 flex items-center justify-center gap-1">
+                                <button 
+                                  className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                  onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                                >
+                                  -
+                                </button>
+                                <input 
+                                  type="number" 
+                                  className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs" 
+                                  value={item.cantidad} 
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    if (idx !== -1) {
+                                      newItems[idx].cantidad = Number(e.target.value);
+                                      setItems(newItems);
+                                    }
+                                  }}
+                                  onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Number(e.target.value))}
+                                />
+                                <button 
+                                  className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                  onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <div className="col-span-2 text-right">
+                                <input 
+                                  type="number" 
+                                  className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs" 
+                                  value={item.precioUnitario} 
+                                  onChange={(e) => {
+                                    const newItems = [...items];
+                                    if (idx !== -1) {
+                                      newItems[idx].precioUnitario = Number(e.target.value);
+                                      setItems(newItems);
+                                    }
+                                  }}
+                                  onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                                />
+                              </div>
+                              <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
+                              <div className="col-span-1 text-center text-xs">0</div>
+                              <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
+                                ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                                <button
+                                  type="button"
+                                  onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                                  className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                                    activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                                  }`}
+                                  title="Opciones de ítem"
+                                >
+                                  <MoreVertical size={14} />
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteItem(item.id)}
+                                  className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
+                                  title="Eliminar ítem"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+
+                                {activePopoverItemId === item.id && (
+                                  <OpcionesItemPopover
+                                    item={item}
+                                    onClose={() => setActivePopoverItemId(null)}
+                                    onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                                    onLocalUpdate={(updates) => {
+                                      setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

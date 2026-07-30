@@ -42,11 +42,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    maxWidth: "50%",
+    maxWidth: "60%",
   },
   workshopInfo: {
     textAlign: "right",
-    marginRight: 8,
+    marginRight: 10,
   },
   workshopName: {
     fontSize: 10,
@@ -60,14 +60,9 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   logo: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    objectFit: "cover",
-  },
-  logoPlaceholder: {
-    width: 48,
-    height: 48,
+    width: 60,
+    height: 55,
+    objectFit: "contain",
   },
   mainDivider: {
     borderBottomWidth: 2,
@@ -291,9 +286,7 @@ export default function ComprobanteIngresoPDF({
             </View>
             {taller?.logoUrl ? (
               <Image src={taller.logoUrl} style={styles.logo} />
-            ) : (
-              <View style={styles.logoPlaceholder} />
-            )}
+            ) : null}
           </View>
         </View>
 

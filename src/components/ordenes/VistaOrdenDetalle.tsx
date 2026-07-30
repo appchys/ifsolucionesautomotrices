@@ -20,6 +20,7 @@ import {
   uploadOrdenFoto,
   getPresupuestoPorIngreso,
   getDatosTaller,
+  getLogoAsBase64Png,
   getProductos,
   getServicios,
   sendMensajeOrden,
@@ -816,6 +817,12 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
     try {
       const { pdf } = await import("@react-pdf/renderer");
       
+      let tallerConLogo = taller;
+      if (taller?.logoUrl) {
+        const logoBase64 = await getLogoAsBase64Png(taller.logoUrl);
+        if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
+      }
+
       let blob;
       if (type === "cliente") {
         const OrdenClientePDF = (await import("@/components/recepcion/OrdenClientePDF")).default;
@@ -826,7 +833,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             vehiculo={vehiculo}
             items={items}
             pagos={pagos}
-            taller={taller}
+            taller={tallerConLogo}
           />
         ).toBlob();
       } else {
@@ -837,7 +844,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             cliente={cliente}
             vehiculo={vehiculo}
             items={items}
-            taller={taller}
+            taller={tallerConLogo}
           />
         ).toBlob();
       }
@@ -869,6 +876,12 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
     try {
       const { pdf } = await import("@react-pdf/renderer");
       
+      let tallerConLogo = taller;
+      if (taller?.logoUrl) {
+        const logoBase64 = await getLogoAsBase64Png(taller.logoUrl);
+        if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
+      }
+
       let blob;
       if (type === "cliente") {
         const OrdenClientePDF = (await import("@/components/recepcion/OrdenClientePDF")).default;
@@ -879,7 +892,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             vehiculo={vehiculo}
             items={items}
             pagos={pagos}
-            taller={taller}
+            taller={tallerConLogo}
           />
         ).toBlob();
       } else {
@@ -890,25 +903,45 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             cliente={cliente}
             vehiculo={vehiculo}
             items={items}
-            taller={taller}
+            taller={tallerConLogo}
           />
         ).toBlob();
       }
 
       const url = URL.createObjectURL(blob);
       const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.style.visibility = "hidden";
+
+      const cleanup = () => {
+        try {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+          URL.revokeObjectURL(url);
+        } catch (e) {}
+      };
+
+      iframe.onload = () => {
+        try {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.onafterprint = cleanup;
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          }
+        } catch (e) {
+          console.error("Error al ejecutar impresión:", e);
+        }
+        setTimeout(cleanup, 120000);
+      };
+
       iframe.src = url;
       document.body.appendChild(iframe);
-      
-      iframe.onload = () => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-          URL.revokeObjectURL(url);
-        }, 1000);
-      };
       
       toast.success("Ventana de impresión abierta", { id: toastId });
     } catch (error) {

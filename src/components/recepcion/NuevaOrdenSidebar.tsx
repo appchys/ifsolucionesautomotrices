@@ -354,8 +354,8 @@ export default function NuevaOrdenSidebar({ onClose, onSuccess, ordenId }: Props
       : "Sin tecnico asignado";
   const itemsAgrupados = useMemo(
     () => [
-      { label: "Productos", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo === "producto") },
-      { label: "Servicios", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo === "servicio") },
+      { label: "Mano de obra", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo === "servicio") },
+      { label: "Repuestos", items: items.map((item, index) => ({ item, index })).filter(({ item }) => item.tipo !== "servicio") },
     ],
     [items]
   );

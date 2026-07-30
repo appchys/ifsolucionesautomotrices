@@ -41,11 +41,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    maxWidth: "50%",
+    maxWidth: "60%",
   },
   workshopInfo: {
     textAlign: "right",
-    marginRight: 8,
+    marginRight: 10,
   },
   workshopName: {
     fontSize: 10,
@@ -59,14 +59,9 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   logo: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    objectFit: "cover",
-  },
-  logoPlaceholder: {
-    width: 48,
-    height: 48,
+    width: 60,
+    height: 55,
+    objectFit: "contain",
   },
   mainDivider: {
     borderBottomWidth: 2,
@@ -138,18 +133,22 @@ const styles = StyleSheet.create({
   // Table styling
   tableHeader: {
     flexDirection: "row",
+    backgroundColor: "#f1f5f9",
     borderBottomWidth: 1,
     borderBottomColor: "#cbd5e1",
     borderTopWidth: 1,
     borderTopColor: "#cbd5e1",
     paddingVertical: 5,
-    marginTop: 15,
+    paddingHorizontal: 6,
+    marginTop: 10,
+    alignItems: "center",
   },
   tableRow: {
     flexDirection: "row",
     borderBottomWidth: 1,
     borderBottomColor: "#f1f5f9",
-    paddingVertical: 7,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
     alignItems: "center",
   },
   subtotalRow: {
@@ -159,15 +158,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1.5,
     borderTopColor: "#0f172a",
     paddingVertical: 6,
+    paddingHorizontal: 6,
     fontWeight: "bold",
   },
   colDesc: {
-    width: "45%",
+    width: "60%",
     textAlign: "left",
-  },
-  colSku: {
-    width: "15%",
-    textAlign: "center",
   },
   colPrice: {
     width: "15%",
@@ -192,10 +188,6 @@ const styles = StyleSheet.create({
     color: "#0f172a",
     textTransform: "uppercase",
   },
-  cellSku: {
-    fontSize: 8.5,
-    color: "#64748b",
-  },
   cellPrice: {
     fontSize: 8.5,
     color: "#334155",
@@ -218,6 +210,22 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: "bold",
     color: "#0f172a",
+  },
+  groupHeader: {
+    backgroundColor: "#f8fafc",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: "#0f172a",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  groupTitle: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#0f172a",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   // Totals box styling
   totalsContainer: {
@@ -364,12 +372,14 @@ export default function PresupuestoPDF({
   const clienteName = `${cliente.nombre} ${cliente.apellido}`.trim();
 
   // Cálculos de Totales
-  const subtotal = items.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
+  const serviciosItems = items.filter((it) => it.tipo === "servicio");
+  const repuestosItems = items.filter((it) => it.tipo !== "servicio");
+
+  const subtotalServicios = serviciosItems.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
+  const subtotalRepuestos = repuestosItems.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
+  const subtotal = subtotalServicios + subtotalRepuestos;
   const iva = items.reduce((acc, it) => acc + ((it.precioUnitario * it.cantidad) * (it.impuestoAplicable / 100)), 0);
   const total = subtotal + iva;
-  const manoDeObra = items
-    .filter((it) => it.tipo === "servicio")
-    .reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
 
   const tallerRuc = taller?.ruc || "0927405092001";
   const tallerPhone = taller?.telefono || "593988731879";
@@ -397,9 +407,7 @@ export default function PresupuestoPDF({
             </View>
             {taller?.logoUrl ? (
               <Image src={taller.logoUrl} style={styles.logo} />
-            ) : (
-              <View style={styles.logoPlaceholder} />
-            )}
+            ) : null}
           </View>
         </View>
 
@@ -442,41 +450,84 @@ export default function PresupuestoPDF({
           </View>
         </View>
 
-        {/* Tabla de Ítems */}
-        <View style={styles.tableHeader}>
-          <View style={styles.colDesc}><Text style={styles.headerText}>Mano de Obra</Text></View>
-          <View style={styles.colSku}><Text style={[styles.headerText, { textAlign: "center" }]}>SKU</Text></View>
-          <View style={styles.colPrice}><Text style={[styles.headerText, { textAlign: "right" }]}>Precio</Text></View>
-          <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "center" }]}>Cant</Text></View>
-          <View style={styles.colTotal}><Text style={[styles.headerText, { textAlign: "right" }]}>Total</Text></View>
-        </View>
-
-        {items.map((item, idx) => (
-          <View key={idx} style={styles.tableRow}>
-            <View style={styles.colDesc}><Text style={styles.cellDesc}>{item.descripcion}</Text></View>
-            <View style={styles.colSku}><Text style={[styles.cellSku, { textAlign: "center" }]}>{item.productoSku || "—"}</Text></View>
-            <View style={styles.colPrice}><Text style={[styles.cellPrice, { textAlign: "right" }]}>${Number(item.precioUnitario).toFixed(2)}</Text></View>
-            <View style={styles.colQty}><Text style={[styles.cellQty, { textAlign: "center" }]}>{item.cantidad}</Text></View>
-            <View style={styles.colTotal}><Text style={[styles.cellTotal, { textAlign: "right" }]}>${(item.precioUnitario * item.cantidad).toFixed(2)}</Text></View>
+        {/* Ítems Agrupados: Mano de Obra */}
+        {serviciosItems.length > 0 && (
+          <View style={{ marginBottom: 10 }}>
+            <View style={styles.tableHeader}>
+              <View style={styles.colDesc}><Text style={[styles.headerText, { color: "#0f172a", textTransform: "uppercase" }]}>Mano de Obra</Text></View>
+              <View style={styles.colPrice}><Text style={[styles.headerText, { textAlign: "right" }]}>Precio</Text></View>
+              <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "center" }]}>Cant</Text></View>
+              <View style={styles.colTotal}><Text style={[styles.headerText, { textAlign: "right" }]}>Total</Text></View>
+            </View>
+            {serviciosItems.map((item, idx) => (
+              <View key={idx} style={styles.tableRow}>
+                <View style={styles.colDesc}><Text style={styles.cellDesc}>{item.descripcion}</Text></View>
+                <View style={styles.colPrice}><Text style={[styles.cellPrice, { textAlign: "right" }]}>${Number(item.precioUnitario).toFixed(2)}</Text></View>
+                <View style={styles.colQty}><Text style={[styles.cellQty, { textAlign: "center" }]}>{item.cantidad}</Text></View>
+                <View style={styles.colTotal}><Text style={[styles.cellTotal, { textAlign: "right" }]}>${(item.precioUnitario * item.cantidad).toFixed(2)}</Text></View>
+              </View>
+            ))}
+            <View style={styles.subtotalRow}>
+              <View style={styles.colDesc}><Text style={styles.subtotalLabelText}>Subtotal Mano de Obra</Text></View>
+              <View style={styles.colPrice}><Text /></View>
+              <View style={styles.colQty}><Text /></View>
+              <View style={styles.colTotal}><Text style={[styles.subtotalValueText, { textAlign: "right" }]}>${subtotalServicios.toFixed(2)}</Text></View>
+            </View>
           </View>
-        ))}
+        )}
 
-        {/* Fila Subtotal de Tabla */}
-        <View style={styles.subtotalRow}>
-          <View style={styles.colDesc}><Text style={styles.subtotalLabelText}>Subtotal Mano de Obra</Text></View>
-          <View style={styles.colSku}><Text /></View>
-          <View style={styles.colPrice}><Text /></View>
-          <View style={styles.colQty}><Text /></View>
-          <View style={styles.colTotal}><Text style={[styles.subtotalValueText, { textAlign: "right" }]}>${subtotal.toFixed(2)}</Text></View>
-        </View>
+        {/* Ítems Agrupados: Repuestos */}
+        {repuestosItems.length > 0 && (
+          <View style={{ marginBottom: 10 }}>
+            <View style={styles.tableHeader}>
+              <View style={styles.colDesc}><Text style={[styles.headerText, { color: "#0f172a", textTransform: "uppercase" }]}>Repuestos</Text></View>
+              <View style={styles.colPrice}><Text style={[styles.headerText, { textAlign: "right" }]}>Precio</Text></View>
+              <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "center" }]}>Cant</Text></View>
+              <View style={styles.colTotal}><Text style={[styles.headerText, { textAlign: "right" }]}>Total</Text></View>
+            </View>
+            {repuestosItems.map((item, idx) => (
+              <View key={idx} style={styles.tableRow}>
+                <View style={styles.colDesc}><Text style={styles.cellDesc}>{item.descripcion}</Text></View>
+                <View style={styles.colPrice}><Text style={[styles.cellPrice, { textAlign: "right" }]}>${Number(item.precioUnitario).toFixed(2)}</Text></View>
+                <View style={styles.colQty}><Text style={[styles.cellQty, { textAlign: "center" }]}>{item.cantidad}</Text></View>
+                <View style={styles.colTotal}><Text style={[styles.cellTotal, { textAlign: "right" }]}>${(item.precioUnitario * item.cantidad).toFixed(2)}</Text></View>
+              </View>
+            ))}
+            <View style={styles.subtotalRow}>
+              <View style={styles.colDesc}><Text style={styles.subtotalLabelText}>Subtotal Repuestos</Text></View>
+              <View style={styles.colPrice}><Text /></View>
+              <View style={styles.colQty}><Text /></View>
+              <View style={styles.colTotal}><Text style={[styles.subtotalValueText, { textAlign: "right" }]}>${subtotalRepuestos.toFixed(2)}</Text></View>
+            </View>
+          </View>
+        )}
+
+        {items.length === 0 && (
+          <View style={{ marginBottom: 10 }}>
+            <View style={styles.tableHeader}>
+              <View style={styles.colDesc}><Text style={styles.headerText}>Detalle</Text></View>
+              <View style={styles.colPrice}><Text style={[styles.headerText, { textAlign: "right" }]}>Precio</Text></View>
+              <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "center" }]}>Cant</Text></View>
+              <View style={styles.colTotal}><Text style={[styles.headerText, { textAlign: "right" }]}>Total</Text></View>
+            </View>
+          </View>
+        )}
 
         {/* Totales y Condiciones */}
         <View style={styles.totalsContainer}>
           <View style={styles.totalsBox}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Mano de obra:</Text>
-              <Text style={styles.totalValue}>${manoDeObra.toFixed(2)}</Text>
-            </View>
+            {subtotalServicios > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Mano de obra:</Text>
+                <Text style={styles.totalValue}>${subtotalServicios.toFixed(2)}</Text>
+              </View>
+            )}
+            {subtotalRepuestos > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Repuestos:</Text>
+                <Text style={styles.totalValue}>${subtotalRepuestos.toFixed(2)}</Text>
+              </View>
+            )}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Subtotal:</Text>
               <Text style={styles.totalValue}>${subtotal.toFixed(2)}</Text>

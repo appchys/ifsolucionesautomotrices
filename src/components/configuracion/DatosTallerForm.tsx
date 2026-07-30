@@ -11,6 +11,7 @@ import {
   DATOS_TALLER_DEFAULT,
   uploadTallerLogo,
   deleteTallerLogoFile,
+  convertFileToBase64,
 } from "@/lib/services";
 
 const LOGO_ACCEPT = "image/png,image/jpeg,image/webp,image/svg+xml";
@@ -71,19 +72,19 @@ export default function DatosTallerForm() {
     setLogoBusy(true);
     try {
       const prev = getValues("logoUrl");
-      const url = await uploadTallerLogo(file, prev || undefined);
-      setValue("logoUrl", url, { shouldDirty: true });
-      await saveDatosTaller({ ...getValues(), logoUrl: url });
-      toast.success("Logo subido correctamente");
-    } catch (err: unknown) {
-      const code = err instanceof Error ? err.message : "";
-      if (code === "INVALID_LOGO_TYPE") {
-        toast.error("Formato no válido. Usa PNG, JPG, WebP o SVG.");
-      } else if (code === "LOGO_TOO_LARGE") {
-        toast.error("El archivo supera 2 MB.");
-      } else {
-        toast.error("No se pudo subir el logo. Revisa permisos de Storage.");
+      let url = "";
+      try {
+        url = await uploadTallerLogo(file, prev || undefined);
+      } catch {
+        /* fallback */
       }
+      const base64Png = await convertFileToBase64(file);
+      const finalLogo = base64Png || url;
+      setValue("logoUrl", finalLogo, { shouldDirty: true });
+      await saveDatosTaller({ ...getValues(), logoUrl: finalLogo });
+      toast.success("Logo guardado correctamente");
+    } catch {
+      toast.error("No se pudo guardar el logo.");
     } finally {
       setLogoBusy(false);
     }

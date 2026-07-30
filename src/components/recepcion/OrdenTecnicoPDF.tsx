@@ -41,11 +41,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    maxWidth: "50%",
+    maxWidth: "60%",
   },
   workshopInfo: {
     textAlign: "right",
-    marginRight: 8,
+    marginRight: 10,
   },
   workshopName: {
     fontSize: 10,
@@ -59,14 +59,9 @@ const styles = StyleSheet.create({
     marginBottom: 1,
   },
   logo: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    objectFit: "cover",
-  },
-  logoPlaceholder: {
-    width: 48,
-    height: 48,
+    width: 60,
+    height: 55,
+    objectFit: "contain",
   },
   mainDivider: {
     borderBottomWidth: 2,
@@ -138,18 +133,22 @@ const styles = StyleSheet.create({
   // Table styling
   tableHeader: {
     flexDirection: "row",
+    backgroundColor: "#f1f5f9",
     borderBottomWidth: 1,
     borderBottomColor: "#cbd5e1",
     borderTopWidth: 1,
     borderTopColor: "#cbd5e1",
     paddingVertical: 5,
-    marginTop: 15,
+    paddingHorizontal: 6,
+    marginTop: 10,
+    alignItems: "center",
   },
   tableRow: {
     flexDirection: "row",
     borderBottomWidth: 1,
-    borderBottomColor: "#cbd5e1", // Termina en línea negra/gris horizontal al final de la tabla
-    paddingVertical: 7,
+    borderBottomColor: "#cbd5e1",
+    paddingVertical: 6,
+    paddingHorizontal: 6,
     alignItems: "center",
   },
   colDesc: {
@@ -175,6 +174,22 @@ const styles = StyleSheet.create({
     fontSize: 8.5,
     fontWeight: "bold",
     color: "#334155",
+  },
+  groupHeader: {
+    backgroundColor: "#f8fafc",
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: "#0f172a",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  groupTitle: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: "#0f172a",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
 });
 
@@ -288,9 +303,7 @@ export default function OrdenTecnicoPDF({
             </View>
             {taller?.logoUrl ? (
               <Image src={taller.logoUrl} style={styles.logo} />
-            ) : (
-              <View style={styles.logoPlaceholder} />
-            )}
+            ) : null}
           </View>
         </View>
 
@@ -334,18 +347,44 @@ export default function OrdenTecnicoPDF({
           </View>
         </View>
 
-        {/* Tabla de Ítems */}
-        <View style={styles.tableHeader}>
-          <View style={styles.colDesc}><Text style={styles.headerText}>Mano de Obra</Text></View>
-          <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "right" }]}>Cant</Text></View>
-        </View>
-
-        {items.map((item, idx) => (
-          <View key={idx} style={styles.tableRow}>
-            <View style={styles.colDesc}><Text style={styles.cellDesc}>{item.descripcion}</Text></View>
-            <View style={styles.colQty}><Text style={[styles.cellQty, { textAlign: "right" }]}>{item.cantidad}</Text></View>
+        {/* Ítems Agrupados: Mano de Obra */}
+        {items.filter((it) => it.tipo === "servicio").length > 0 && (
+          <View style={{ marginBottom: 10 }}>
+            <View style={styles.tableHeader}>
+              <View style={styles.colDesc}><Text style={[styles.headerText, { color: "#0f172a", textTransform: "uppercase" }]}>Mano de Obra</Text></View>
+              <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "right" }]}>Cant</Text></View>
+            </View>
+            {items.filter((it) => it.tipo === "servicio").map((item, idx) => (
+              <View key={idx} style={styles.tableRow}>
+                <View style={styles.colDesc}><Text style={styles.cellDesc}>{item.descripcion}</Text></View>
+                <View style={styles.colQty}><Text style={[styles.cellQty, { textAlign: "right" }]}>{item.cantidad}</Text></View>
+              </View>
+            ))}
           </View>
-        ))}
+        )}
+
+        {/* Ítems Agrupados: Repuestos */}
+        {items.filter((it) => it.tipo !== "servicio").length > 0 && (
+          <View style={{ marginBottom: 10 }}>
+            <View style={styles.tableHeader}>
+              <View style={styles.colDesc}><Text style={[styles.headerText, { color: "#0f172a", textTransform: "uppercase" }]}>Repuestos</Text></View>
+              <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "right" }]}>Cant</Text></View>
+            </View>
+            {items.filter((it) => it.tipo !== "servicio").map((item, idx) => (
+              <View key={idx} style={styles.tableRow}>
+                <View style={styles.colDesc}><Text style={styles.cellDesc}>{item.descripcion}</Text></View>
+                <View style={styles.colQty}><Text style={[styles.cellQty, { textAlign: "right" }]}>{item.cantidad}</Text></View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {items.length === 0 && (
+          <View style={styles.tableHeader}>
+            <View style={styles.colDesc}><Text style={styles.headerText}>Detalle</Text></View>
+            <View style={styles.colQty}><Text style={[styles.headerText, { textAlign: "right" }]}>Cant</Text></View>
+          </View>
+        )}
       </Page>
     </Document>
   );

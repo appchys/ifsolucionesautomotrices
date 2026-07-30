@@ -132,10 +132,7 @@ export default function AgregarItemManualModal({ onClose, onAdd }: AgregarItemMa
           }
           const productoData: Omit<Producto, "id"> = {
             nombre: nombreClean,
-            descripcion: descripcion.trim() || undefined,
             sku: finalSku,
-            categoria: categoria.trim() || undefined,
-            fabricante: fabricante.trim() || undefined,
             unidadMedida: unidadMedida || "Unidad",
             costoBase: numCostoBase,
             margenGanancia: numMargen,
@@ -143,15 +140,20 @@ export default function AgregarItemManualModal({ onClose, onAdd }: AgregarItemMa
             stockActual: numStock,
             precioBase: numPrecioVenta,
           };
+          if (descripcion.trim()) productoData.descripcion = descripcion.trim();
+          if (categoria.trim()) productoData.categoria = categoria.trim();
+          if (fabricante.trim()) productoData.fabricante = fabricante.trim();
+
           createdId = await createProducto(productoData);
         } else {
           const servicioData: Omit<Servicio, "id"> = {
             nombre: nombreClean,
-            descripcion: descripcion.trim() || undefined,
             costoBase: numCostoBase,
             precioBase: numPrecioVenta,
             aplicaIva,
           };
+          if (descripcion.trim()) servicioData.descripcion = descripcion.trim();
+
           createdId = await createServicio(servicioData);
         }
       }
@@ -159,16 +161,18 @@ export default function AgregarItemManualModal({ onClose, onAdd }: AgregarItemMa
       // El precio unitario del ítem de la orden se envía como el valor antes de IVA
       const precioUnitario = numPrecioSinIva;
 
-      await onAdd({
+      const itemToAdd: Omit<ItemOrden, "id" | "ordenId" | "subtotal"> = {
         tipo,
-        productoId: createdId,
-        productoSku: finalSku || undefined,
         productoNombre: nombreClean,
         descripcion: descripcion.trim() || nombreClean,
         cantidad: numCantidad,
         precioUnitario,
         impuestoAplicable: aplicaIva ? 15 : 0,
-      });
+      };
+      if (createdId) itemToAdd.productoId = createdId;
+      if (finalSku) itemToAdd.productoSku = finalSku;
+
+      await onAdd(itemToAdd);
 
       if (conservar) {
         toast.success(`${tipo === "producto" ? "Producto" : "Servicio"} guardado en el catálogo y agregado`);

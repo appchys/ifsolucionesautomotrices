@@ -15,6 +15,7 @@ import {
   deleteOrden,
   getPresupuestoPorIngreso,
   getDatosTaller,
+  getLogoAsBase64Png,
   sendMensajeOrden
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, AppUser, NivelCombustible, ChecklistItem, FotoDiagnostico, DatosTaller } from "@/types";
@@ -508,12 +509,18 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
 
       const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ");
 
+      let tallerConLogo = taller;
+      if (taller?.logoUrl) {
+        const logoBase64 = await getLogoAsBase64Png(taller.logoUrl);
+        if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
+      }
+
       const blob = await pdf(
         <ComprobanteIngresoPDF
           orden={orden}
           cliente={cliente}
           vehiculo={vehiculo}
-          taller={taller}
+          taller={tallerConLogo}
           tecnicoName={tecnicoName}
         />
       ).toBlob();
@@ -547,31 +554,56 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
 
       const tecnicoName = tecnicosAsignados.map(t => t.displayName || t.email).join(", ");
 
+      let tallerConLogo = taller;
+      if (taller?.logoUrl) {
+        const logoBase64 = await getLogoAsBase64Png(taller.logoUrl);
+        if (logoBase64) tallerConLogo = { ...taller, logoUrl: logoBase64 };
+      }
+
       const blob = await pdf(
         <ComprobanteIngresoPDF
           orden={orden}
           cliente={cliente}
           vehiculo={vehiculo}
-          taller={taller}
+          taller={tallerConLogo}
           tecnicoName={tecnicoName}
         />
       ).toBlob();
 
       const url = URL.createObjectURL(blob);
-      
       const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      iframe.style.visibility = "hidden";
+
+      const cleanup = () => {
+        try {
+          if (document.body.contains(iframe)) {
+            document.body.removeChild(iframe);
+          }
+          URL.revokeObjectURL(url);
+        } catch (e) {}
+      };
+
+      iframe.onload = () => {
+        try {
+          if (iframe.contentWindow) {
+            iframe.contentWindow.onafterprint = cleanup;
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          }
+        } catch (e) {
+          console.error("Error al ejecutar impresión:", e);
+        }
+        setTimeout(cleanup, 120000);
+      };
+
       iframe.src = url;
       document.body.appendChild(iframe);
-      
-      iframe.onload = () => {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-          URL.revokeObjectURL(url);
-        }, 1000);
-      };
       
       toast.success("Ventana de impresión abierta", { id: toastId });
     } catch (error) {

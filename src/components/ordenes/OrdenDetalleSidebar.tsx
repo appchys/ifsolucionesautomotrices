@@ -146,8 +146,8 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
   const ivaItems = items.reduce((s, item) => s + item.cantidad * item.precioUnitario * (item.impuestoAplicable / 100), 0);
   const totalBruto = subtotalItems + ivaItems;
   const itemsAgrupados = [
-    { label: "Productos", items: items.filter((item) => item.tipo === "producto") },
-    { label: "Servicios", items: items.filter((item) => item.tipo === "servicio") },
+    { label: "Mano de obra", items: items.filter((item) => item.tipo === "servicio") },
+    { label: "Repuestos", items: items.filter((item) => item.tipo !== "servicio") },
   ];
   const valorProductosDevueltos = devoluciones.reduce((s, devolucion) => s + devolucion.subtotalDevuelto, 0);
   const totalDevuelto = devoluciones.reduce((s, devolucion) => s + devolucion.montoDevuelto, 0);
