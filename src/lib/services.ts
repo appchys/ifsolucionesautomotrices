@@ -2668,6 +2668,32 @@ export async function createCita(data: Omit<Cita, "id">): Promise<string> {
   return docRef.id;
 }
 
+export async function getCitas(): Promise<Cita[]> {
+  const snap = await getDocs(collection(db, "citas"));
+  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cita);
+  return list.sort((a, b) => (a.fecha > b.fecha ? 1 : -1));
+}
+
+export function subscribeCitas(callback: (citas: Cita[]) => void): () => void {
+  const q = query(collection(db, "citas"), orderBy("fecha", "asc"));
+  return onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cita);
+      callback(list);
+    },
+    (err) => {
+      console.error("Error en subscribeCitas:", err);
+      // Fallback sin orderBy por si falta un índice
+      onSnapshot(collection(db, "citas"), (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cita);
+        list.sort((a, b) => (a.fecha > b.fecha ? 1 : -1));
+        callback(list);
+      });
+    }
+  );
+}
+
 export async function getCitasByPresupuesto(presupuestoId: string): Promise<Cita[]> {
   const q = query(
     collection(db, "citas"),

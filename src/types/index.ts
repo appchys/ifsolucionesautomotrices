@@ -407,9 +407,13 @@ export interface Servicio {
   id?: string;
   nombre: string;
   descripcion?: string;
+  codigo?: string;
+  categoria?: string;
   precioBase: number;
   costoBase: number;
   aplicaIva: boolean;
+  duracionMinutos?: number;
+  tiempoEstimado?: string;
   imagenUrl?: string;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;

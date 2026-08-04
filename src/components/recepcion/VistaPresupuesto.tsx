@@ -586,18 +586,26 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
 
   const handleAprobar = async () => {
     if (!orden) return;
-    if (confirm("¿Estás seguro de aprobar este presupuesto?")) {
-      setSaving(true);
-      try {
-        await updateOrden(presupuestoId, { estado: "En Reparación", presupuestoConfirmadoPorCliente: true });
-        setOrden({ ...orden, estado: "En Reparación", presupuestoConfirmadoPorCliente: true });
-        toast.success("Presupuesto aprobado");
-      } catch (err) {
-        console.error(err);
-        toast.error("Error al aprobar");
-      } finally {
-        setSaving(false);
+    const confirmed = window.confirm("¿Deseas aprobar este presupuesto y convertirlo en Orden de Trabajo?");
+    if (!confirmed) return;
+
+    setSaving(true);
+    const toastId = toast.loading("Aprobando presupuesto y creando Orden de Trabajo...");
+    try {
+      const ordenIdResult = await convertirPresupuestoAOrden(presupuestoId);
+      toast.success("Presupuesto aprobado y convertido a Orden de Trabajo con éxito", { id: toastId });
+
+      if (isSidebar) {
+        setPresupuestoSidebarOpen(false);
+        setOrdenSidebarOpen(true, ordenIdResult);
+      } else {
+        router.push(`/ordenes?id=${ordenIdResult}`);
       }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al aprobar el presupuesto", { id: toastId });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1627,14 +1635,27 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                           Agenda reuniones, entregas o revisiones vinculadas a este presupuesto.
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsModalCitaOpen(true)}
-                        className="btn-primary text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer border-0 text-white font-bold"
-                      >
-                        <Plus size={13} />
-                        Agendar cita
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPresupuestoSidebarOpen(false);
+                            router.push("/agenda");
+                          }}
+                          className="text-xs px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-lg flex items-center gap-1.5 cursor-pointer border-0 font-semibold transition-colors"
+                        >
+                          <ExternalLink size={13} />
+                          Ver Agenda General
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsModalCitaOpen(true)}
+                          className="btn-primary text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-1.5 shadow-xs cursor-pointer border-0 text-white font-bold"
+                        >
+                          <Plus size={13} />
+                          Agendar cita
+                        </button>
+                      </div>
                     </div>
 
                     {loadingCitas ? (

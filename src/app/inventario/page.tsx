@@ -2,7 +2,7 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { Plus, Package, Wrench, Edit2, Trash2, Loader2, Image as ImageIcon, X, Check, Tag, DollarSign, Boxes, Truck, Search, Ruler, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import { Plus, Package, Wrench, Edit2, Trash2, Loader2, Image as ImageIcon, X, Check, Tag, DollarSign, Boxes, Truck, Search, Ruler, ArrowDownToLine, ArrowUpFromLine, Clock } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/lib/services";
 import { Producto, Servicio } from "@/types";
 import ProductoDetalleSidebar from "@/components/inventario/ProductoDetalleSidebar";
+
 
 type Tab = "productos" | "servicios";
 type InventarioItem = Producto | Servicio;
@@ -241,6 +242,7 @@ export default function InventarioPage() {
   const [cargando, setCargando] = useState(true);
 
   const [modalOpen, setModalOpen] = useState(false);
+
   const [itemEditando, setItemEditando] = useState<Producto | Servicio | null>(null);
   const [guardando, setGuardando] = useState(false);
   
@@ -587,9 +589,12 @@ export default function InventarioPage() {
           <h1 className="page-title text-base sm:text-lg">Productos y Servicios</h1>
           <p className="page-subtitle text-[11px]">Gestiona tu inventario y catálogo de servicios</p>
         </div>
-        <button onClick={abrirModalNuevo} className="btn-primary btn-sm">
-          <Plus size={15} /> Nuevo {tab === "productos" ? "Producto" : "Servicio"}
-        </button>
+        <div className="flex items-center gap-2">
+
+          <button onClick={abrirModalNuevo} className="btn-primary btn-sm">
+            <Plus size={15} /> Nuevo {tab === "productos" ? "Producto" : "Servicio"}
+          </button>
+        </div>
       </div>
 
       <div className="flex border-b border-[var(--border)] mb-4">
@@ -669,6 +674,7 @@ export default function InventarioPage() {
                   <th className="py-2 px-3 pb-2 font-bold">Nombre</th>
                   <th className="py-2 px-3 pb-2 font-bold">Costo</th>
                   {tab === "productos" && <th className="py-2 px-3 pb-2 font-bold">Margen</th>}
+                  {tab === "servicios" && <th className="py-2 px-3 pb-2 font-bold text-center">Tiempo Est.</th>}
                   <th className="py-2 px-3 pb-2 font-bold">IVA</th>
                   <th className="py-2 px-3 pb-2 font-bold text-right">Precio Venta</th>
                   {tab === "productos" && <th className="py-2 px-3 pb-2 font-bold">Stock</th>}
@@ -678,7 +684,7 @@ export default function InventarioPage() {
               <tbody>
                 {itemsMostrados.length === 0 ? (
                   <tr>
-                    <td colSpan={tab === "productos" ? 9 : 6} className="text-center py-8 text-[var(--text-muted)]">
+                    <td colSpan={tab === "productos" ? 9 : 7} className="text-center py-8 text-[var(--text-muted)]">
                       {tab === "productos" && (busquedaProducto || filtroCategoria || filtroUnidad)
                         ? "No hay productos que coincidan con la busqueda o filtros."
                         : `No hay ${tab} registrados.`}
@@ -870,10 +876,31 @@ export default function InventarioPage() {
                         )}
                       </td>
                       <td className="py-1.5 px-3 text-xs">
-                        <span className="font-semibold text-[var(--text-primary)]">{item.nombre}</span>
-                        {item.descripcion && <span className="text-[var(--text-muted)] ml-1.5 truncate max-w-[150px] inline-block align-bottom text-[11px]">{item.descripcion}</span>}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-[var(--text-primary)]">{item.nombre}</span>
+                          {!isProducto(item) && item.codigo && (
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[var(--bg-body)] text-[var(--text-muted)] border border-[var(--border)]">
+                              {item.codigo}
+                            </span>
+                          )}
+                          {!isProducto(item) && item.categoria && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium">
+                              {item.categoria}
+                            </span>
+                          )}
+                        </div>
+                        {item.descripcion && <span className="text-[var(--text-muted)] block truncate max-w-[250px] text-[11px] mt-0.5">{item.descripcion}</span>}
                       </td>
                       <td className="py-1.5 px-3 text-xs font-mono">${Number(item.costoBase).toFixed(2)}</td>
+                      <td className="py-1.5 px-3 text-xs text-center font-medium">
+                        {!isProducto(item) && item.tiempoEstimado ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                            <Clock size={12} /> {item.tiempoEstimado}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--text-muted)]">-</span>
+                        )}
+                      </td>
                       <td className="py-1.5 px-3">
                         <button
                           type="button"
@@ -1206,6 +1233,8 @@ export default function InventarioPage() {
           </div>
         )}
       </Modal>
+
+
     </AppShell>
   );
 }

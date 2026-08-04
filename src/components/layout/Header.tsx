@@ -1,12 +1,10 @@
 "use client";
-import { Menu, Bell, Search, MessageCircle } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import { useUIStore, useAuthStore } from "@/store";
-import { useChatStore } from "@/store/chatStore";
 
 export default function Header() {
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const { user } = useAuthStore();
-  const { unreadCount } = useChatStore();
 
   return (
     <header
@@ -45,24 +43,6 @@ export default function Header() {
       </div>
 
       <div className="flex items-center gap-3">
-        <button className="btn-ghost btn-icon relative">
-          <Bell size={18} />
-          <span
-            className="absolute top-1 right-1 w-2 h-2 rounded-full"
-            style={{ background: "var(--accent)" }}
-          />
-        </button>
-
-        <button className="btn-ghost btn-icon relative" title="Mensajes de chat">
-          <MessageCircle size={18} />
-          {unreadCount > 0 && (
-            <span
-              className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center px-1 shadow-sm"
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
-          )}
-        </button>
 
         <div className="flex items-center gap-2.5">
           <div

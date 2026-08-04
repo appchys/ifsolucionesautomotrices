@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ClipboardList, Columns3, Users, Car, CreditCard,
   Settings, Wrench, LogOut, Package, ShoppingCart, BarChart3,
-  FileDown, FileText, Receipt, Menu, MessageSquare, Vault, Hammer
+  FileDown, FileText, Receipt, Menu, MessageSquare, Vault, Hammer, Calendar
 } from "lucide-react";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -25,9 +25,10 @@ const navGroups = [
   {
     id: "g2",
     items: [
+      { href: "/agenda", label: "Agenda y Citas", icon: Calendar, roles: ["admin","recepcion","tecnico","contador"] },
       { href: "/ingresos", label: "Ingresos", icon: FileDown, roles: ["admin","recepcion"] },
       { href: "/presupuestos", label: "Presupuestos", icon: FileText, roles: ["admin","recepcion"] },
-      { href: "/ordenes", label: "Órdenes", icon: Wrench, roles: ["admin","recepcion","tecnico","contador"], colorClass: "text-blue-600 dark:text-blue-400" },
+      { href: "/ordenes", label: "Órdenes", icon: Wrench, roles: ["admin","recepcion","tecnico","contador"] },
       { href: "/ventas", label: "Ventas", icon: Receipt, roles: ["admin","recepcion","contador"] },
     ]
   },
