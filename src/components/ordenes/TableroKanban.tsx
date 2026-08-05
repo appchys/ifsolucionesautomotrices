@@ -4,12 +4,12 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { 
   subscribeOrdenes, 
-  getClientes, 
-  getVehiculos, 
+  subscribeClientes, 
+  subscribeVehiculos, 
+  subscribeTotalesItemsMap, 
+  subscribeTotalesPagosMap, 
   updateEstadoOrden, 
   convertirIngresoAOrden,
-  getItemsOrden,
-  getPagos
 } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo, EstadoOrden, ItemOrden, Pago } from "@/types";
 import { 
@@ -168,25 +168,36 @@ export default function TableroKanban() {
   // Columnas colapsadas por el usuario
   const [collapsedCols, setCollapsedCols] = useState<Record<string, boolean>>({});
 
-  // Cargar relaciones de clientes y vehículos
-  const loadRelations = useCallback(async () => {
-    try {
-      const [cList, vList] = await Promise.all([getClientes(), getVehiculos()]);
-      const cMap: Record<string, Cliente> = {};
-      const vMap: Record<string, Vehiculo> = {};
-      cList.forEach(c => { if (c.id) cMap[c.id] = c; });
-      vList.forEach(v => { if (v.id) vMap[v.id] = v; });
-      setClientesMap(cMap);
-      setVehiculosMap(vMap);
-    } catch (err) {
-      console.error("Error cargando clientes y vehiculos en Tablero", err);
-    }
-  }, []);
+  const [totalesItemsMap, setTotalesItemsMap] = useState<Record<string, number>>({});
+  const [totalesPagosMap, setTotalesPagosMap] = useState<Record<string, number>>({});
 
-  // Suscripción a los datos de Firestore
+  // Suscripción reactiva en tiempo real a clientes, vehículos, órdenes, ítems y pagos
   useEffect(() => {
-    loadRelations().catch(console.error);
-    const unsub = subscribeOrdenes(
+    const unsubClientes = subscribeClientes((cList) => {
+      const cMap: Record<string, Cliente> = {};
+      cList.forEach((c) => {
+        if (c.id) cMap[c.id] = c;
+      });
+      setClientesMap(cMap);
+    });
+
+    const unsubVehiculos = subscribeVehiculos((vList) => {
+      const vMap: Record<string, Vehiculo> = {};
+      vList.forEach((v) => {
+        if (v.id) vMap[v.id] = v;
+      });
+      setVehiculosMap(vMap);
+    });
+
+    const unsubItems = subscribeTotalesItemsMap((itemsMap) => {
+      setTotalesItemsMap(itemsMap);
+    });
+
+    const unsubPagos = subscribeTotalesPagosMap((pagosMap) => {
+      setTotalesPagosMap(pagosMap);
+    });
+
+    const unsubOrdenes = subscribeOrdenes(
       (data) => {
         setAllDocs(data);
         setLoading(false);
@@ -197,52 +208,29 @@ export default function TableroKanban() {
         setLoading(false);
       }
     );
-    return () => unsub();
-  }, [loadRelations]);
 
-  // Cargar valores financieros de las órdenes de manera reactiva/dinámica
+    return () => {
+      unsubClientes();
+      unsubVehiculos();
+      unsubItems();
+      unsubPagos();
+      unsubOrdenes();
+    };
+  }, []);
+
+  // Calcular mapa de valores financieros en tiempo real sin peticiones extra
   useEffect(() => {
     if (allDocs.length === 0) return;
-    
-    // Obtener sólo las órdenes que no tenemos cargadas o cuyas actualizaciones requieran recálculo
-    const fetchValores = async () => {
-      const promesas = allDocs.map(async (o) => {
-        if (!o.id) return null;
-        try {
-          const [items, pagos] = await Promise.all([
-            getItemsOrden(o.id),
-            getPagos(o.id)
-          ]);
-          
-          const subtotal = items.reduce((acc, it) => acc + it.precioUnitario * it.cantidad, 0);
-          const iva = items.reduce((acc, it) => acc + it.precioUnitario * it.cantidad * (it.impuestoAplicable / 100), 0);
-          const total = subtotal + iva;
-          const abonado = pagos.reduce((acc, p) => acc + (p.montoBase ?? p.monto), 0);
-          const saldo = Math.max(0, total - abonado);
-          
-          return { id: o.id, total, abonado, saldo };
-        } catch (e) {
-          console.error(`Error calculando valores para orden ${o.id}`, e);
-          return { id: o.id, total: 0, abonado: 0, saldo: 0 };
-        }
-      });
-
-      const res = await Promise.all(promesas);
-      const nuevoMapa: Record<string, { total: number; abonado: number; saldo: number }> = {};
-      res.forEach(item => {
-        if (item) {
-          nuevoMapa[item.id] = {
-            total: item.total,
-            abonado: item.abonado,
-            saldo: item.saldo
-          };
-        }
-      });
-      setOrdenesValores(nuevoMapa);
-    };
-
-    fetchValores().catch(console.error);
-  }, [allDocs]);
+    const nuevoMapa: Record<string, { total: number; abonado: number; saldo: number }> = {};
+    allDocs.forEach((o) => {
+      if (!o.id) return;
+      const total = totalesItemsMap[o.id] || 0;
+      const abonado = totalesPagosMap[o.id] || 0;
+      const saldo = Math.max(0, total - abonado);
+      nuevoMapa[o.id] = { total, abonado, saldo };
+    });
+    setOrdenesValores(nuevoMapa);
+  }, [allDocs, totalesItemsMap, totalesPagosMap]);
 
   // Calcular fecha transcurrida
   const getDiasTranscurridos = (createdAtVal: any) => {

@@ -675,6 +675,52 @@ export function subscribeOrdenes(
   );
 }
 
+
+
+export function subscribeTotalesItemsMap(
+  callback: (totalesMap: Record<string, number>) => void,
+  onError?: (error: Error) => void
+): () => void {
+  return onSnapshot(
+    collectionGroup(db, "itemsOrden"),
+    (snap) => {
+      const map: Record<string, number> = {};
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        const parentId = docSnap.ref.parent.parent?.id || data.ordenId;
+        if (!parentId) return;
+        const totalItem =
+          (Number(data.precioUnitario) || 0) *
+          (Number(data.cantidad) || 0) *
+          (1 + (Number(data.impuestoAplicable) || 0) / 100);
+        map[parentId] = (map[parentId] || 0) + totalItem;
+      });
+      callback(map);
+    },
+    onError
+  );
+}
+
+export function subscribeTotalesPagosMap(
+  callback: (pagosMap: Record<string, number>) => void,
+  onError?: (error: Error) => void
+): () => void {
+  return onSnapshot(
+    collection(db, "pagos"),
+    (snap) => {
+      const map: Record<string, number> = {};
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (!data.ordenId) return;
+        const monto = Number(data.montoBase ?? data.monto) || 0;
+        map[data.ordenId] = (map[data.ordenId] || 0) + monto;
+      });
+      callback(map);
+    },
+    onError
+  );
+}
+
 type TipoNumeroDocumento = "ingreso" | "orden" | "cotizacion";
 
 async function getProximoNumeroDocumento(tipo: TipoNumeroDocumento): Promise<number> {
@@ -863,14 +909,79 @@ export async function convertirPresupuestoAOrden(presupuestoId: string): Promise
     return ingresoOrigen.id;
   }
 
-  // 2. Si el presupuesto fue creado directamente en primer lugar:
-  await updateOrden(presupuestoId, {
-    esCotizacion: false,
-    estado: "En Reparación",
+  // 2. Si el presupuesto fue creado directamente:
+  // Marcar el presupuesto como aprobado (mantiene esCotizacion: true para seguir en /presupuestos)
+  await updateDoc(presupuestoRef, {
     presupuestoConfirmadoPorCliente: true,
+    updatedAt: serverTimestamp(),
   });
 
-  return presupuestoId;
+  // Si ya existía una orden de trabajo vinculada anteriormente, devolver esa orden
+  const ordenExistente = await getOrdenVinculadaAPresupuesto(presupuesto);
+  if (ordenExistente?.id && ordenExistente.id !== presupuestoId) {
+    return ordenExistente.id;
+  }
+
+  // Crear un nuevo documento de Orden de Trabajo en ordenesTrabajo
+  const numeroOrden = await getProximoNumeroDocumento("orden");
+  const nuevaOrdenData: Omit<OrdenTrabajo, "id"> = {
+    vehiculoId: presupuesto.vehiculoId,
+    clienteId: presupuesto.clienteId,
+    numero: numeroOrden,
+    numeroOrden: numeroOrden,
+    numeroCotizacion: presupuesto.numeroCotizacion || presupuesto.numero,
+    presupuestoId: presupuestoId,
+    estado: "En Reparación",
+    tipoServicio: presupuesto.tipoServicio || "Mantenimiento",
+    motivo: presupuesto.motivo || `Presupuesto #PRE-${String(presupuesto.numeroCotizacion || presupuesto.numero || 0).padStart(4, "0")} aprobado`,
+    kilometrajeIngreso: presupuesto.kilometrajeIngreso || 0,
+    nivelCombustible: presupuesto.nivelCombustible || "1/4",
+    checklistInventario: presupuesto.checklistInventario || [],
+    inspeccionVisual: presupuesto.inspeccionVisual || { abolladuras: [], rayones: [], roturas: [], notas: "" },
+    presupuestoConfirmadoPorCliente: true,
+    esCotizacion: false,
+    createdAt: serverTimestamp() as unknown as Timestamp,
+    updatedAt: serverTimestamp() as unknown as Timestamp,
+  };
+
+  const nuevaOrdenRef = await addDoc(collection(db, "ordenesTrabajo"), removeUndefinedFields(nuevaOrdenData));
+  const nuevaOrdenId = nuevaOrdenRef.id;
+
+  // Copiar ítems del presupuesto a la nueva orden de trabajo
+  const itemsPresupuesto = await getItemsOrden(presupuestoId);
+  if (itemsPresupuesto.length > 0) {
+    const batch = writeBatch(db);
+    itemsPresupuesto.forEach((item) => {
+      const newItemRef = doc(collection(db, "ordenesTrabajo", nuevaOrdenId, "itemsOrden"));
+      const { id, ...itemData } = item;
+      batch.set(newItemRef, {
+        ...itemData,
+        ordenId: nuevaOrdenId,
+        createdAt: serverTimestamp(),
+      });
+    });
+    await batch.commit();
+
+    // Descontar stock para productos del presupuesto
+    try {
+      await runTransaction(db, async (transaction) => {
+        await aplicarMovimientosStockOrden(
+          transaction,
+          itemsPresupuesto
+            .filter(itemDescuentaStock)
+            .map((item) => ({
+              item,
+              cantidadDelta: -getCantidadStock(item.cantidad),
+              nota: `Aprobación de cotización #PRE-${String(presupuesto.numeroCotizacion || presupuesto.numero || 0).padStart(4, "0")} a orden #OT-${String(numeroOrden).padStart(4, "0")}`,
+            }))
+        );
+      });
+    } catch (stockErr) {
+      console.error("Error al descontar stock al aprobar presupuesto:", stockErr);
+    }
+  }
+
+  return nuevaOrdenId;
 }
 
 /** Busca presupuestos activos (cotización) para un vehículo específico. */
@@ -888,19 +999,21 @@ export async function getPresupuestosPendientesByVehiculo(vehiculoId: string): P
 
 /** Busca la Orden de Trabajo vinculada a un Presupuesto (si existe). */
 export async function getOrdenVinculadaAPresupuesto(presupuesto: OrdenTrabajo): Promise<OrdenTrabajo | null> {
-  // 1. Si el presupuesto mismo fue convertido a orden (esCotizacion === false)
+  if (!presupuesto.id) return null;
+
+  // 1. Si el presupuesto mismo fue convertido a orden en esquema previo (esCotizacion === false)
   if (presupuesto.esCotizacion === false) {
     return presupuesto;
   }
 
-  // 2. Si proviene de un ingreso que fue convertido a orden (numeroOrden !== undefined)
+  // 2. Si proviene de un ingreso que fue convertido a orden
   const ingresoOrigen = await getIngresoOrigenDePresupuesto(presupuesto);
   if (ingresoOrigen && (ingresoOrigen.numeroOrden || (ingresoOrigen.esCotizacion === false && ingresoOrigen.numero))) {
     return ingresoOrigen;
   }
 
-  // 3. Si existe alguna orden de trabajo para el mismo vehículo vinculada
-  if (presupuesto.vehiculoId) {
+  // 3. Buscar si existe alguna orden de trabajo vinculada por presupuestoId o por vehículo
+  if (presupuesto.vehiculoId || presupuesto.id) {
     const numCotizacion = presupuesto.numeroCotizacion || presupuesto.numero;
     const snap = await getDocs(
       query(
@@ -912,6 +1025,7 @@ export async function getOrdenVinculadaAPresupuesto(presupuesto: OrdenTrabajo): 
     const ordenes = snap.docs.map((d) => ({ id: d.id, ...d.data() } as OrdenTrabajo));
     const numStr = numCotizacion ? String(numCotizacion) : null;
     const found = ordenes.find((o) => 
+      (presupuesto.id && o.presupuestoId === presupuesto.id) ||
       (numStr && String(o.motivo || "").includes(numStr)) ||
       (o.numeroIngreso && String(presupuesto.motivo || "").includes(String(o.numeroIngreso))) ||
       (presupuesto.presupuestoConfirmadoPorCliente && o.estado !== "Borrador")

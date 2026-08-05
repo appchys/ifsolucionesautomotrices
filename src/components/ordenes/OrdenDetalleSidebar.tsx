@@ -18,6 +18,7 @@ import {
   deleteOrden,
   createDevolucion,
   getDevolucionesByOrden,
+  convertirPresupuestoAOrden,
 } from "@/lib/services";
 import {
   OrdenTrabajo,
@@ -67,6 +68,7 @@ import {
   METODOS_PAGO_ORDEN,
 } from "@/lib/orderPayments";
 import { getMergedChecklist } from "@/lib/checklist";
+import { useUIStore } from "@/store";
 
 const ESTADOS: EstadoOrden[] = [
   "Borrador",
@@ -264,9 +266,10 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
   const convertirAOrden = async () => {
     setSavingInforme(true);
     try {
-      await updateOrden(ordenId, { esCotizacion: false });
-      setOrden((prev) => (prev ? { ...prev, esCotizacion: false } : prev));
-      toast.success("Cotizacion convertida a Orden");
+      const nuevaOrdenId = await convertirPresupuestoAOrden(ordenId);
+      toast.success("Cotización aprobada y convertida a Orden de Trabajo");
+      const { setOrdenSidebarOpen } = useUIStore.getState();
+      setOrdenSidebarOpen(true, nuevaOrdenId);
       onUpdate?.();
     } catch (error) {
       console.error(error);

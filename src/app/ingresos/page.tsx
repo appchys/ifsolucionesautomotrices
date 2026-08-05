@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState, Suspense } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { subscribeOrdenes, getClientes, getVehiculos } from "@/lib/services";
+import { subscribeOrdenes, subscribeClientes, subscribeVehiculos } from "@/lib/services";
 import { OrdenTrabajo, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -42,28 +42,25 @@ function IngresosPageContent() {
     }
   }, [idParam, setIngresoSidebarOpen]);
 
-  const loadRelations = useCallback(async () => {
-    try {
-      const [cList, vList] = await Promise.all([getClientes(), getVehiculos()]);
-      const cMap: Record<string, Cliente> = {};
-      const vMap: Record<string, Vehiculo> = {};
-      cList.forEach(c => { if (c.id) cMap[c.id] = c; });
-      vList.forEach(v => { if (v.id) vMap[v.id] = v; });
-      setClientesMap(cMap);
-      setVehiculosMap(vMap);
-    } catch (err) {
-      console.error("Error cargando clientes y vehiculos", err);
-    }
-  }, []);
-
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadRelations();
-    }, 0);
-    const unsub = subscribeOrdenes(
+    const unsubClientes = subscribeClientes((cList) => {
+      const cMap: Record<string, Cliente> = {};
+      cList.forEach((c) => {
+        if (c.id) cMap[c.id] = c;
+      });
+      setClientesMap(cMap);
+    });
+
+    const unsubVehiculos = subscribeVehiculos((vList) => {
+      const vMap: Record<string, Vehiculo> = {};
+      vList.forEach((v) => {
+        if (v.id) vMap[v.id] = v;
+      });
+      setVehiculosMap(vMap);
+    });
+
+    const unsubOrdenes = subscribeOrdenes(
       (data) => {
-        // En una app real filtraríamos por tipo o estado si es necesario
-        // Por ahora cargamos las órdenes asumiendo que representan "Ingresos"
         setOrdenes(data);
         setLoading(false);
       },
@@ -72,11 +69,13 @@ function IngresosPageContent() {
         setLoading(false);
       }
     );
+
     return () => {
-      window.clearTimeout(timer);
-      unsub();
+      unsubClientes();
+      unsubVehiculos();
+      unsubOrdenes();
     };
-  }, [loadRelations]);
+  }, []);
 
   const ordenesConDetalle = ordenes.map(o => ({
     ...o,

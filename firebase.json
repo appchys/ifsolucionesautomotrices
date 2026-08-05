@@ -12,17 +12,10 @@
       "ignore": [
         "node_modules",
         ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "functions"
-      ]
-    },
-    {
-      "backendId": "ifsolucionesautomotrices",
-      "rootDir": "/",
-      "ignore": [
-        "node_modules",
-        ".git",
+        ".next",
+        ".gemini",
+        ".agents",
+        "scripts",
         "firebase-debug.log",
         "firebase-debug.*.log",
         "functions"
@@ -34,7 +27,15 @@
     "ignore": [
       "firebase.json",
       "**/.*",
-      "**/node_modules/**"
+      "**/.*/**",
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/.gemini/**",
+      "**/.git/**",
+      "**/.agents/**",
+      "**/scripts/**",
+      "firebase-debug.log",
+      "firebase-debug.*.log"
     ],
     "frameworksBackend": {}
   },

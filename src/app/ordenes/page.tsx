@@ -1,14 +1,13 @@
 "use client";
-import { useCallback, useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { deleteOrden, subscribeOrdenes, updateEstadoOrden, getClientes, getVehiculos } from "@/lib/services";
+import { deleteOrden, subscribeOrdenes, updateEstadoOrden, subscribeClientes, subscribeVehiculos } from "@/lib/services";
 import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, MoreVertical, Plus, Search, Trash2, Wrench } from "lucide-react";
+import { Loader2, MoreVertical, Search, Trash2, Wrench } from "lucide-react";
 import { toast } from "react-hot-toast";
-import NuevaOrdenSidebar from "@/components/recepcion/NuevaOrdenSidebar";
 import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
 import { useUIStore } from "@/store";
 import BotonNuevoPopover from "@/components/ordenes/BotonNuevoPopover";
@@ -44,7 +43,6 @@ function OrdenesPageContent() {
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoOrden | "Todos">("Todos");
   const [tipoNuevo, setTipoNuevo] = useState<"ingreso" | "presupuesto" | "orden" | null>(null);
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<MenuPosition | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const router = useRouter();
@@ -58,25 +56,24 @@ function OrdenesPageContent() {
     }
   }, [idParam, setOrdenSidebarOpen]);
 
-  const loadRelations = useCallback(async () => {
-    try {
-      const [cList, vList] = await Promise.all([getClientes(), getVehiculos()]);
-      const cMap: Record<string, Cliente> = {};
-      const vMap: Record<string, Vehiculo> = {};
-      cList.forEach(c => { if (c.id) cMap[c.id] = c; });
-      vList.forEach(v => { if (v.id) vMap[v.id] = v; });
-      setClientesMap(cMap);
-      setVehiculosMap(vMap);
-    } catch (err) {
-      console.error("Error cargando clientes y vehiculos", err);
-    }
-  }, []);
-
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadRelations();
-    }, 0);
-    const unsub = subscribeOrdenes(
+    const unsubClientes = subscribeClientes((cList) => {
+      const cMap: Record<string, Cliente> = {};
+      cList.forEach((c) => {
+        if (c.id) cMap[c.id] = c;
+      });
+      setClientesMap(cMap);
+    });
+
+    const unsubVehiculos = subscribeVehiculos((vList) => {
+      const vMap: Record<string, Vehiculo> = {};
+      vList.forEach((v) => {
+        if (v.id) vMap[v.id] = v;
+      });
+      setVehiculosMap(vMap);
+    });
+
+    const unsubOrdenes = subscribeOrdenes(
       (data) => {
         setOrdenes(data);
         setLoading(false);
@@ -87,11 +84,13 @@ function OrdenesPageContent() {
         setLoading(false);
       }
     );
+
     return () => {
-      window.clearTimeout(timer);
-      unsub();
+      unsubClientes();
+      unsubVehiculos();
+      unsubOrdenes();
     };
-  }, [loadRelations]);
+  }, []);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -101,25 +100,27 @@ function OrdenesPageContent() {
     return () => document.removeEventListener("click", closeMenu);
   }, [openMenu]);
 
-  const ordenesConDetalle = ordenes.map(o => ({
-    ...o,
-    cliente: clientesMap[o.clienteId] || o.cliente,
-    vehiculo: vehiculosMap[o.vehiculoId] || o.vehiculo
-  }));
-
-  const filtered = ordenesConDetalle.filter((o) => {
-    // Only show documents that have been converted to orden (have numeroOrden)
-    if (!o.numeroOrden) return false;
-    const matchEstado = filtroEstado === "Todos" || o.estado === filtroEstado;
-    const term = search.toLowerCase();
-    const matchSearch =
-      !search ||
-      o.vehiculo?.placa?.toLowerCase().includes(term) ||
-      o.cliente?.nombre?.toLowerCase().includes(term) ||
-      o.cliente?.apellido?.toLowerCase().includes(term) ||
-      String(getNumeroDocumento(o) ?? "").includes(term);
-    return matchEstado && matchSearch;
-  });
+  // Lista filtrada memorizada con useMemo
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return ordenes
+      .filter((o) => Boolean(o.numeroOrden))
+      .map((o) => ({
+        ...o,
+        cliente: clientesMap[o.clienteId] || o.cliente,
+        vehiculo: vehiculosMap[o.vehiculoId] || o.vehiculo,
+      }))
+      .filter((o) => {
+        const matchEstado = filtroEstado === "Todos" || o.estado === filtroEstado;
+        const matchSearch =
+          !term ||
+          o.vehiculo?.placa?.toLowerCase().includes(term) ||
+          o.cliente?.nombre?.toLowerCase().includes(term) ||
+          o.cliente?.apellido?.toLowerCase().includes(term) ||
+          String(getNumeroDocumento(o) ?? "").includes(term);
+        return matchEstado && matchSearch;
+      });
+  }, [ordenes, clientesMap, vehiculosMap, filtroEstado, search]);
 
   const cambiarEstado = async (id: string, estado: EstadoOrden) => {
     await updateEstadoOrden(id, estado);
@@ -139,7 +140,6 @@ function OrdenesPageContent() {
     try {
       await deleteOrden(id);
       toast.success("Orden eliminada");
-      void loadRelations();
     } catch (error) {
       console.error(error);
       toast.error("No se pudo eliminar la orden");

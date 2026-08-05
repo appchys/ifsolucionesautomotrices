@@ -1,15 +1,15 @@
 "use client";
-import { useCallback, useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
 import AppShell from "@/components/layout/AppShell";
 import {
   subscribeOrdenes,
-  getClientes,
-  getVehiculos,
-  getItemsOrden,
+  subscribeClientes,
+  subscribeVehiculos,
+  subscribeTotalesItemsMap,
   deleteOrden,
   convertirPresupuestoAOrden,
 } from "@/lib/services";
-import { OrdenTrabajo, Cliente, Vehiculo, ItemOrden } from "@/types";
+import { OrdenTrabajo, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -47,16 +47,13 @@ type MenuPosition = { id: string; top: number; left: number };
 
 function PresupuestosPageContent() {
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
+  const [ordenesReales, setOrdenesReales] = useState<OrdenTrabajo[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, Cliente>>({});
-  const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>(
-    {}
-  );
+  const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>({});
   const [totalesMap, setTotalesMap] = useState<Record<string, number>>({});
-  const [ordenesVinculadasMap, setOrdenesVinculadasMap] = useState<Record<string, OrdenTrabajo>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filtroActivo, setFiltroActivo] =
-    useState<FiltroPresupuesto>("Todos");
+  const [filtroActivo, setFiltroActivo] = useState<FiltroPresupuesto>("Todos");
   const [showModal, setShowModal] = useState(false);
   const [openMenu, setOpenMenu] = useState<MenuPosition | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -72,93 +69,46 @@ function PresupuestosPageContent() {
     }
   }, [idParam, setPresupuestoSidebarOpen]);
 
-  const loadRelations = useCallback(async () => {
-    try {
-      const [cList, vList] = await Promise.all([
-        getClientes(),
-        getVehiculos(),
-      ]);
+  useEffect(() => {
+    const unsubClientes = subscribeClientes((cList) => {
       const cMap: Record<string, Cliente> = {};
-      const vMap: Record<string, Vehiculo> = {};
       cList.forEach((c) => {
         if (c.id) cMap[c.id] = c;
       });
+      setClientesMap(cMap);
+    });
+
+    const unsubVehiculos = subscribeVehiculos((vList) => {
+      const vMap: Record<string, Vehiculo> = {};
       vList.forEach((v) => {
         if (v.id) vMap[v.id] = v;
       });
-      setClientesMap(cMap);
       setVehiculosMap(vMap);
-    } catch (err) {
-      console.error("Error cargando clientes y vehiculos", err);
-    }
-  }, []);
-
-  // Load item totals for each presupuesto
-  const loadTotales = useCallback(async (presupuestos: OrdenTrabajo[]) => {
-    const entries = await Promise.all(
-      presupuestos.map(async (p) => {
-        if (!p.id) return null;
-        try {
-          const items = await getItemsOrden(p.id);
-          const total = items.reduce(
-            (acc, it) =>
-              acc +
-              it.precioUnitario * it.cantidad * (1 + it.impuestoAplicable / 100),
-            0
-          );
-          return [p.id, total] as [string, number];
-        } catch {
-          return [p.id, 0] as [string, number];
-        }
-      })
-    );
-    const map: Record<string, number> = {};
-    entries.forEach((e) => {
-      if (e) map[e[0]] = e[1];
     });
-    setTotalesMap(map);
-  }, []);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadRelations();
-    }, 0);
-    const unsub = subscribeOrdenes(
+    const unsubTotales = subscribeTotalesItemsMap((totales) => {
+      setTotalesMap(totales);
+    });
+
+    const unsubOrdenes = subscribeOrdenes(
       (data) => {
-        const presupuestos = data.filter((o) => o.esCotizacion === true);
-        const ordenesReales = data.filter((o) => o.esCotizacion !== true);
-
-        const vincMap: Record<string, OrdenTrabajo> = {};
-        presupuestos.forEach((p) => {
-          if (!p.id) return;
-          const numCot = p.numeroCotizacion || p.numero;
-          const numStr = numCot ? String(numCot) : null;
-          const match = ordenesReales.find(
-            (o) =>
-              (numStr && String(o.motivo || "").includes(numStr)) ||
-              (o.vehiculoId === p.vehiculoId && p.presupuestoConfirmadoPorCliente && o.estado !== "Borrador") ||
-              (o.numeroIngreso && String(p.motivo || "").includes(String(o.numeroIngreso)))
-          );
-          if (match) {
-            vincMap[p.id] = match;
-          }
-        });
-        setOrdenesVinculadasMap(vincMap);
-
-        setOrdenes(presupuestos);
+        setOrdenes(data.filter((o) => o.esCotizacion === true));
+        setOrdenesReales(data.filter((o) => o.esCotizacion !== true));
         setLoading(false);
-        void loadTotales(presupuestos);
       },
       (err) => {
         console.error("Error cargando presupuestos", err);
         setLoading(false);
       }
     );
+
     return () => {
-      window.clearTimeout(timer);
-      unsub();
+      unsubClientes();
+      unsubVehiculos();
+      unsubTotales();
+      unsubOrdenes();
     };
-  }, [loadRelations, loadTotales]);
+  }, []);
 
   useEffect(() => {
     if (!openMenu) return;
@@ -167,36 +117,76 @@ function PresupuestosPageContent() {
     return () => document.removeEventListener("click", closeMenu);
   }, [openMenu]);
 
-  const presupuestosConDetalle = ordenes.map((o) => ({
-    ...o,
-    cliente: clientesMap[o.clienteId] || o.cliente,
-    vehiculo: vehiculosMap[o.vehiculoId] || o.vehiculo,
-  }));
+  // Mapa de órdenes vinculadas memorizado
+  const ordenesVinculadasMap = useMemo(() => {
+    const map: Record<string, OrdenTrabajo> = {};
+    ordenes.forEach((p) => {
+      if (!p.id) return;
+      const numCot = p.numeroCotizacion || p.numero;
+      const numStr = numCot ? String(numCot) : null;
+      const match = ordenesReales.find(
+        (o) =>
+          o.presupuestoId === p.id ||
+          (numStr && String(o.motivo || "").includes(numStr)) ||
+          (o.vehiculoId === p.vehiculoId && p.presupuestoConfirmadoPorCliente && o.estado !== "Borrador") ||
+          (o.numeroIngreso && String(p.motivo || "").includes(String(o.numeroIngreso)))
+      );
+      if (match) {
+        map[p.id] = match;
+      }
+    });
+    return map;
+  }, [ordenes, ordenesReales]);
 
-  const getEstadoPresupuesto = (o: OrdenTrabajo) => {
-    if (o.presupuestoConfirmadoPorCliente) return "Aprobado";
-    return "Pendiente";
-  };
+  // Lista filtrada y enriquecida con useMemo
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return ordenes
+      .map((o) => ({
+        ...o,
+        cliente: clientesMap[o.clienteId] || o.cliente,
+        vehiculo: vehiculosMap[o.vehiculoId] || o.vehiculo,
+      }))
+      .filter((o) => {
+        const estado = o.presupuestoConfirmadoPorCliente ? "Aprobado" : "Pendiente";
+        const matchEstado = filtroActivo === "Todos" || estado === filtroActivo;
+        const matchSearch =
+          !term ||
+          o.vehiculo?.placa?.toLowerCase().includes(term) ||
+          o.cliente?.nombre?.toLowerCase().includes(term) ||
+          o.cliente?.apellido?.toLowerCase().includes(term) ||
+          String(o.numeroCotizacion ?? o.numero ?? "").includes(term);
+        return matchEstado && matchSearch;
+      })
+      .sort((a, b) => {
+        const timeA = toDate(a.createdAt)?.getTime() || 0;
+        const timeB = toDate(b.createdAt)?.getTime() || 0;
+        return timeB - timeA;
+      });
+  }, [ordenes, clientesMap, vehiculosMap, filtroActivo, search]);
 
-  const filtered = presupuestosConDetalle
-    .filter((o) => {
-      const estado = getEstadoPresupuesto(o);
-      const matchEstado = filtroActivo === "Todos" || estado === filtroActivo;
-      const term = search.toLowerCase();
-      const matchSearch =
-        !search ||
-        o.vehiculo?.placa?.toLowerCase().includes(term) ||
-        o.cliente?.nombre?.toLowerCase().includes(term) ||
-        o.cliente?.apellido?.toLowerCase().includes(term) ||
-        String(o.numeroCotizacion ?? o.numero ?? "").includes(term);
-      return matchEstado && matchSearch;
-    })
-    .sort((a, b) => {
-      const timeA = toDate(a.createdAt)?.getTime() || 0;
-      const timeB = toDate(b.createdAt)?.getTime() || 0;
-      return timeB - timeA;
+  // Estadísticas calculadas en una sola pasada con useMemo
+  const { totalPresupuestos, pendientes, aprobados, montoTotal } = useMemo(() => {
+    let pend = 0;
+    let aprob = 0;
+    let monto = 0;
+
+    filtered.forEach((o) => {
+      if (o.presupuestoConfirmadoPorCliente) {
+        aprob++;
+      } else {
+        pend++;
+      }
+      monto += totalesMap[o.id!] || 0;
     });
 
+    return {
+      totalPresupuestos: filtered.length,
+      pendientes: pend,
+      aprobados: aprob,
+      montoTotal: monto,
+    };
+  }, [filtered, totalesMap]);
   const crearOrdenDesdePresupuesto = async (orden: OrdenTrabajo) => {
     const id = orden.id;
     if (!id || convertingId) return;
@@ -242,19 +232,6 @@ function PresupuestosPageContent() {
       setDeletingId(null);
     }
   };
-
-  // Summary stats
-  const totalPresupuestos = filtered.length;
-  const pendientes = filtered.filter(
-    (o) => !o.presupuestoConfirmadoPorCliente
-  ).length;
-  const aprobados = filtered.filter(
-    (o) => o.presupuestoConfirmadoPorCliente
-  ).length;
-  const montoTotal = filtered.reduce(
-    (acc, o) => acc + (totalesMap[o.id!] || 0),
-    0
-  );
 
   return (
     <AppShell>
@@ -393,7 +370,7 @@ function PresupuestosPageContent() {
                 </thead>
                 <tbody>
                   {filtered.map((o) => {
-                    const estado = getEstadoPresupuesto(o);
+                    const estado = o.presupuestoConfirmadoPorCliente ? "Aprobado" : "Pendiente";
                     const total = totalesMap[o.id!] || 0;
                     return (
                       <tr

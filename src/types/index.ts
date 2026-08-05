@@ -184,6 +184,7 @@ export interface OrdenTrabajo {
   numeroIngreso?: number;
   numeroOrden?: number;
   numeroCotizacion?: number;
+  presupuestoId?: string;
   estado: EstadoOrden;
   tipoServicio: TipoServicio;
   motivo: string;
