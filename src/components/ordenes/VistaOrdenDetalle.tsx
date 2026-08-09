@@ -67,6 +67,7 @@ import {
   DollarSign,
   HeartPulse,
   HelpCircle,
+  Tag,
   Tags,
   Check,
   Calendar,
@@ -76,6 +77,8 @@ import {
   MoreVertical,
   Box,
   Percent,
+  Wrench,
+  Package,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
@@ -89,6 +92,7 @@ import { auth, db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
 import ModalEnviarCorreo from "@/components/ordenes/ModalEnviarCorreo";
 import ModalFirmas from "@/components/ordenes/ModalFirmas";
+import ModalPreviewPDF from "@/components/ordenes/ModalPreviewPDF";
 import ChatOrden from "@/components/ordenes/ChatOrden";
 import { useChatStore } from "@/store/chatStore";
 
@@ -153,6 +157,8 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
   const [isPrintMenuOpen, setIsPrintMenuOpen] = useState(false);
+  const [isPdfPreviewOpen, setIsPdfPreviewOpen] = useState(false);
+  const [pdfPreviewType, setPdfPreviewType] = useState<"cliente" | "tecnico">("cliente");
   const [isEstadoMenuOpen, setIsEstadoMenuOpen] = useState(false);
   const [isTecnicoPopoverOpen, setIsTecnicoPopoverOpen] = useState(false);
   const [todosLosUsuarios, setTodosLosUsuarios] = useState<AppUser[]>([]);
@@ -184,6 +190,8 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   }, [vehiculo?.marca]);
 
   // Edit / Form State
+  const [showDiscountInput, setShowDiscountInput] = useState(false);
+  const [discountInput, setDiscountInput] = useState("");
   const [motivo, setMotivo] = useState("");
   const [tipoServicio, setTipoServicio] = useState<TipoServicio>("Mantenimiento");
   const [editingFactura, setEditingFactura] = useState(false);
@@ -274,6 +282,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
       setInformeTecnico(oData.informeTecnico || "");
       setNotasInternas(oData.notasInternas || "");
       setFacturaVal(oData.facturaManual || "");
+      setDiscountInput(oData.descuento ? String(oData.descuento) : "");
 
       // Date parsing
       if (oData.createdAt) {
@@ -738,9 +747,14 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   };
 
   // Payment Calculation
-  const subtotal = items.reduce((acc, it) => acc + it.precioUnitario * it.cantidad, 0);
-  const iva = items.reduce((acc, it) => acc + it.precioUnitario * it.cantidad * (it.impuestoAplicable / 100), 0);
-  const total = subtotal + iva;
+  const subtotal = items.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
+  const descuento = orden?.descuento || 0;
+  const subtotalGravado = items.filter((it) => it.impuestoAplicable > 0).reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
+  const proporcionGravada = subtotal > 0 ? (subtotalGravado / subtotal) : 0;
+  const baseImponibleIva = Math.max(0, subtotalGravado - (descuento * proporcionGravada));
+  const iva = baseImponibleIva * 0.15;
+  const base = Math.max(0, subtotal - descuento);
+  const total = base + iva;
 
   const totalAbonado = pagos.reduce((acc, p) => acc + (p.montoBase ?? p.monto), 0);
   const saldoPendiente = Math.max(0, total - totalAbonado);
@@ -1327,7 +1341,8 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                       type="button"
                       onClick={() => {
                         setIsDownloadMenuOpen(false);
-                        handleDownloadPDF("cliente");
+                        setPdfPreviewType("cliente");
+                        setIsPdfPreviewOpen(true);
                       }}
                       className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 border-0 bg-transparent cursor-pointer font-semibold"
                     >
@@ -1338,7 +1353,8 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                       type="button"
                       onClick={() => {
                         setIsDownloadMenuOpen(false);
-                        handleDownloadPDF("tecnico");
+                        setPdfPreviewType("tecnico");
+                        setIsPdfPreviewOpen(true);
                       }}
                       className="w-full text-left px-4 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-hover)] flex items-center gap-2 border-0 bg-transparent cursor-pointer font-semibold"
                     >
@@ -2075,144 +2091,358 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
           </div>
 
           {/* Table of items */}
-          <div className="relative">
-            <div className="border border-[var(--border)] rounded-xl shadow-sm bg-[var(--bg-card)] overflow-visible">
-              <table className="table w-full">
-                <thead>
-                  <tr className="border-b border-[var(--border)] bg-slate-50/50">
-                    <th>Descripción</th>
-                    <th className="text-center w-24">Cant</th>
-                    <th className="text-right w-28">Precio</th>
-                    <th className="text-center w-20">IVA</th>
-                    <th className="text-right w-28">Total</th>
-                    <th className="w-16"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {items.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-10 text-[var(--text-muted)] text-sm">
-                        No hay repuestos o servicios cargados a esta orden.
-                      </td>
-                    </tr>
-                  ) : (
-                    items.map((item, idx) => {
+          <div className="border border-[var(--border)] rounded-xl shadow-sm bg-[var(--bg-card)] overflow-hidden">
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)] p-8 text-center">
+                <p className="text-sm">No hay repuestos o servicios cargados a esta orden.</p>
+                <p className="text-xs">Busca un producto o servicio arriba para agregarlo.</p>
+              </div>
+            ) : (
+              <>
+                {/* Sección Mano de obra */}
+                {items.filter((it) => it.tipo === "servicio").length > 0 && (
+                  <div>
+                    <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                      <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                        <Wrench size={14} className="text-blue-600" />
+                        Mano de obra
+                      </div>
+                      <div className="col-span-2 text-center text-slate-500">Cant</div>
+                      <div className="col-span-2 text-right text-slate-500">Precio</div>
+                      <div className="col-span-1 text-center text-slate-500">IVA</div>
+                      <div className="col-span-2 text-right text-slate-500">Total</div>
+                    </div>
+                    {items.filter((it) => it.tipo === "servicio").map((item) => {
+                      const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
                       const isOptimistic = item.id?.startsWith("temp-");
                       return (
-                        <tr key={item.id || idx} className={`hover:bg-slate-50/50 transition-opacity duration-300 ${isOptimistic ? "opacity-65 pointer-events-none select-none" : ""}`}>
-                        <td className="py-2.5">
-                          <p className="font-bold text-[var(--text-primary)] text-sm truncate" title={item.descripcion}>
+                        <div
+                          key={item.id || idx}
+                          className={`grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 transition-opacity duration-300 ${
+                            isOptimistic ? "opacity-65 pointer-events-none select-none" : ""
+                          }`}
+                        >
+                          <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>
                             {item.descripcion}
-                          </p>
-                          {item.productoSku && (
-                            <p className="font-mono text-[10px] text-[var(--text-muted)] uppercase mt-0.5">
-                              SKU: {item.productoSku}
-                            </p>
-                          )}
-                        </td>
-                        <td className="text-center py-2.5">
-                          <div className="inline-flex items-center border border-[var(--border)] rounded-lg bg-white overflow-hidden shadow-sm">
+                            {item.productoSku && (
+                              <p className="font-mono text-[10px] text-[var(--text-muted)] lowercase normal-case mt-0.5">
+                                SKU: {item.productoSku}
+                              </p>
+                            )}
+                          </div>
+                          <div className="col-span-2 flex items-center justify-center gap-1">
                             <button
                               type="button"
-                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
                               onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
                             >
                               -
                             </button>
                             <input
                               type="number"
-                              className="w-10 text-center border-0 p-0 text-xs font-semibold focus:ring-0"
+                              className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
                               value={item.cantidad}
                               onChange={(e) => {
                                 const newItems = [...items];
-                                newItems[idx].cantidad = Number(e.target.value);
-                                setItems(newItems);
+                                if (idx !== -1) {
+                                  newItems[idx].cantidad = Number(e.target.value);
+                                  setItems(newItems);
+                                }
                               }}
                               onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
                             />
                             <button
                               type="button"
-                              className="px-2 py-1 bg-slate-50 hover:bg-slate-100 text-xs font-bold text-slate-500"
+                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
                               onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
                             >
                               +
                             </button>
                           </div>
-                        </td>
-                        <td className="text-right py-2.5">
-                          <div className="relative inline-block w-24">
+                          <div className="col-span-2 text-right">
                             <input
                               type="number"
-                              className="w-full text-right border border-[var(--border)] rounded-lg p-1 text-xs focus:ring-0"
+                              className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
                               value={item.precioUnitario}
                               onChange={(e) => {
                                 const newItems = [...items];
-                                newItems[idx].precioUnitario = Number(e.target.value);
-                                setItems(newItems);
+                                if (idx !== -1) {
+                                  newItems[idx].precioUnitario = Number(e.target.value);
+                                  setItems(newItems);
+                                }
                               }}
                               onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
                             />
                           </div>
-                        </td>
-                        <td className="text-center text-xs text-slate-500 py-2.5">
-                          {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
-                        </td>
-                        <td className="text-right font-extrabold text-sm text-[var(--text-primary)] py-2.5">
-                          ${(item.precioUnitario * item.cantidad).toFixed(2)}
-                        </td>
-                        <td className="text-center py-2.5 relative flex items-center justify-center gap-1">
+                          <div className="col-span-1 text-center text-xs text-slate-500">
+                            {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
+                          </div>
+                          <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
+                            <span>${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
+                            <button
+                              type="button"
+                              onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                              className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                                activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                              }`}
+                              title="Opciones de ítem"
+                            >
+                              <MoreVertical size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteItem(item.id)}
+                              className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
+                              title="Eliminar ítem"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+
+                            {activePopoverItemId === item.id && (
+                              <OpcionesItemPopover
+                                item={item}
+                                onClose={() => setActivePopoverItemId(null)}
+                                onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                                onLocalUpdate={(updates) => {
+                                  setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                                }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Sección Repuestos */}
+                {items.filter((it) => it.tipo !== "servicio").length > 0 && (
+                  <div>
+                    <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                      <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                        <Package size={14} className="text-amber-600" />
+                        Repuestos
+                      </div>
+                      <div className="col-span-2 text-center text-slate-500">Cant</div>
+                      <div className="col-span-2 text-right text-slate-500">Precio</div>
+                      <div className="col-span-1 text-center text-slate-500">IVA</div>
+                      <div className="col-span-2 text-right text-slate-500">Total</div>
+                    </div>
+                    {items.filter((it) => it.tipo !== "servicio").map((item) => {
+                      const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
+                      const isOptimistic = item.id?.startsWith("temp-");
+                      return (
+                        <div
+                          key={item.id || idx}
+                          className={`grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 transition-opacity duration-300 ${
+                            isOptimistic ? "opacity-65 pointer-events-none select-none" : ""
+                          }`}
+                        >
+                          <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>
+                            {item.descripcion}
+                            {item.productoSku && (
+                              <p className="font-mono text-[10px] text-[var(--text-muted)] lowercase normal-case mt-0.5">
+                                SKU: {item.productoSku}
+                              </p>
+                            )}
+                          </div>
+                          <div className="col-span-2 flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
+                              onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
+                              value={item.cantidad}
+                              onChange={(e) => {
+                                const newItems = [...items];
+                                if (idx !== -1) {
+                                  newItems[idx].cantidad = Number(e.target.value);
+                                  setItems(newItems);
+                                }
+                              }}
+                              onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
+                            />
+                            <button
+                              type="button"
+                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
+                              onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                            >
+                              +
+                            </button>
+                          </div>
+                          <div className="col-span-2 text-right">
+                            <input
+                              type="number"
+                              className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
+                              value={item.precioUnitario}
+                              onChange={(e) => {
+                                const newItems = [...items];
+                                if (idx !== -1) {
+                                  newItems[idx].precioUnitario = Number(e.target.value);
+                                  setItems(newItems);
+                                }
+                              }}
+                              onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                            />
+                          </div>
+                          <div className="col-span-1 text-center text-xs text-slate-500">
+                            {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
+                          </div>
+                          <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
+                            <span>${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
+                            <button
+                              type="button"
+                              onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                              className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                                activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                              }`}
+                              title="Opciones de ítem"
+                            >
+                              <MoreVertical size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteItem(item.id)}
+                              className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
+                              title="Eliminar ítem"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+
+                            {activePopoverItemId === item.id && (
+                              <OpcionesItemPopover
+                                item={item}
+                                onClose={() => setActivePopoverItemId(null)}
+                                onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                                onLocalUpdate={(updates) => {
+                                  setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                                }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Totals */}
+            <div className="bg-slate-50 border-t border-[var(--border)] p-4">
+              <div className="flex justify-end">
+                <div className="w-64 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-semibold text-[var(--text-muted)] uppercase">Subtotal</span>
+                    <span className="font-bold">${subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm items-center py-0.5">
+                    {showDiscountInput ? (
+                      <div className="flex items-center justify-between w-full gap-2">
+                        <span className="text-xs font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1">
+                          <Tag size={12} className="text-blue-600" /> Descuento ($)
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="w-24 text-right border border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-2 py-0.5 text-xs font-bold bg-white text-[var(--text-primary)]"
+                            value={discountInput}
+                            onChange={(e) => {
+                              const strVal = e.target.value;
+                              setDiscountInput(strVal);
+                              const numVal = Math.max(0, parseFloat(strVal) || 0);
+                              setOrden((prev) => (prev ? { ...prev, descuento: numVal } : null));
+                            }}
+                            onBlur={() => {
+                              const numVal = Math.max(0, parseFloat(discountInput) || 0);
+                              void handleSaveField({ descuento: numVal });
+                              if (numVal === 0) {
+                                setShowDiscountInput(false);
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                const numVal = Math.max(0, parseFloat(discountInput) || 0);
+                                void handleSaveField({ descuento: numVal });
+                                setShowDiscountInput(false);
+                              }
+                            }}
+                            autoFocus
+                            placeholder="0.00"
+                          />
                           <button
                             type="button"
-                            onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
-                            className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
-                              activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
-                            }`}
-                            title="Opciones de ítem"
+                            onClick={() => {
+                              const numVal = Math.max(0, parseFloat(discountInput) || 0);
+                              void handleSaveField({ descuento: numVal });
+                              setShowDiscountInput(false);
+                            }}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors cursor-pointer border-0 bg-transparent flex items-center justify-center"
+                            title="Guardar descuento"
                           >
-                            <MoreVertical size={14} />
+                            <Check size={14} />
                           </button>
                           <button
-                            onClick={() => handleDeleteItem(item.id)}
-                            className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100"
-                            title="Eliminar ítem"
+                            type="button"
+                            onClick={() => {
+                              setDiscountInput("0");
+                              setOrden((prev) => (prev ? { ...prev, descuento: 0 } : null));
+                              void handleSaveField({ descuento: 0 });
+                              setShowDiscountInput(false);
+                            }}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors cursor-pointer border-0 bg-transparent flex items-center justify-center"
+                            title="Eliminar descuento"
                           >
-                            <Trash2 size={14} />
+                            <X size={14} />
                           </button>
-
-                          {/* Popover flotante de 3 puntos */}
-                          {activePopoverItemId === item.id && (
-                            <OpcionesItemPopover
-                              item={item}
-                              onClose={() => setActivePopoverItemId(null)}
-                              onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
-                              onLocalUpdate={(updates) => {
-                                setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setDiscountInput(descuento > 0 ? String(descuento) : "");
+                            setShowDiscountInput(true);
+                          }}
+                          className="text-blue-600 hover:underline flex items-center gap-1 text-xs border-0 bg-transparent cursor-pointer font-medium"
+                        >
+                          <Tag size={12} /> {descuento > 0 ? "Editar descuento" : "Aplicar descuento"}
+                        </button>
+                        {descuento > 0 ? (
+                          <div className="flex items-center gap-1 font-bold text-emerald-600">
+                            <span>-${descuento.toFixed(2)}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDiscountInput("0");
+                                setOrden((prev) => (prev ? { ...prev, descuento: 0 } : null));
+                                void handleSaveField({ descuento: 0 });
                               }}
-                            />
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pestaña de Totales Sobresaliendo Hacia Abajo */}
-            <div className="flex justify-end">
-              <div className="bg-[var(--bg-card)] border-x border-b border-[var(--border)] rounded-b-xl px-5 py-2.5 shadow-sm flex items-center gap-6 text-sm font-semibold -mt-[1px] select-none">
-                <div>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Subtotal</span>
-                  <span className="font-bold text-[var(--text-primary)]">${subtotal.toFixed(2)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">IVA (15%)</span>
-                  <span className="font-bold text-[var(--text-primary)]">${iva.toFixed(2)}</span>
-                </div>
-                <div className="border-l border-[var(--border)] pl-4">
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-wider block leading-none mb-0.5">Total</span>
-                  <span className="font-extrabold text-base text-blue-600">${total.toFixed(2)}</span>
+                              className="text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors border-0 bg-transparent cursor-pointer flex items-center justify-center"
+                              title="Quitar descuento"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="font-semibold text-[var(--text-muted)] uppercase">IVA (15%)</span>
+                    <span className="font-bold">${iva.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-lg pt-2 border-t border-[var(--border)]">
+                    <span className="font-bold uppercase">Total</span>
+                    <span className="font-bold">${total.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2488,6 +2718,21 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
         initialFirmaClienteUrl={orden.firmaClienteUrl}
         initialFirmaTecnicoUrl={orden.firmaTecnicoUrl}
       />
+
+      {/* ModalPreviewPDF */}
+      {orden && cliente && vehiculo && (
+        <ModalPreviewPDF
+          isOpen={isPdfPreviewOpen}
+          onClose={() => setIsPdfPreviewOpen(false)}
+          initialType={pdfPreviewType}
+          orden={orden}
+          cliente={cliente}
+          vehiculo={vehiculo}
+          items={items}
+          pagos={pagos}
+          taller={taller}
+        />
+      )}
     </div>
   );
 }

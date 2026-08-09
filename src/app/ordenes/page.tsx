@@ -6,7 +6,7 @@ import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, MoreVertical, Search, Trash2, Wrench } from "lucide-react";
+import { Loader2, MoreVertical, Search, Trash2, Wrench, Filter, ChevronDown } from "lucide-react";
 import { toast } from "react-hot-toast";
 import ModalNuevoIngreso from "@/components/recepcion/ModalNuevoIngreso";
 import { useUIStore } from "@/store";
@@ -160,31 +160,36 @@ function OrdenesPageContent() {
 
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[220px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-muted)" }} />
           <input
-            className="input pl-9"
+            className="input pl-9 w-full text-sm"
             placeholder="Buscar por placa, cliente, # orden..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {(["Todos", ...ESTADOS] as const).map((e) => (
-            <button
-              key={e}
-              onClick={() => setFiltroEstado(e)}
-              className="btn btn-sm"
-              style={{
-                background: filtroEstado === e ? "var(--accent)" : "var(--bg-card)",
-                color: filtroEstado === e ? "#fff" : "var(--text-secondary)",
-                border: `1px solid ${filtroEstado === e ? "var(--accent)" : "var(--border)"}`,
-              }}
-            >
-              {e}
-            </button>
-          ))}
+        <div className="relative min-w-[200px] sm:w-64">
+          <Filter size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
+          <select
+            className="input pl-9 pr-8 w-full text-sm appearance-none cursor-pointer font-medium"
+            style={{
+              background: "var(--bg-card)",
+              color: "var(--text-primary)",
+              border: "1px solid var(--border)",
+            }}
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value as EstadoOrden | "Todos")}
+          >
+            <option value="Todos">Todos los estados</option>
+            {ESTADOS.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
         </div>
       </div>
 

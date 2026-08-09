@@ -222,6 +222,7 @@ export interface OrdenTrabajo {
   unidadValidezPresupuesto?: string;
   formasPagoDisponibles?: string[];
   observacionFormaPago?: string;
+  descuento?: number;
 }
 
 export interface ItemOrden {

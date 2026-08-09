@@ -1,0 +1,128 @@
+[debug] [2026-08-09T13:20:43.225Z] ----------------------------------------------------------------------
+[debug] [2026-08-09T13:20:43.232Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\Lenovo\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-08-09T13:20:43.233Z] CLI Version:   15.22.3
+[debug] [2026-08-09T13:20:43.233Z] Platform:      win32
+[debug] [2026-08-09T13:20:43.233Z] Node Version:  v22.14.0
+[debug] [2026-08-09T13:20:43.234Z] Detected Agent: antigravity
+[debug] [2026-08-09T13:20:43.234Z] Time:          Sun Aug 09 2026 08:20:43 GMT-0500 (hora estándar de Colombia)
+[debug] [2026-08-09T13:20:43.234Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-08-09T13:20:51.211Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-09T13:20:51.212Z] > authorizing via signed-in user (appchys.ec@gmail.com)
+[debug] [2026-08-09T13:20:51.212Z] [iam] checking project ifsolucionesautomotrices for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-08-09T13:20:51.215Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:51.216Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:51.218Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions [none]
+[debug] [2026-08-09T13:20:51.218Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions  x-goog-user-project=ifsolucionesautomotrices
+[debug] [2026-08-09T13:20:51.218Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-08-09T13:20:52.088Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions 200
+[debug] [2026-08-09T13:20:52.088Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/ifsolucionesautomotrices:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-08-09T13:20:52.089Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:52.090Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:52.090Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices [none]
+[debug] [2026-08-09T13:20:52.550Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices 200
+[debug] [2026-08-09T13:20:52.550Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/ifsolucionesautomotrices {"projectId":"ifsolucionesautomotrices","projectNumber":"610108589353","displayName":"ifsolucionesautomotrices","name":"projects/ifsolucionesautomotrices","resources":{"hostingSite":"ifsolucionesautomotrices"},"state":"ACTIVE","labels":{"firebase":"enabled","firebase/storage-default-bucket":"created"},"etag":"1_82d2bd46-f6d3-442d-aca3-3a2a0937cdb8"}
+[debug] [2026-08-09T13:20:56.998Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:56.998Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:56.999Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites pageToken=&pageSize=10
+[debug] [2026-08-09T13:20:58.107Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites 200
+[debug] [2026-08-09T13:20:58.108Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites {"sites":[{"name":"projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices","defaultUrl":"https://ifsolucionesautomotrices.web.app","appId":"1:610108589353:web:528c3d4d141edc52be6338","type":"DEFAULT_SITE"}]}
+[debug] [2026-08-09T13:20:58.108Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:58.108Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:20:58.108Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:610108589353:web:528c3d4d141edc52be6338/config [none]
+[debug] [2026-08-09T13:20:58.745Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:610108589353:web:528c3d4d141edc52be6338/config 200
+[debug] [2026-08-09T13:20:58.746Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/-/webApps/1:610108589353:web:528c3d4d141edc52be6338/config {"projectId":"ifsolucionesautomotrices","appId":"1:610108589353:web:528c3d4d141edc52be6338","storageBucket":"ifsolucionesautomotrices.firebasestorage.app","apiKey":"AIzaSyDxgUn0XDS_EpfkVb6PKKTHkIBS7AeGnRc","authDomain":"ifsolucionesautomotrices.firebaseapp.com","messagingSenderId":"610108589353","projectNumber":"610108589353","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-08-09T13:21:11.432Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:21:11.432Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:21:11.432Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices [none]
+[debug] [2026-08-09T13:21:12.255Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices 200
+[debug] [2026-08-09T13:21:12.256Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices {"name":"projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices","defaultUrl":"https://ifsolucionesautomotrices.web.app","appId":"1:610108589353:web:528c3d4d141edc52be6338","type":"DEFAULT_SITE"}
+[info] ▲ Next.js 16.2.6 (Turbopack)
+
+[info] - Environments: .env.local
+
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 23.1s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 42s ...
+
+[info]   Collecting page data using 7 workers ...
+
+[info]   Generating static pages using 7 workers (0/28) ...
+
+[info]   Generating static pages using 7 workers (7/28) 
+
+[info]   Generating static pages using 7 workers (14/28) 
+
+[info]   Generating static pages using 7 workers (21/28) 
+
+[info] ✓ Generating static pages using 7 workers (28/28) in 1460ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /agenda
+├ ƒ /api/gmail/attachments
+├ ƒ /api/gmail/auth
+├ ƒ /api/gmail/callback
+├ ƒ /api/gmail/labels
+├ ƒ /api/gmail/send
+├ ƒ /api/gmail/status
+├ ○ /clientes
+├ ○ /compras
+├ ƒ /configuracion
+├ ○ /dashboard
+├ ○ /herramientas
+├ ○ /ingresos
+├ ○ /inventario
+├ ○ /login
+├ ○ /ordenes
+├ ○ /ordenes/tablero
+├ ○ /pagos
+├ ○ /presupuestos
+├ ○ /progreso
+├ ○ /reporte-financiero
+├ ○ /setup
+├ ○ /vehiculos
+└ ○ /ventas
+
+
+
+[info] ○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/gmail/attachments/route
+[info]  • non-static component /api/gmail/auth/route
+[info]  • non-static component /api/gmail/callback/route
+[info]  • non-static component /api/gmail/labels/route
+[info]  • non-static component /api/gmail/send/route
+[debug] [2026-08-09T13:22:29.040Z]  • non-static component /api/gmail/status/route
+[debug] [2026-08-09T13:22:29.040Z]  • non-static component /configuracion/page
+[info]  • and 2 other reasons, use --debug to see more
+[info] 
+[debug] [2026-08-09T13:22:36.380Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:22:36.380Z] Checked if tokens are valid: true, expires at: 1786285084133
+[debug] [2026-08-09T13:22:36.381Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices [none]
+[debug] [2026-08-09T13:22:37.390Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices 200
+[debug] [2026-08-09T13:22:37.390Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices {"name":"projects/ifsolucionesautomotrices/sites/ifsolucionesautomotrices","defaultUrl":"https://ifsolucionesautomotrices.web.app","appId":"1:610108589353:web:528c3d4d141edc52be6338","type":"DEFAULT_SITE"}

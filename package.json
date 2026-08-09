@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "clean": "node -e \"fs.rmSync('.next', {recursive: true, force: true}); fs.rmSync('.firebase', {recursive: true, force: true});\"",
+    "deploy": "npm run clean && firebase deploy --only hosting"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -33,7 +35,6 @@
     "esbuild": "^0.28.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
-    "puppeteer": "^25.2.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

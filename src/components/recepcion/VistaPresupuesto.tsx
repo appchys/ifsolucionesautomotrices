@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock, Wrench, Package, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock, Wrench, Package, CheckCircle2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -97,6 +97,10 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   const [loadingCitas, setLoadingCitas] = useState(false);
   const [isModalCitaOpen, setIsModalCitaOpen] = useState(false);
 
+  // Descuento
+  const [showDiscountInput, setShowDiscountInput] = useState(false);
+  const [discountInput, setDiscountInput] = useState("");
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
@@ -113,6 +117,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       }
 
       setOrden(ordenData);
+      setDiscountInput(ordenData.descuento ? String(ordenData.descuento) : "");
 
       const [cData, vData, itemsData, tallerData, citasData, ordenVin] = await Promise.all([
         ordenData.cliente || getClienteById(ordenData.clienteId),
@@ -651,9 +656,12 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   }
 
   const subtotal = items.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
-  const descuento = items.reduce((acc, it) => acc + (it.cantidad * 0 /* asumiendo dcto 0 por ahora */), 0);
-  const base = subtotal - descuento;
-  const iva = items.reduce((acc, it) => acc + ((it.precioUnitario * it.cantidad) * (it.impuestoAplicable / 100)), 0);
+  const descuento = orden?.descuento || 0;
+  const subtotalGravado = items.filter((it) => it.impuestoAplicable > 0).reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
+  const proporcionGravada = subtotal > 0 ? (subtotalGravado / subtotal) : 0;
+  const baseImponibleIva = Math.max(0, subtotalGravado - (descuento * proporcionGravada));
+  const iva = baseImponibleIva * 0.15;
+  const base = Math.max(0, subtotal - descuento);
   const total = base + iva;
 
   const mainContent = (
@@ -910,21 +918,20 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                     {items.filter((it) => it.tipo === "servicio").length > 0 && (
                       <div>
                         <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
-                          <div className="col-span-4 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                          <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
                             <Wrench size={14} className="text-blue-600" />
                             Mano de obra
                           </div>
                           <div className="col-span-2 text-center text-slate-500">Cant</div>
                           <div className="col-span-2 text-right text-slate-500">Precio</div>
                           <div className="col-span-1 text-center text-slate-500">IVA</div>
-                          <div className="col-span-1 text-center text-slate-500">Dcto</div>
                           <div className="col-span-2 text-right text-slate-500">Total</div>
                         </div>
                         {items.filter((it) => it.tipo === "servicio").map((item) => {
                           const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
                           return (
                             <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
-                              <div className="col-span-4 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
+                              <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
                               <div className="col-span-2 flex items-center justify-center gap-1">
                                 <button 
                                   className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
@@ -968,7 +975,6 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                 />
                               </div>
                               <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
-                              <div className="col-span-1 text-center text-xs">0</div>
                               <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
                                 ${(item.precioUnitario * item.cantidad).toFixed(2)}
                                 <button
@@ -1010,21 +1016,20 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                     {items.filter((it) => it.tipo !== "servicio").length > 0 && (
                       <div>
                         <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
-                          <div className="col-span-4 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                          <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
                             <Package size={14} className="text-amber-600" />
                             Repuestos
                           </div>
                           <div className="col-span-2 text-center text-slate-500">Cant</div>
                           <div className="col-span-2 text-right text-slate-500">Precio</div>
                           <div className="col-span-1 text-center text-slate-500">IVA</div>
-                          <div className="col-span-1 text-center text-slate-500">Dcto</div>
                           <div className="col-span-2 text-right text-slate-500">Total</div>
                         </div>
                         {items.filter((it) => it.tipo !== "servicio").map((item) => {
                           const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
                           return (
                             <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
-                              <div className="col-span-4 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
+                              <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
                               <div className="col-span-2 flex items-center justify-center gap-1">
                                 <button 
                                   className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
@@ -1068,7 +1073,6 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                 />
                               </div>
                               <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
-                              <div className="col-span-1 text-center text-xs">0</div>
                               <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
                                 ${(item.precioUnitario * item.cantidad).toFixed(2)}
                                 <button
@@ -1117,10 +1121,101 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                       <span className="font-semibold text-[var(--text-muted)] uppercase">Subtotal</span>
                       <span className="font-bold">${subtotal.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <button className="text-blue-600 hover:underline flex items-center gap-1 text-xs border-0 bg-transparent cursor-pointer">
-                        <Tag size={12} /> Aplicar descuento
-                      </button>
+                    <div className="flex justify-between text-sm items-center py-0.5">
+                      {showDiscountInput ? (
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <span className="text-xs font-semibold text-[var(--text-muted)] uppercase flex items-center gap-1">
+                            <Tag size={12} className="text-blue-600" /> Descuento ($)
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              className="w-24 text-right border border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-500 rounded px-2 py-0.5 text-xs font-bold bg-white text-[var(--text-primary)]"
+                              value={discountInput}
+                              onChange={(e) => {
+                                const strVal = e.target.value;
+                                setDiscountInput(strVal);
+                                const numVal = Math.max(0, parseFloat(strVal) || 0);
+                                setOrden((prev) => (prev ? { ...prev, descuento: numVal } : null));
+                              }}
+                              onBlur={() => {
+                                const numVal = Math.max(0, parseFloat(discountInput) || 0);
+                                void handleSaveField({ descuento: numVal });
+                                if (numVal === 0) {
+                                  setShowDiscountInput(false);
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  const numVal = Math.max(0, parseFloat(discountInput) || 0);
+                                  void handleSaveField({ descuento: numVal });
+                                  setShowDiscountInput(false);
+                                }
+                              }}
+                              autoFocus
+                              placeholder="0.00"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const numVal = Math.max(0, parseFloat(discountInput) || 0);
+                                void handleSaveField({ descuento: numVal });
+                                setShowDiscountInput(false);
+                              }}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors cursor-pointer border-0 bg-transparent flex items-center justify-center"
+                              title="Guardar descuento"
+                            >
+                              <Check size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDiscountInput("0");
+                                setOrden((prev) => (prev ? { ...prev, descuento: 0 } : null));
+                                void handleSaveField({ descuento: 0 });
+                                setShowDiscountInput(false);
+                              }}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors cursor-pointer border-0 bg-transparent flex items-center justify-center"
+                              title="Eliminar descuento"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setDiscountInput(descuento > 0 ? String(descuento) : "");
+                              setShowDiscountInput(true);
+                            }}
+                            className="text-blue-600 hover:underline flex items-center gap-1 text-xs border-0 bg-transparent cursor-pointer font-medium"
+                          >
+                            <Tag size={12} /> {descuento > 0 ? "Editar descuento" : "Aplicar descuento"}
+                          </button>
+                          {descuento > 0 ? (
+                            <div className="flex items-center gap-1 font-bold text-emerald-600">
+                              <span>-${descuento.toFixed(2)}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDiscountInput("0");
+                                  setOrden((prev) => (prev ? { ...prev, descuento: 0 } : null));
+                                  void handleSaveField({ descuento: 0 });
+                                }}
+                                className="text-slate-400 hover:text-red-500 p-0.5 rounded transition-colors border-0 bg-transparent cursor-pointer flex items-center justify-center"
+                                title="Quitar descuento"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="font-semibold text-[var(--text-muted)] uppercase">IVA (15%)</span>

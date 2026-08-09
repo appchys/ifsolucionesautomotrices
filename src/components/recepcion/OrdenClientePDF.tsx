@@ -393,8 +393,12 @@ export default function OrdenClientePDF({
   const subtotalServicios = serviciosItems.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
   const subtotalRepuestos = repuestosItems.reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
   const subtotal = subtotalServicios + subtotalRepuestos;
-  const iva = items.reduce((acc, it) => acc + ((it.precioUnitario * it.cantidad) * (it.impuestoAplicable / 100)), 0);
-  const total = subtotal + iva;
+  const descuento = orden.descuento || 0;
+  const subtotalGravado = items.filter((it) => it.impuestoAplicable > 0).reduce((acc, it) => acc + (it.precioUnitario * it.cantidad), 0);
+  const proporcionGravada = subtotal > 0 ? (subtotalGravado / subtotal) : 0;
+  const baseImponibleIva = Math.max(0, subtotalGravado - (descuento * proporcionGravada));
+  const iva = baseImponibleIva * 0.15;
+  const total = Math.max(0, subtotal - descuento) + iva;
 
   const totalAbonado = pagos.reduce((acc, p) => acc + (p.montoBase ?? p.monto), 0);
   const saldoPendiente = Math.max(0, total - totalAbonado);
@@ -551,6 +555,12 @@ export default function OrdenClientePDF({
               <Text style={styles.totalLabel}>Subtotal:</Text>
               <Text style={styles.totalValue}>${subtotal.toFixed(2)}</Text>
             </View>
+            {descuento > 0 && (
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Descuento:</Text>
+                <Text style={styles.totalValue}>-${descuento.toFixed(2)}</Text>
+              </View>
+            )}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>IVA 15%:</Text>
               <Text style={styles.totalValue}>${iva.toFixed(2)}</Text>

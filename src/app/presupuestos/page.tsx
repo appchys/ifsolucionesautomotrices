@@ -5,7 +5,9 @@ import {
   subscribeOrdenes,
   subscribeClientes,
   subscribeVehiculos,
-  subscribeTotalesItemsMap,
+  subscribeTotalesItemsDetalladosMap,
+  calcularTotalConDescuento,
+  InfoItemsOrden,
   deleteOrden,
   convertirPresupuestoAOrden,
 } from "@/lib/services";
@@ -50,7 +52,7 @@ function PresupuestosPageContent() {
   const [ordenesReales, setOrdenesReales] = useState<OrdenTrabajo[]>([]);
   const [clientesMap, setClientesMap] = useState<Record<string, Cliente>>({});
   const [vehiculosMap, setVehiculosMap] = useState<Record<string, Vehiculo>>({});
-  const [totalesMap, setTotalesMap] = useState<Record<string, number>>({});
+  const [totalesInfoMap, setTotalesInfoMap] = useState<Record<string, InfoItemsOrden>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filtroActivo, setFiltroActivo] = useState<FiltroPresupuesto>("Todos");
@@ -86,8 +88,8 @@ function PresupuestosPageContent() {
       setVehiculosMap(vMap);
     });
 
-    const unsubTotales = subscribeTotalesItemsMap((totales) => {
-      setTotalesMap(totales);
+    const unsubTotales = subscribeTotalesItemsDetalladosMap((totales) => {
+      setTotalesInfoMap(totales);
     });
 
     const unsubOrdenes = subscribeOrdenes(
@@ -177,7 +179,7 @@ function PresupuestosPageContent() {
       } else {
         pend++;
       }
-      monto += totalesMap[o.id!] || 0;
+      monto += calcularTotalConDescuento(totalesInfoMap[o.id!], o.descuento || 0);
     });
 
     return {
@@ -186,7 +188,7 @@ function PresupuestosPageContent() {
       aprobados: aprob,
       montoTotal: monto,
     };
-  }, [filtered, totalesMap]);
+  }, [filtered, totalesInfoMap]);
   const crearOrdenDesdePresupuesto = async (orden: OrdenTrabajo) => {
     const id = orden.id;
     if (!id || convertingId) return;
@@ -371,7 +373,7 @@ function PresupuestosPageContent() {
                 <tbody>
                   {filtered.map((o) => {
                     const estado = o.presupuestoConfirmadoPorCliente ? "Aprobado" : "Pendiente";
-                    const total = totalesMap[o.id!] || 0;
+                    const total = calcularTotalConDescuento(totalesInfoMap[o.id!], o.descuento || 0);
                     return (
                       <tr
                         key={o.id}

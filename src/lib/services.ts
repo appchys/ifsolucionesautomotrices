@@ -677,6 +677,63 @@ export function subscribeOrdenes(
 
 
 
+export interface InfoItemsOrden {
+  subtotal: number;
+  subtotalGravado: number;
+  totalSinDescuento: number;
+}
+
+export function subscribeTotalesItemsDetalladosMap(
+  callback: (totalesMap: Record<string, InfoItemsOrden>) => void,
+  onError?: (error: Error) => void
+): () => void {
+  return onSnapshot(
+    collectionGroup(db, "itemsOrden"),
+    (snap) => {
+      const map: Record<string, InfoItemsOrden> = {};
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        const parentId = docSnap.ref.parent.parent?.id || data.ordenId;
+        if (!parentId) return;
+        
+        const cant = Number(data.cantidad) || 0;
+        const prec = Number(data.precioUnitario) || 0;
+        const imp = Number(data.impuestoAplicable) || 0;
+        const sub = cant * prec;
+        const subGrav = imp > 0 ? sub : 0;
+        const totalItem = sub * (1 + imp / 100);
+
+        if (!map[parentId]) {
+          map[parentId] = { subtotal: 0, subtotalGravado: 0, totalSinDescuento: 0 };
+        }
+        map[parentId].subtotal += sub;
+        map[parentId].subtotalGravado += subGrav;
+        map[parentId].totalSinDescuento += totalItem;
+      });
+      callback(map);
+    },
+    onError
+  );
+}
+
+export function calcularTotalConDescuento(
+  info?: InfoItemsOrden,
+  descuento: number = 0
+): number {
+  if (!info) return 0;
+  if (!descuento || descuento <= 0) return info.totalSinDescuento;
+  
+  const subtotal = info.subtotal || 0;
+  const subtotalGravado = info.subtotalGravado || 0;
+  if (subtotal <= 0) return 0;
+  
+  const proporcionGravada = subtotalGravado / subtotal;
+  const baseImponibleIva = Math.max(0, subtotalGravado - (descuento * proporcionGravada));
+  const iva = baseImponibleIva * 0.15;
+  const base = Math.max(0, subtotal - descuento);
+  return base + iva;
+}
+
 export function subscribeTotalesItemsMap(
   callback: (totalesMap: Record<string, number>) => void,
   onError?: (error: Error) => void
@@ -938,6 +995,7 @@ export async function convertirPresupuestoAOrden(presupuestoId: string): Promise
     nivelCombustible: presupuesto.nivelCombustible || "1/4",
     checklistInventario: presupuesto.checklistInventario || [],
     inspeccionVisual: presupuesto.inspeccionVisual || { abolladuras: [], rayones: [], roturas: [], notas: "" },
+    descuento: presupuesto.descuento || 0,
     presupuestoConfirmadoPorCliente: true,
     esCotizacion: false,
     createdAt: serverTimestamp() as unknown as Timestamp,
