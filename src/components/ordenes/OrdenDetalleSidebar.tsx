@@ -1024,9 +1024,6 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
                                         <tr key={item.id ?? item.descripcion} className="text-xs">
                                           <td>
                                             <p>{item.descripcion}</p>
-                                            {item.productoSku && (
-                                              <p className="text-[10px] text-[var(--text-muted)] font-mono">{item.productoSku}</p>
-                                            )}
                                           </td>
                                           <td className="text-center">
                                             <div className="flex items-center justify-center gap-1">

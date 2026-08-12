@@ -729,10 +729,10 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   }
 
   const mainContent = (
-    <div className={`flex flex-col overflow-hidden ${isSidebar ? "h-full bg-slate-50" : "h-screen"}`}>
+    <div className={`flex flex-col flex-1 min-h-full ${isSidebar ? "bg-slate-50" : ""}`}>
 
       {/* Header Bar */}
-      <div className={`flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 mb-3 shadow-sm ${isSidebar ? "py-2 h-16" : "py-3"}`}>
+      <div className={`sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] px-6 mb-3 shadow-sm ${isSidebar ? "py-2" : "py-3"}`}>
         <div className="flex items-center gap-2">
           {!isSidebar ? (
             <Link href="/ingresos" className="p-2 hover:bg-[var(--bg-hover)] rounded-full transition-colors text-slate-555 hover:text-slate-900 border-none bg-transparent cursor-pointer flex items-center justify-center">
@@ -871,7 +871,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
       </div>
 
       {/* Columns Layout */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 overflow-y-auto lg:overflow-hidden px-6 pb-4 custom-scrollbar lg:custom-scrollbar-none">
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 px-6 pb-4">
         
         {/* Column 1: Cliente Tarjeta + Chat */}
         {!(isSidebar && chatAbierto) && (
@@ -961,7 +961,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         )}
 
         {/* Column 2: Vehicle details */}
-        <div className="w-full lg:min-w-0 flex flex-col gap-6 lg:overflow-y-auto pr-2 custom-scrollbar lg:border-x lg:border-[var(--border)] lg:px-6" style={{ flex: "2 1 0%" }}>
+        <div className="w-full lg:min-w-0 flex flex-col gap-6 lg:overflow-y-auto lg:min-h-0 pr-2 custom-scrollbar lg:border-x lg:border-[var(--border)] lg:px-6" style={{ flex: "2 1 0%" }}>
             {/* Tarjeta de Vehículo */}
             {vehiculo && (
               <div className="bg-white border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
@@ -1131,7 +1131,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
           </div>
 
         {/* Column 3: Inspections */}
-        <div className="w-full lg:min-w-0 flex flex-col gap-6 lg:overflow-y-auto pr-2 custom-scrollbar" style={{ flex: "1.2 1 0%" }}>
+        <div className="w-full lg:min-w-0 flex flex-col gap-6 lg:overflow-y-auto lg:min-h-0 pr-2 custom-scrollbar" style={{ flex: "1.2 1 0%" }}>
             {/* Flujo de Recepción (Stepper Vertical) */}
             <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-4">
               <h3 className="font-bold flex items-center gap-2 text-[var(--text-secondary)] text-xs uppercase tracking-wider">

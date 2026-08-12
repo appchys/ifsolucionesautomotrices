@@ -23,7 +23,7 @@ export default function PresupuestoSidebar() {
       onMouseDown={(e) => e.nativeEvent.stopImmediatePropagation()}
     >
       {/* Contenido del Sidebar */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col overflow-y-auto custom-scrollbar">
         <VistaPresupuesto presupuestoId={presupuestoSidebarId} isSidebar />
       </div>
     </div>

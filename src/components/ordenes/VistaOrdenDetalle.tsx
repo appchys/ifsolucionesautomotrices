@@ -1079,9 +1079,9 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   const advisorPhoto = dbAdvisorUser?.photoURL || (advisorUser as any)?.photoURL;
 
   return (
-    <div className="flex flex-col overflow-hidden bg-slate-50" style={isSidebar ? { height: "100%" } : { height: "calc(100vh - 2rem)" }}>
+    <div className="flex flex-col flex-1 min-h-full bg-slate-50">
       {/* Top Header Navigation */}
-      <div className={`flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] shadow-sm ${isSidebar ? "px-4 py-2.5 mb-3" : "px-6 py-3 mb-5"}`}>
+      <div className={`sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border)] shrink-0 bg-[var(--bg-card)] shadow-sm ${isSidebar ? "px-4 py-2.5 mb-3" : "px-6 py-3 mb-5"}`}>
         <div className="flex items-center gap-3">
           {!isSidebar ? (
             <button
@@ -1432,11 +1432,11 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
 
 
       {/* Main 2-Column Grid */}
-      <div className="flex flex-col lg:flex-row flex-1 gap-6 min-h-0 overflow-y-auto lg:overflow-hidden px-6 pb-6 custom-scrollbar lg:custom-scrollbar-none">
+      <div className="flex flex-col lg:flex-row flex-1 gap-6 px-6 pb-6">
         
         {/* Left Column (Sidebar Tabs) */}
         {!(isSidebar && chatVisible) && (
-          <div className="w-full lg:w-[340px] lg:h-full border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm overflow-hidden shrink-0 min-h-[450px] lg:min-h-0">
+          <div className="w-full lg:w-[340px] border border-[var(--border)] rounded-2xl flex flex-col bg-[var(--bg-card)] shadow-sm shrink-0 self-start lg:sticky lg:top-16">
           {/* Tabs bar */}
           <div className="flex border-b border-[var(--border)] bg-slate-50/50 shrink-0">
             {(["Vehículo", "Chat", "Fotos", "Notas"] as const)
@@ -1902,7 +1902,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
           </div>
         </div>
         )}        {/* Right Column (Items & Form) */}
-        <div className="w-full lg:flex-1 flex flex-col gap-5 lg:overflow-y-auto pr-2 custom-scrollbar pb-6 min-w-0">
+        <div className="w-full lg:flex-1 flex flex-col gap-5 min-w-0 pb-6">
           
 
 
@@ -2099,235 +2099,227 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
               </div>
             ) : (
               <>
-                {/* Sección Mano de obra */}
-                {items.filter((it) => it.tipo === "servicio").length > 0 && (
-                  <div>
-                    <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
-                      <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
-                        <Wrench size={14} className="text-blue-600" />
-                        Mano de obra
-                      </div>
-                      <div className="col-span-2 text-center text-slate-500">Cant</div>
-                      <div className="col-span-2 text-right text-slate-500">Precio</div>
-                      <div className="col-span-1 text-center text-slate-500">IVA</div>
-                      <div className="col-span-2 text-right text-slate-500">Total</div>
-                    </div>
-                    {items.filter((it) => it.tipo === "servicio").map((item) => {
-                      const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
-                      const isOptimistic = item.id?.startsWith("temp-");
-                      return (
-                        <div
-                          key={item.id || idx}
-                          className={`grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 transition-opacity duration-300 ${
-                            isOptimistic ? "opacity-65 pointer-events-none select-none" : ""
-                          }`}
-                        >
-                          <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>
-                            {item.descripcion}
-                            {item.productoSku && (
-                              <p className="font-mono text-[10px] text-[var(--text-muted)] lowercase normal-case mt-0.5">
-                                SKU: {item.productoSku}
-                              </p>
-                            )}
-                          </div>
-                          <div className="col-span-2 flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
-                              onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
-                              value={item.cantidad}
-                              onChange={(e) => {
-                                const newItems = [...items];
-                                if (idx !== -1) {
-                                  newItems[idx].cantidad = Number(e.target.value);
-                                  setItems(newItems);
-                                }
-                              }}
-                              onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
-                            />
-                            <button
-                              type="button"
-                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
-                              onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
-                            >
-                              +
-                            </button>
-                          </div>
-                          <div className="col-span-2 text-right">
-                            <input
-                              type="number"
-                              className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
-                              value={item.precioUnitario}
-                              onChange={(e) => {
-                                const newItems = [...items];
-                                if (idx !== -1) {
-                                  newItems[idx].precioUnitario = Number(e.target.value);
-                                  setItems(newItems);
-                                }
-                              }}
-                              onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
-                            />
-                          </div>
-                          <div className="col-span-1 text-center text-xs text-slate-500">
-                            {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
-                          </div>
-                          <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
-                            <span>${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
-                            <button
-                              type="button"
-                              onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
-                              className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
-                                activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
-                              }`}
-                              title="Opciones de ítem"
-                            >
-                              <MoreVertical size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteItem(item.id)}
-                              className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
-                              title="Eliminar ítem"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-
-                            {activePopoverItemId === item.id && (
-                              <OpcionesItemPopover
-                                item={item}
-                                onClose={() => setActivePopoverItemId(null)}
-                                onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
-                                onLocalUpdate={(updates) => {
-                                  setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
-                                }}
-                              />
-                            )}
-                          </div>
+                <div>
+                  {/* Sección Mano de obra */}
+                  {items.filter((it) => it.tipo === "servicio").length > 0 && (
+                    <div>
+                      <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                        <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                          <Wrench size={14} className="text-blue-600" />
+                          Mano de obra
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Sección Repuestos */}
-                {items.filter((it) => it.tipo !== "servicio").length > 0 && (
-                  <div>
-                    <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
-                      <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
-                        <Package size={14} className="text-amber-600" />
-                        Repuestos
+                        <div className="col-span-2 text-center text-slate-500">Cant</div>
+                        <div className="col-span-2 text-right text-slate-500">Precio</div>
+                        <div className="col-span-1 text-center text-slate-500">IVA</div>
+                        <div className="col-span-2 text-right text-slate-500">Total</div>
                       </div>
-                      <div className="col-span-2 text-center text-slate-500">Cant</div>
-                      <div className="col-span-2 text-right text-slate-500">Precio</div>
-                      <div className="col-span-1 text-center text-slate-500">IVA</div>
-                      <div className="col-span-2 text-right text-slate-500">Total</div>
-                    </div>
-                    {items.filter((it) => it.tipo !== "servicio").map((item) => {
-                      const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
-                      const isOptimistic = item.id?.startsWith("temp-");
-                      return (
-                        <div
-                          key={item.id || idx}
-                          className={`grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 transition-opacity duration-300 ${
-                            isOptimistic ? "opacity-65 pointer-events-none select-none" : ""
-                          }`}
-                        >
-                          <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>
-                            {item.descripcion}
-                            {item.productoSku && (
-                              <p className="font-mono text-[10px] text-[var(--text-muted)] lowercase normal-case mt-0.5">
-                                SKU: {item.productoSku}
-                              </p>
-                            )}
-                          </div>
-                          <div className="col-span-2 flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
-                              onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
-                            >
-                              -
-                            </button>
-                            <input
-                              type="number"
-                              className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
-                              value={item.cantidad}
-                              onChange={(e) => {
-                                const newItems = [...items];
-                                if (idx !== -1) {
-                                  newItems[idx].cantidad = Number(e.target.value);
-                                  setItems(newItems);
-                                }
-                              }}
-                              onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
-                            />
-                            <button
-                              type="button"
-                              className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
-                              onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
-                            >
-                              +
-                            </button>
-                          </div>
-                          <div className="col-span-2 text-right">
-                            <input
-                              type="number"
-                              className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
-                              value={item.precioUnitario}
-                              onChange={(e) => {
-                                const newItems = [...items];
-                                if (idx !== -1) {
-                                  newItems[idx].precioUnitario = Number(e.target.value);
-                                  setItems(newItems);
-                                }
-                              }}
-                              onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
-                            />
-                          </div>
-                          <div className="col-span-1 text-center text-xs text-slate-500">
-                            {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
-                          </div>
-                          <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
-                            <span>${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
-                            <button
-                              type="button"
-                              onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
-                              className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
-                                activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
-                              }`}
-                              title="Opciones de ítem"
-                            >
-                              <MoreVertical size={14} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteItem(item.id)}
-                              className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
-                              title="Eliminar ítem"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-
-                            {activePopoverItemId === item.id && (
-                              <OpcionesItemPopover
-                                item={item}
-                                onClose={() => setActivePopoverItemId(null)}
-                                onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
-                                onLocalUpdate={(updates) => {
-                                  setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                      {items.filter((it) => it.tipo === "servicio").map((item) => {
+                        const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
+                        const isOptimistic = item.id?.startsWith("temp-");
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className={`grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 transition-opacity duration-300 ${
+                              isOptimistic ? "opacity-65 pointer-events-none select-none" : ""
+                            }`}
+                          >
+                            <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>
+                              {item.descripcion}
+                            </div>
+                            <div className="col-span-2 flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
+                                onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
+                                value={item.cantidad}
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  if (idx !== -1) {
+                                    newItems[idx].cantidad = Number(e.target.value);
+                                    setItems(newItems);
+                                  }
                                 }}
+                                onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
                               />
-                            )}
+                              <button
+                                type="button"
+                                className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
+                                onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                              >
+                                +
+                              </button>
+                            </div>
+                            <div className="col-span-2 text-right">
+                              <input
+                                type="number"
+                                className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
+                                value={item.precioUnitario}
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  if (idx !== -1) {
+                                    newItems[idx].precioUnitario = Number(e.target.value);
+                                    setItems(newItems);
+                                  }
+                                }}
+                                onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                              />
+                            </div>
+                            <div className="col-span-1 text-center text-xs text-slate-500">
+                              {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
+                            </div>
+                            <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
+                              <span>${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
+                              <button
+                                type="button"
+                                onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                                className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                                  activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                                }`}
+                                title="Opciones de ítem"
+                              >
+                                <MoreVertical size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteItem(item.id)}
+                                className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
+                                title="Eliminar ítem"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+
+                              {activePopoverItemId === item.id && (
+                                <OpcionesItemPopover
+                                  item={item}
+                                  onClose={() => setActivePopoverItemId(null)}
+                                  onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                                  onLocalUpdate={(updates) => {
+                                    setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                                  }}
+                                />
+                              )}
+                            </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Sección Repuestos */}
+                  {items.filter((it) => it.tipo !== "servicio").length > 0 && (
+                    <div>
+                      <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                        <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
+                          <Package size={14} className="text-amber-600" />
+                          Repuestos
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        <div className="col-span-2 text-center text-slate-500">Cant</div>
+                        <div className="col-span-2 text-right text-slate-500">Precio</div>
+                        <div className="col-span-1 text-center text-slate-500">IVA</div>
+                        <div className="col-span-2 text-right text-slate-500">Total</div>
+                      </div>
+                      {items.filter((it) => it.tipo !== "servicio").map((item) => {
+                        const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
+                        const isOptimistic = item.id?.startsWith("temp-");
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className={`grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50 transition-opacity duration-300 ${
+                              isOptimistic ? "opacity-65 pointer-events-none select-none" : ""
+                            }`}
+                          >
+                            <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>
+                              {item.descripcion}
+                            </div>
+                            <div className="col-span-2 flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
+                                onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
+                                value={item.cantidad}
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  if (idx !== -1) {
+                                    newItems[idx].cantidad = Number(e.target.value);
+                                    setItems(newItems);
+                                  }
+                                }}
+                                onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Math.max(1, Number(e.target.value)))}
+                              />
+                              <button
+                                type="button"
+                                className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold"
+                                onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
+                              >
+                                +
+                              </button>
+                            </div>
+                            <div className="col-span-2 text-right">
+                              <input
+                                type="number"
+                                className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs font-semibold focus:ring-0"
+                                value={item.precioUnitario}
+                                onChange={(e) => {
+                                  const newItems = [...items];
+                                  if (idx !== -1) {
+                                    newItems[idx].precioUnitario = Number(e.target.value);
+                                    setItems(newItems);
+                                  }
+                                }}
+                                onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
+                              />
+                            </div>
+                            <div className="col-span-1 text-center text-xs text-slate-500">
+                              {item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : "0%"}
+                            </div>
+                            <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
+                              <span>${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
+                              <button
+                                type="button"
+                                onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
+                                className={`p-1 rounded-md transition-colors cursor-pointer hover:bg-slate-100 ${
+                                  activePopoverItemId === item.id ? "text-blue-600 bg-slate-100" : "text-[var(--text-muted)] hover:text-slate-700"
+                                }`}
+                                title="Opciones de ítem"
+                              >
+                                <MoreVertical size={14} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteItem(item.id)}
+                                className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
+                                title="Eliminar ítem"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+
+                              {activePopoverItemId === item.id && (
+                                <OpcionesItemPopover
+                                  item={item}
+                                  onClose={() => setActivePopoverItemId(null)}
+                                  onUpdateFields={(updates) => handleUpdateItemFields(item.id!, updates)}
+                                  onLocalUpdate={(updates) => {
+                                    setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...updates } : it)));
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -2448,11 +2440,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
             </div>
           </div>
 
-          <div className="flex justify-start">
-            <button className="btn bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-1.5 px-3 rounded-lg flex items-center gap-1 shadow-sm">
-              <Tags size={12} className="text-slate-500" /> Agregar tag
-            </button>
-          </div>
+
         </div>
 
 
