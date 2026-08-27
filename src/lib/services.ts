@@ -419,9 +419,15 @@ export async function getClientes(): Promise<Cliente[]> {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Cliente));
 }
 
-export async function getClienteById(id: string): Promise<Cliente | null> {
-  const snap = await getDoc(doc(db, "clientes", id));
-  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Cliente) : null;
+export async function getClienteById(id?: string | null): Promise<Cliente | null> {
+  if (!id) return null;
+  try {
+    const snap = await getDoc(doc(db, "clientes", id));
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Cliente) : null;
+  } catch (error) {
+    console.error("Error al obtener cliente por ID:", id, error);
+    return null;
+  }
 }
 
 function normalizeIdentificacion(value?: string): string {
@@ -533,14 +539,16 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 const cacheClientes: { [id: string]: Cliente } = {};
 const cacheVehiculos: { [id: string]: Vehiculo } = {};
 
-export async function getClienteByIdCached(id: string): Promise<Cliente | null> {
+export async function getClienteByIdCached(id?: string | null): Promise<Cliente | null> {
+  if (!id) return null;
   if (cacheClientes[id]) return cacheClientes[id];
   const c = await getClienteById(id);
   if (c) cacheClientes[id] = c;
   return c;
 }
 
-export async function getVehiculoByIdCached(id: string): Promise<Vehiculo | null> {
+export async function getVehiculoByIdCached(id?: string | null): Promise<Vehiculo | null> {
+  if (!id) return null;
   if (cacheVehiculos[id]) return cacheVehiculos[id];
   const v = await getVehiculoById(id);
   if (v) cacheVehiculos[id] = v;
@@ -586,15 +594,22 @@ export function subscribeIngresosRecientes(
 }
 
 export async function getVehiculosByCliente(clienteId: string): Promise<Vehiculo[]> {
+  if (!clienteId) return [];
   const snap = await getDocs(
     query(collection(db, "vehiculos"), where("clienteId", "==", clienteId))
   );
   return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Vehiculo));
 }
 
-export async function getVehiculoById(id: string): Promise<Vehiculo | null> {
-  const snap = await getDoc(doc(db, "vehiculos", id));
-  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Vehiculo) : null;
+export async function getVehiculoById(id?: string | null): Promise<Vehiculo | null> {
+  if (!id) return null;
+  try {
+    const snap = await getDoc(doc(db, "vehiculos", id));
+    return snap.exists() ? ({ id: snap.id, ...snap.data() } as Vehiculo) : null;
+  } catch (error) {
+    console.error("Error al obtener vehiculo por ID:", id, error);
+    return null;
+  }
 }
 
 export async function getVehiculoByPlaca(placa: string): Promise<Vehiculo | null> {
@@ -2381,6 +2396,15 @@ export async function anularVenta(ventaId: string): Promise<void> {
       updatedAt: serverTimestamp(),
     });
   });
+}
+
+export async function updateVenta(ventaId: string, data: Partial<Venta>): Promise<void> {
+  const ref = doc(db, "ventas", ventaId);
+  const cleanData = removeUndefinedFields({
+    ...data,
+    updatedAt: serverTimestamp(),
+  });
+  await updateDoc(ref, cleanData);
 }
 
 // ─── CHAT DE ORDEN ────────────────────────────────────────────────────────────

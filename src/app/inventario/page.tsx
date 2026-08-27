@@ -2,16 +2,17 @@
 import { Fragment, useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { Plus, Package, Wrench, Edit2, Trash2, Loader2, Image as ImageIcon, X, Check, Tag, DollarSign, Boxes, Truck, Search, Ruler, ArrowDownToLine, ArrowUpFromLine, Clock } from "lucide-react";
+import { Plus, Package, Wrench, Edit2, Trash2, Loader2, Image as ImageIcon, X, Check, Tag, DollarSign, Boxes, Truck, Search, Ruler, ArrowDownToLine, ArrowUpFromLine, Clock, Printer } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "react-hot-toast";
 import {
   getProductos, getServicios, createProducto, updateProducto, deleteProducto,
   createServicio, updateServicio, deleteServicio, uploadInventarioImagen,
-  registrarMovimientoStockManual
+  registrarMovimientoStockManual, getDatosTaller
 } from "@/lib/services";
-import { Producto, Servicio } from "@/types";
+import { Producto, Servicio, DatosTaller } from "@/types";
 import ProductoDetalleSidebar from "@/components/inventario/ProductoDetalleSidebar";
+import ModalPreviewInventarioPDF from "@/components/inventario/ModalPreviewInventarioPDF";
 
 
 type Tab = "productos" | "servicios";
@@ -240,6 +241,8 @@ export default function InventarioPage() {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [servicios, setServicios] = useState<Servicio[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [previewPdfOpen, setPreviewPdfOpen] = useState(false);
+  const [tallerData, setTallerData] = useState<DatosTaller | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -280,9 +283,14 @@ export default function InventarioPage() {
   const cargarDatos = async () => {
     setCargando(true);
     try {
-      const [prods, servs] = await Promise.all([getProductos(), getServicios()]);
+      const [prods, servs, tallerInfo] = await Promise.all([
+        getProductos(),
+        getServicios(),
+        getDatosTaller().catch(() => null),
+      ]);
       setProductos(prods);
       setServicios(servs);
+      if (tallerInfo) setTallerData(tallerInfo);
     } catch {
       toast.error("Error al cargar datos");
     } finally {
@@ -590,7 +598,16 @@ export default function InventarioPage() {
           <p className="page-subtitle text-[11px]">Gestiona tu inventario y catálogo de servicios</p>
         </div>
         <div className="flex items-center gap-2">
-
+          {tab === "productos" && (
+            <button
+              type="button"
+              onClick={() => setPreviewPdfOpen(true)}
+              className="btn-secondary btn-sm flex items-center gap-1.5 cursor-pointer"
+              title="Imprimir lista de inventario"
+            >
+              <Printer size={15} /> Imprimir
+            </button>
+          )}
           <button onClick={abrirModalNuevo} className="btn-primary btn-sm">
             <Plus size={15} /> Nuevo {tab === "productos" ? "Producto" : "Servicio"}
           </button>
@@ -1234,6 +1251,12 @@ export default function InventarioPage() {
         )}
       </Modal>
 
+      <ModalPreviewInventarioPDF
+        isOpen={previewPdfOpen}
+        onClose={() => setPreviewPdfOpen(false)}
+        productos={productosFiltrados}
+        taller={tallerData}
+      />
 
     </AppShell>
   );

@@ -79,13 +79,16 @@ import {
   Percent,
   Wrench,
   Package,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import AgregarItemModal from "@/components/ordenes/AgregarItemModal";
 import OpcionesItemPopover from "@/components/ordenes/OpcionesItemPopover";
 import ModalInspeccion from "@/components/recepcion/ModalInspeccion";
 import ClienteModal from "@/components/clientes/ClienteModal";
+import ClienteSelectorModal from "@/components/clientes/ClienteSelectorModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
+import VehiculoSelectorModal from "@/components/vehiculos/VehiculoSelectorModal";
 import { useAuthStore, useUIStore } from "@/store";
 import { getMergedChecklist } from "@/lib/checklist";
 import { auth, db } from "@/lib/firebase";
@@ -213,7 +216,9 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isModalInspeccionOpen, setIsModalInspeccionOpen] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
+  const [isClienteSelectorOpen, setIsClienteSelectorOpen] = useState(false);
   const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
+  const [isVehiculoSelectorOpen, setIsVehiculoSelectorOpen] = useState(false);
   const [isPagoModalOpen, setIsPagoModalOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isFirmasModalOpen, setIsFirmasModalOpen] = useState(false);
@@ -850,7 +855,11 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   };
 
   const handleDownloadPDF = async (type: "cliente" | "tecnico") => {
-    if (!orden || !cliente || !vehiculo) return;
+    if (!orden) return;
+    if (!cliente || !vehiculo) {
+      toast.error("Debes asignar un cliente y un vehículo a la orden antes de generar el PDF");
+      return;
+    }
     
     setGeneratingPdf(true);
     const toastId = toast.loading("Generando PDF...");
@@ -913,7 +922,11 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
   };
 
   const handlePrintPDF = async (type: "cliente" | "tecnico") => {
-    if (!orden || !cliente || !vehiculo) return;
+    if (!orden) return;
+    if (!cliente || !vehiculo) {
+      toast.error("Debes asignar un cliente y un vehículo a la orden antes de imprimir");
+      return;
+    }
     
     setGeneratingPdf(true);
     const toastId = toast.loading("Preparando impresión...");
@@ -1053,7 +1066,7 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
     }
   };
 
-  if (loading || !orden || !cliente || !vehiculo) {
+  if (loading || !orden) {
     if (isSidebar) {
       return (
         <div className="flex items-center justify-center h-full p-6 bg-slate-50">
@@ -1476,59 +1489,139 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
                       <Car size={12} className="text-blue-500 shrink-0" />
                       Vehículo
                     </h3>
-                    <button
-                      onClick={() => setIsVehiculoModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 rounded text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
-                      title="Editar vehículo"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 border border-slate-200 p-1.5 overflow-hidden">
-                      {marcaLogo ? (
-                        <img src={marcaLogo} alt={vehiculo.marca} className="w-full h-full object-contain" />
+                    <div className="flex items-center gap-1">
+                      {vehiculo ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setIsVehiculoSelectorOpen(true)}
+                            className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-0.5 rounded hover:bg-blue-50 transition-colors"
+                            title="Cambiar vehículo asignado"
+                          >
+                            Cambiar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsVehiculoModalOpen(true)}
+                            className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                            title="Editar datos del vehículo"
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                        </>
                       ) : (
-                        <Car size={24} className="text-blue-600" />
+                        <button
+                          type="button"
+                          onClick={() => setIsVehiculoSelectorOpen(true)}
+                          className="btn btn-primary text-xs h-7 px-2.5 rounded-lg flex items-center gap-1"
+                        >
+                          <Plus size={13} /> Asignar Vehículo
+                        </button>
                       )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <h4 className="font-extrabold text-base text-slate-800 truncate">
-                        {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
-                      </h4>
-                      <div className="flex items-center gap-1.5 mt-1 min-w-0">
-                        <span className="text-xs text-slate-555 font-mono uppercase bg-slate-100 px-2 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
-                          {vehiculo.placa}
-                        </span>
+                  </div>
+
+                  {vehiculo ? (
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shrink-0 border border-slate-200 p-1.5 overflow-hidden">
+                        {marcaLogo ? (
+                          <img src={marcaLogo} alt={vehiculo.marca} className="w-full h-full object-contain" />
+                        ) : (
+                          <Car size={24} className="text-blue-600" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-extrabold text-base text-slate-800 truncate">
+                          {vehiculo.marca} {vehiculo.modelo} {vehiculo.anio}
+                        </h4>
+                        <div className="flex items-center gap-1.5 mt-1 min-w-0">
+                          <span className="text-xs text-slate-555 font-mono uppercase bg-slate-100 px-2 py-0.5 rounded tracking-wider border border-[var(--border-light)]">
+                            {vehiculo.placa}
+                          </span>
+                          {vehiculo.color && (
+                            <span className="text-[11px] text-slate-400 capitalize">
+                              • {vehiculo.color}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="pt-3 mt-1 border-t border-[var(--border-light)] flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase text-[9px] border border-blue-200/50">
-                      {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
-                    </div>
-                    <div className="min-w-0 flex-1 flex items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-700 truncate">
-                        {cliente.nombre} {cliente.apellido || ""}
-                      </span>
-                      <a
-                        href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-slate-400 hover:text-green-600 transition-colors shrink-0"
-                        title="Enviar WhatsApp"
+                  ) : (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-amber-800">
+                        <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-xs">Vehículo no asignado</p>
+                          <p className="text-[10px] text-amber-700">Esta orden no tiene un vehículo registrado o fue eliminado.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsVehiculoSelectorOpen(true)}
+                        className="btn btn-primary text-xs h-7 px-2.5 rounded-lg flex items-center gap-1 shrink-0"
                       >
-                        <MessageCircle size={14} className="text-green-500 fill-green-500/10" />
-                      </a>
+                        <Plus size={13} /> Asignar
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setIsClienteModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 rounded text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
-                      title="Cambiar cliente"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                  </div>
+                  )}
+
+                  {/* Cliente row */}
+                  {cliente ? (
+                    <div className="pt-3 mt-1 border-t border-[var(--border-light)] flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase text-[9px] border border-blue-200/50">
+                        {cliente.nombre?.[0] || ""}{cliente.apellido?.[0] || ""}
+                      </div>
+                      <div className="min-w-0 flex-1 flex items-center gap-2">
+                        <span className="text-xs font-semibold text-slate-700 truncate">
+                          {cliente.nombre} {cliente.apellido || ""}
+                        </span>
+                        {cliente.telefono && (
+                          <a
+                            href={`https://wa.me/${cliente.telefono.replace(/\D/g, "")}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-400 hover:text-green-600 transition-colors shrink-0"
+                            title="Enviar WhatsApp"
+                          >
+                            <MessageCircle size={14} className="text-green-500 fill-green-500/10" />
+                          </a>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsClienteSelectorOpen(true)}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-0.5 rounded hover:bg-blue-50 transition-colors shrink-0"
+                        title="Cambiar cliente asignado"
+                      >
+                        Cambiar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsClienteModalOpen(true)}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
+                        title="Editar datos del cliente"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="pt-3 mt-1 border-t border-[var(--border-light)] p-2.5 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-amber-800">
+                        <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-xs">Cliente no asignado</p>
+                          <p className="text-[10px] text-amber-700">Esta orden quedó huérfana sin cliente asociado.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsClienteSelectorOpen(true)}
+                        className="btn btn-primary text-xs h-7 px-2.5 rounded-lg flex items-center gap-1 shrink-0"
+                      >
+                        <Plus size={13} /> Asignar
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {!isEditingIngreso ? (
@@ -2455,20 +2548,23 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
       )}
 
       {/* ModalInspeccion */}
-      <ModalInspeccion
-        isOpen={isModalInspeccionOpen}
-        onClose={() => setIsModalInspeccionOpen(false)}
-        vehiculo={vehiculo}
-        danos={danos}
-        onChangeDanos={setDanos}
-        onSave={() => handleSaveField({ inspeccionVisual: { danos } })}
-        fotos={(orden.fotoUrls || []).map((url) => ({ url, descripcion: "" }))}
-        onUploadFoto={handleUploadFoto}
-        onUpdateFoto={async () => {}}
-        onRemoveFoto={handleRemoveFoto}
-        observaciones={notasInternas}
-        onChangeObservaciones={setNotasInternas}
-      />
+      {/* ModalInspeccion */}
+      {isModalInspeccionOpen && vehiculo && (
+        <ModalInspeccion
+          isOpen={isModalInspeccionOpen}
+          onClose={() => setIsModalInspeccionOpen(false)}
+          vehiculo={vehiculo}
+          danos={danos}
+          onChangeDanos={setDanos}
+          onSave={() => handleSaveField({ inspeccionVisual: { danos } })}
+          fotos={(orden.fotoUrls || []).map((url) => ({ url, descripcion: "" }))}
+          onUploadFoto={handleUploadFoto}
+          onUpdateFoto={async () => {}}
+          onRemoveFoto={handleRemoveFoto}
+          observaciones={notasInternas}
+          onChangeObservaciones={setNotasInternas}
+        />
+      )}
 
       {/* ClienteModal */}
       {isClienteModalOpen && (
@@ -2482,16 +2578,81 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
         />
       )}
 
+      {/* ClienteSelectorModal */}
+      {isClienteSelectorOpen && (
+        <ClienteSelectorModal
+          onClose={() => setIsClienteSelectorOpen(false)}
+          selectedClienteId={cliente?.id}
+          onSelect={async (newCliente) => {
+            if (!newCliente?.id) return;
+            const newClienteId = newCliente.id;
+            const toastId = toast.loading("Asignando cliente a la orden...");
+            try {
+              await updateOrden(ordenId, { clienteId: newClienteId });
+              setCliente(newCliente);
+              setOrden((prev) => (prev ? { ...prev, clienteId: newClienteId, cliente: newCliente } : prev));
+              toast.success("Cliente asignado a la orden", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar cliente:", err);
+              toast.error("Error al asignar cliente", { id: toastId });
+            }
+          }}
+        />
+      )}
+
       {/* VehiculoModal */}
-      <VehiculoModal
-        isOpen={isVehiculoModalOpen}
-        onClose={() => setIsVehiculoModalOpen(false)}
-        editingVehiculo={vehiculo}
-        onSuccess={() => {
-          setIsVehiculoModalOpen(false);
-          void loadData();
-        }}
-      />
+      {isVehiculoModalOpen && (
+        <VehiculoModal
+          isOpen={isVehiculoModalOpen}
+          onClose={() => setIsVehiculoModalOpen(false)}
+          editingVehiculo={cliente ? (vehiculo ? { ...vehiculo, cliente } : null) : vehiculo}
+          onSuccess={() => {
+            setIsVehiculoModalOpen(false);
+            void loadData();
+          }}
+        />
+      )}
+
+      {/* VehiculoSelectorModal */}
+      {isVehiculoSelectorOpen && (
+        <VehiculoSelectorModal
+          onClose={() => setIsVehiculoSelectorOpen(false)}
+          selectedVehiculoId={vehiculo?.id}
+          clienteId={cliente?.id}
+          clienteNombre={cliente ? `${cliente.nombre} ${cliente.apellido || ""}`.trim() : undefined}
+          onSelect={async (newVehiculo, clienteAsociado) => {
+            if (!newVehiculo?.id) return;
+            const newVehiculoId = newVehiculo.id;
+            const toastId = toast.loading("Asignando vehículo a la orden...");
+            try {
+              const payload: Partial<OrdenTrabajo> = { vehiculoId: newVehiculoId };
+              if (!cliente && clienteAsociado?.id) {
+                payload.clienteId = clienteAsociado.id;
+                setCliente(clienteAsociado);
+              }
+
+              await updateOrden(ordenId, payload);
+              setVehiculo(newVehiculo);
+              const clienteIdResolved = payload.clienteId || orden?.clienteId || "";
+              setOrden((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      vehiculoId: newVehiculoId,
+                      vehiculo: newVehiculo,
+                      clienteId: clienteIdResolved,
+                      cliente: clienteAsociado || prev.cliente,
+                    }
+                  : prev
+              );
+              toast.success("Vehículo asignado a la orden", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar vehículo:", err);
+              toast.error("Error al asignar vehículo", { id: toastId });
+            }
+          }}
+        />
+      )}
 
       {/* PagoModal */}
       {isPagoModalOpen && (
@@ -2684,23 +2845,25 @@ export default function VistaOrdenDetalle({ ordenId, isSidebar = false }: VistaO
         </div>
       )}
       {/* ModalEnviarCorreo */}
-      <ModalEnviarCorreo
-        isOpen={isEmailModalOpen}
-        onClose={() => setIsEmailModalOpen(false)}
-        orden={orden}
-        cliente={cliente}
-        vehiculo={vehiculo}
-        items={items}
-        pagos={pagos}
-        taller={taller}
-      />
+      {isEmailModalOpen && cliente && vehiculo && (
+        <ModalEnviarCorreo
+          isOpen={isEmailModalOpen}
+          onClose={() => setIsEmailModalOpen(false)}
+          orden={orden}
+          cliente={cliente}
+          vehiculo={vehiculo}
+          items={items}
+          pagos={pagos}
+          taller={taller}
+        />
+      )}
 
       {/* ModalFirmas */}
       <ModalFirmas
         isOpen={isFirmasModalOpen}
         onClose={() => setIsFirmasModalOpen(false)}
         onSave={handleSaveFirmas}
-        clienteNombre={`${cliente.nombre} ${cliente.apellido}`}
+        clienteNombre={cliente ? `${cliente.nombre} ${cliente.apellido || ""}`.trim() : "Sin cliente"}
         tecnicoNombre={assignedTechs[0]?.displayName || "Técnico responsable"}
         numeroOrden={String(orden.numeroOrden ?? orden.numero ?? 0).padStart(4, "0")}
         initialFirmaClienteUrl={orden.firmaClienteUrl}

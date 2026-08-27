@@ -1,11 +1,12 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import { X, Search, Loader2, Calendar, User, CornerDownLeft, AlertTriangle } from "lucide-react";
-import { getVentas, anularVenta } from "@/lib/services";
-import { Venta } from "@/types";
+import { X, Search, Loader2, Calendar, User, CornerDownLeft, AlertTriangle, UserCheck, Edit2 } from "lucide-react";
+import { getVentas, anularVenta, updateVenta } from "@/lib/services";
+import { Venta, Cliente } from "@/types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "react-hot-toast";
+import ClienteSelectorModal from "@/components/clientes/ClienteSelectorModal";
 
 interface Props {
   onClose: () => void;
@@ -18,6 +19,7 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
   const [search, setSearch] = useState("");
   const [selectedVenta, setSelectedVenta] = useState<Venta | null>(null);
   const [voiding, setVoiding] = useState(false);
+  const [showClienteSelector, setShowClienteSelector] = useState(false);
 
   const fetchVentas = React.useCallback(async () => {
     setLoading(true);
@@ -227,8 +229,21 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
                 {/* Info Grid */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="card p-4">
-                    <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider mb-2">Cliente</p>
-                    <p className="font-bold text-sm text-[var(--text-primary)]">{selectedVenta.clienteNombre}</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">Cliente</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowClienteSelector(true)}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-semibold flex items-center gap-1 hover:underline"
+                        title="Cambiar o asignar cliente a esta venta"
+                      >
+                        <Edit2 size={12} />
+                        {selectedVenta.clienteId ? "Cambiar" : "Asignar"}
+                      </button>
+                    </div>
+                    <p className="font-bold text-sm text-[var(--text-primary)]">
+                      {selectedVenta.clienteNombre || "Sin cliente asignado"}
+                    </p>
                     {selectedVenta.clienteIdentificacion && (
                       <p className="text-xs text-[var(--text-secondary)] mt-0.5">Identificación: {selectedVenta.clienteIdentificacion}</p>
                     )}
@@ -311,6 +326,44 @@ export default function HistorialVentasModal({ onClose, onRefreshPOS }: Props) {
         </div>
 
       </div>
+
+      {showClienteSelector && selectedVenta && (
+        <ClienteSelectorModal
+          onClose={() => setShowClienteSelector(false)}
+          selectedClienteId={selectedVenta.clienteId}
+          allowConsumidorFinal={true}
+          onSelect={async (c) => {
+            const clienteId = c ? c.id : undefined;
+            const clienteNombre = c ? `${c.nombre} ${c.apellido || ""}`.trim() : "Consumidor Final";
+            const clienteIdentificacion = c ? c.identificacion : undefined;
+
+            try {
+              await updateVenta(selectedVenta.id!, {
+                clienteId,
+                clienteNombre,
+                clienteIdentificacion,
+              });
+
+              setSelectedVenta((prev) =>
+                prev ? { ...prev, clienteId, clienteNombre, clienteIdentificacion } : prev
+              );
+              setVentas((prev) =>
+                prev.map((v) =>
+                  v.id === selectedVenta.id
+                    ? { ...v, clienteId, clienteNombre, clienteIdentificacion }
+                    : v
+                )
+              );
+
+              toast.success("Cliente actualizado para esta venta");
+              if (onRefreshPOS) onRefreshPOS();
+            } catch (err) {
+              console.error("Error al actualizar cliente en venta:", err);
+              toast.error("Error al actualizar cliente de la venta");
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

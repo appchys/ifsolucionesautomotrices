@@ -41,7 +41,9 @@ const VEHICULO_FIELDS: {
 
 export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSuccess }: Props) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [tiposVehiculo, setTiposVehiculo] = useState<string[]>([]);
+  const [tiposVehiculo, setTiposVehiculo] = useState<string[]>([
+    "sedan", "suv", "pickup", "camioneta", "moto", "otro"
+  ]);
   const [ownerMode, setOwnerMode] = useState<"existente" | "nuevo">("existente");
   const [saving, setSaving] = useState(false);
   const { register, handleSubmit, reset, setValue, watch } = useForm<VehiculoFormValues>();
@@ -60,45 +62,59 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
   useEffect(() => {
     if (!isOpen) return;
 
+    const targetClienteId = editingVehiculo?.clienteId || editingVehiculo?.cliente?.id || "";
+    const initialClientes: Cliente[] = [];
+    if (editingVehiculo?.cliente && editingVehiculo.cliente.id) {
+      initialClientes.push(editingVehiculo.cliente);
+    }
+    setClientes(initialClientes);
+
+    // 1. Poblar formulario de forma síncrona e instantánea
+    if (editingVehiculo) {
+      reset({
+        clienteId: targetClienteId,
+        placa: editingVehiculo.placa || "",
+        marca: editingVehiculo.marca || "",
+        modelo: editingVehiculo.modelo || "",
+        anio: editingVehiculo.anio || new Date().getFullYear(),
+        color: editingVehiculo.color || "",
+        vin: editingVehiculo.vin || "",
+        tipoVehiculo: editingVehiculo.tipoVehiculo || "sedan",
+      });
+      setOwnerMode(targetClienteId ? "existente" : "nuevo");
+    } else {
+      reset({
+        clienteId: "",
+        nuevoClienteNombre: "",
+        nuevoClienteApellido: "",
+        nuevoClienteIdentificacion: "",
+        nuevoClienteTelefono: "",
+        nuevoClienteEmail: "",
+        nuevoClienteDireccion: "",
+        placa: "",
+        marca: "",
+        modelo: "",
+        anio: new Date().getFullYear(),
+        color: "",
+        vin: "",
+        tipoVehiculo: "sedan",
+      });
+      setOwnerMode("existente");
+    }
+
+    // 2. Cargar datos remotos (clientes y tipos de vehículo) en segundo plano
     Promise.all([getClientes(), getTiposVehiculo()])
       .then(([cls, tipos]) => {
         setClientes(cls);
-        setTiposVehiculo(tipos);
-        
-        if (editingVehiculo) {
-          reset({
-            clienteId: editingVehiculo.clienteId || "",
-            placa: editingVehiculo.placa || "",
-            marca: editingVehiculo.marca || "",
-            modelo: editingVehiculo.modelo || "",
-            anio: editingVehiculo.anio || new Date().getFullYear(),
-            color: editingVehiculo.color || "",
-            vin: editingVehiculo.vin || "",
-            tipoVehiculo: editingVehiculo.tipoVehiculo || tipos[0] || "sedan",
-          });
-          setOwnerMode(editingVehiculo.clienteId ? "existente" : "nuevo");
-        } else {
-          reset({
-            clienteId: "",
-            nuevoClienteNombre: "",
-            nuevoClienteApellido: "",
-            nuevoClienteIdentificacion: "",
-            nuevoClienteTelefono: "",
-            nuevoClienteEmail: "",
-            nuevoClienteDireccion: "",
-            placa: "",
-            marca: "",
-            modelo: "",
-            anio: new Date().getFullYear(),
-            color: "",
-            vin: "",
-            tipoVehiculo: tipos[0] || "sedan",
-          });
-          setOwnerMode("existente");
+        if (targetClienteId) {
+          setValue("clienteId", targetClienteId, { shouldValidate: true });
+        }
+        if (Array.isArray(tipos) && tipos.length > 0) {
+          setTiposVehiculo(tipos);
         }
       })
       .catch(console.error);
-  }, [isOpen, editingVehiculo, reset]);
+  }, [isOpen, editingVehiculo, reset, setValue]);
 
   const onSubmit = async (data: VehiculoFormValues) => {
     setSaving(true);
@@ -153,7 +169,7 @@ export default function VehiculoModal({ isOpen, onClose, editingVehiculo, onSucc
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal-box max-w-lg w-full">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>

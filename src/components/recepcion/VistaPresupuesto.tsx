@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock, Wrench, Package, CheckCircle2, X } from "lucide-react";
+import { ChevronLeft, Download, Mail, Printer, FileDown, Calendar, Search, Loader2, Plus, MessageSquare, Trash2, MoreHorizontal, MoreVertical, Percent, Check, Phone, Tag, Car, FileText, StickyNote, ClipboardCheck, Paperclip, ExternalLink, Eye, Pencil, Camera, Clock, Wrench, Package, CheckCircle2, X, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -36,6 +36,10 @@ import ConfigurarTerminosModal from "@/components/configuracion/ConfigurarTermin
 import ModalInspeccion from "./ModalInspeccion";
 import ChecklistInventario from "./ChecklistInventario";
 import ModalAgendarCita from "./ModalAgendarCita";
+import ClienteModal from "@/components/clientes/ClienteModal";
+import ClienteSelectorModal from "@/components/clientes/ClienteSelectorModal";
+import VehiculoModal from "@/components/vehiculos/VehiculoModal";
+import VehiculoSelectorModal from "@/components/vehiculos/VehiculoSelectorModal";
 import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
 import { useUIStore } from "@/store";
 
@@ -58,6 +62,26 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   const [taller, setTaller] = useState<DatosTaller | null>(null);
   const [marcaLogo, setMarcaLogo] = useState<string | null>(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
+  const [isClienteSelectorOpen, setIsClienteSelectorOpen] = useState(false);
+  const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
+  const [isVehiculoSelectorOpen, setIsVehiculoSelectorOpen] = useState(false);
+
+  const handleVehiculoSaved = useCallback(async (updatedVehiculo: Vehiculo) => {
+    setVehiculo(updatedVehiculo);
+    setIsVehiculoModalOpen(false);
+    if (updatedVehiculo.marca) {
+      const marcasList = await getMarcasVehiculo();
+      const target = updatedVehiculo.marca.trim().toLowerCase();
+      const found = marcasList.find((m) => m.nombre.trim().toLowerCase() === target);
+      if (found?.logoUrl) {
+        setMarcaLogo(found.logoUrl);
+      } else {
+        const pop = MARCAS_ECUADOR_POPULARES.find((m) => m.nombre.trim().toLowerCase() === target);
+        setMarcaLogo(pop?.logoUrl || null);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (vehiculo?.marca) {
@@ -448,7 +472,11 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   };
 
   const handleDownloadPDF = async () => {
-    if (!orden || !cliente || !vehiculo) return;
+    if (!orden) return;
+    if (!cliente || !vehiculo) {
+      toast.error("Debes asignar un cliente y un vehículo antes de generar el PDF");
+      return;
+    }
     setGeneratingPdf(true);
     const toastId = toast.loading("Generando PDF...");
     try {
@@ -494,7 +522,11 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
   };
 
   const handlePrintPDF = async () => {
-    if (!orden || !cliente || !vehiculo) return;
+    if (!orden) return;
+    if (!cliente || !vehiculo) {
+      toast.error("Debes asignar un cliente y un vehículo antes de imprimir");
+      return;
+    }
     setGeneratingPdf(true);
     const toastId = toast.loading("Preparando impresión...");
     try {
@@ -583,7 +615,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
       }
     } catch (err) {
       console.error(err);
-      toast.error("Error al crear la orden de trabajo", { id: toastId });
+      toast.error("Error al convertir a orden", { id: toastId });
     } finally {
       setConvertingToOrden(false);
     }
@@ -616,14 +648,16 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
 
   const handleEliminarPresupuesto = async () => {
     if (!orden) return;
-    const isConfirmed = window.confirm("¿Seguro de eliminar este presupuesto?");
-    if (!isConfirmed) return;
+    const confirmed = window.confirm(
+      "¿Estás seguro de que deseas eliminar este presupuesto? Esta acción es irreversible."
+    );
+    if (!confirmed) return;
 
     setSaving(true);
     const toastId = toast.loading("Eliminando presupuesto...");
     try {
       await deleteOrden(presupuestoId);
-      toast.success("Presupuesto eliminado con éxito", { id: toastId });
+      toast.success("Presupuesto eliminado correctamente", { id: toastId });
       if (isSidebar) {
         setPresupuestoSidebarOpen(false);
       } else {
@@ -638,7 +672,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
     }
   };
 
-  if (loading || !orden || !cliente || !vehiculo) {
+  if (loading || !orden) {
     if (isSidebar) {
       return (
         <div className="flex items-center justify-center h-full p-6 bg-slate-50">
@@ -817,6 +851,17 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                   )}
                   <button
                     type="button"
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      setIsVehiculoModalOpen(true);
+                    }}
+                    className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
+                  >
+                    <Pencil size={12} />
+                    Editar vehículo
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleEliminarPresupuesto}
                     className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 border-0 bg-transparent cursor-pointer font-inherit"
                   >
@@ -836,15 +881,52 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
         {/* Left Column: Items */}
         <div className="w-full lg:flex-1 flex flex-col gap-4 min-w-0 lg:border-r lg:border-[var(--border)] pr-2">
             {/* Client Card */}
-            <div className="flex gap-4 items-center mb-2">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase">
-                {(cliente.nombre?.[0] || "")}
+            {cliente ? (
+              <div className="flex gap-4 items-center mb-2 p-2.5 rounded-xl bg-white border border-[var(--border)] shadow-sm">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0 uppercase text-xs">
+                  {(cliente.nombre?.[0] || "")}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm uppercase truncate">{cliente.nombre} {cliente.apellido || ""}</p>
+                  <p className="text-xs text-[var(--text-muted)] flex items-center gap-1">
+                    <Phone size={12} className="text-slate-400" /> {cliente.telefono || "—"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsClienteSelectorOpen(true)}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 rounded hover:bg-blue-50 transition-colors shrink-0"
+                  title="Cambiar cliente"
+                >
+                  Cambiar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsClienteModalOpen(true)}
+                  className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
+                  title="Editar cliente"
+                >
+                  <Pencil size={14} />
+                </button>
               </div>
-              <div className="flex-1">
-                <p className="font-bold text-sm uppercase">{cliente.nombre} {cliente.apellido}</p>
-                <p className="text-xs text-[var(--text-muted)] flex items-center gap-1"><Phone size={12} className="text-slate-400" /> {cliente.telefono}</p>
+            ) : (
+              <div className="p-3 mb-2 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-amber-800">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                  <div>
+                    <p className="font-bold text-xs">Cliente no asignado</p>
+                    <p className="text-[10px] text-amber-700">Este presupuesto no tiene cliente asociado.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsClienteSelectorOpen(true)}
+                  className="btn btn-primary text-xs h-7 px-2.5 rounded-lg flex items-center gap-1 shrink-0"
+                >
+                  <Plus size={13} /> Asignar
+                </button>
               </div>
-            </div>
+            )}
 
             {/* Search Bar */}
             <div className="flex gap-2">
@@ -1269,20 +1351,54 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
               {activeTab === "Vehículo" && (
                 <div className="space-y-5">
-                  <div className="card flex items-center gap-4 bg-white shadow-sm border border-[var(--border)] p-3 rounded-xl">
-                    <div className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center shrink-0 border border-slate-200 p-1.5 overflow-hidden">
-                      {marcaLogo ? (
-                        <img src={marcaLogo} alt={vehiculo.marca} className="w-full h-full object-contain" />
-                      ) : (
-                        <Car size={22} className="text-slate-600" />
-                      )}
+                  {vehiculo ? (
+                    <div className="card flex items-center gap-4 bg-white shadow-sm border border-[var(--border)] p-3 rounded-xl">
+                      <div className="w-11 h-11 bg-slate-50 rounded-xl flex items-center justify-center shrink-0 border border-slate-200 p-1.5 overflow-hidden">
+                        {marcaLogo ? (
+                          <img src={marcaLogo} alt={vehiculo.marca} className="w-full h-full object-contain" />
+                        ) : (
+                          <Car size={22} className="text-slate-600" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-sm leading-tight text-slate-800 truncate">{vehiculo.marca} {vehiculo.modelo}</h4>
+                        <div className="badge badge-gray font-mono uppercase text-[10px] mt-1">{vehiculo.placa}</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsVehiculoSelectorOpen(true)}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-1 rounded hover:bg-blue-50 transition-colors shrink-0"
+                        title="Cambiar vehículo"
+                      >
+                        Cambiar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsVehiculoModalOpen(true)}
+                        className="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center shrink-0"
+                        title="Editar vehículo"
+                      >
+                        <Pencil size={16} />
+                      </button>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-sm leading-tight text-slate-800 truncate">{vehiculo.marca} {vehiculo.modelo}</h4>
-                      <div className="badge badge-gray font-mono uppercase text-[10px] mt-1">{vehiculo.placa}</div>
+                  ) : (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 text-amber-800">
+                        <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                        <div>
+                          <p className="font-bold text-xs">Vehículo no asignado</p>
+                          <p className="text-[10px] text-amber-700">Este presupuesto no tiene vehículo asociado.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsVehiculoSelectorOpen(true)}
+                        className="btn btn-primary text-xs h-7 px-2.5 rounded-lg flex items-center gap-1 shrink-0"
+                      >
+                        <Plus size={13} /> Asignar
+                      </button>
                     </div>
-                    <ChevronLeft size={16} className="rotate-[-90deg] text-[var(--text-muted)]" />
-                  </div>
+                  )}
 
                   <div>
                     <label className="text-xs font-semibold mb-1.5 block text-[var(--text-muted)]">Kilometraje</label>
@@ -1940,6 +2056,82 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
           motivoInicial={orden?.motivo}
           onCitaCreada={(nuevaCita) => {
             setCitas((prev) => [...prev, nuevaCita]);
+          }}
+        />
+      )}
+      {isClienteModalOpen && (
+        <ClienteModal
+          cliente={cliente}
+          onClose={() => setIsClienteModalOpen(false)}
+          onSaved={() => {
+            setIsClienteModalOpen(false);
+            void loadData();
+          }}
+        />
+      )}
+      {isClienteSelectorOpen && (
+        <ClienteSelectorModal
+          onClose={() => setIsClienteSelectorOpen(false)}
+          selectedClienteId={cliente?.id}
+          onSelect={async (newCliente) => {
+            if (!newCliente?.id) return;
+            const newClienteId = newCliente.id;
+            const toastId = toast.loading("Asignando cliente...");
+            try {
+              await updateOrden(presupuestoId, { clienteId: newClienteId });
+              setCliente(newCliente);
+              setOrden((prev) => (prev ? { ...prev, clienteId: newClienteId, cliente: newCliente } : prev));
+              toast.success("Cliente asignado al presupuesto", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar cliente:", err);
+              toast.error("Error al asignar cliente", { id: toastId });
+            }
+          }}
+        />
+      )}
+      {isVehiculoModalOpen && (
+        <VehiculoModal
+          isOpen={isVehiculoModalOpen}
+          onClose={() => setIsVehiculoModalOpen(false)}
+          editingVehiculo={cliente ? (vehiculo ? { ...vehiculo, cliente } : null) : vehiculo}
+          onSuccess={handleVehiculoSaved}
+        />
+      )}
+      {isVehiculoSelectorOpen && (
+        <VehiculoSelectorModal
+          onClose={() => setIsVehiculoSelectorOpen(false)}
+          selectedVehiculoId={vehiculo?.id}
+          clienteId={cliente?.id}
+          clienteNombre={cliente ? `${cliente.nombre} ${cliente.apellido || ""}`.trim() : undefined}
+          onSelect={async (newVehiculo, clienteAsociado) => {
+            if (!newVehiculo?.id) return;
+            const newVehiculoId = newVehiculo.id;
+            const toastId = toast.loading("Asignando vehículo...");
+            try {
+              const payload: Partial<OrdenTrabajo> = { vehiculoId: newVehiculoId };
+              if (!cliente && clienteAsociado?.id) {
+                payload.clienteId = clienteAsociado.id;
+                setCliente(clienteAsociado);
+              }
+              await updateOrden(presupuestoId, payload);
+              await handleVehiculoSaved(newVehiculo);
+              const clienteIdResolved = payload.clienteId || orden?.clienteId || "";
+              setOrden((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      vehiculoId: newVehiculoId,
+                      vehiculo: newVehiculo,
+                      clienteId: clienteIdResolved,
+                      cliente: clienteAsociado || prev.cliente,
+                    }
+                  : prev
+              );
+              toast.success("Vehículo asignado al presupuesto", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar vehículo:", err);
+              toast.error("Error al asignar vehículo", { id: toastId });
+            }
           }}
         />
       )}

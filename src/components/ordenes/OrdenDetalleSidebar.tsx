@@ -50,6 +50,7 @@ import {
   DollarSign,
   RotateCcw,
   Edit2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { format } from "date-fns";
@@ -59,6 +60,8 @@ import DamageSelector from "@/components/recepcion/DamageSelector";
 import ChecklistInventario from "@/components/recepcion/ChecklistInventario";
 import FuelSelector from "@/components/recepcion/FuelSelector";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
+import ClienteSelectorModal from "@/components/clientes/ClienteSelectorModal";
+import VehiculoSelectorModal from "@/components/vehiculos/VehiculoSelectorModal";
 import { BANCOS_TRANSFERENCIA, BANCO_TRANSFERENCIA_LIST_ID } from "@/lib/paymentBanks";
 import {
   calcularPagoConRecargo,
@@ -140,6 +143,8 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
   const [metodoDevolucion, setMetodoDevolucion] = useState<MetodoDevolucion>("efectivo");
   const [notasDevolucion, setNotasDevolucion] = useState("");
   const [savingDevolucion, setSavingDevolucion] = useState(false);
+  const [isClienteSelectorOpen, setIsClienteSelectorOpen] = useState(false);
+  const [isVehiculoSelectorOpen, setIsVehiculoSelectorOpen] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const deletingOrdenRef = useRef(false);
@@ -869,69 +874,119 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
                   <div className="flex items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-2">
                       <Car size={18} className="text-[var(--warning)]" />
-                      <h3 className="font-semibold text-sm">Datos del Vehiculo</h3>
+                      <h3 className="font-semibold text-sm">Datos del Vehículo</h3>
                     </div>
-                    {orden.vehiculo && (
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setEditingVehiculo(true)}
-                        className="btn-ghost btn-sm text-xs"
+                        onClick={() => setIsVehiculoSelectorOpen(true)}
+                        className="btn-ghost btn-sm text-xs text-blue-600 font-semibold"
                       >
-                        <Edit2 size={13} /> Editar
+                        {orden.vehiculo ? "Cambiar" : "Asignar"}
                       </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Placa</p>
-                      <p className="font-mono font-bold text-sm">{orden.vehiculo?.placa ?? "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Tipo</p>
-                      <p className="capitalize">{orden.vehiculo?.tipoVehiculo ?? "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Marca</p>
-                      <p>{orden.vehiculo?.marca ?? "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Modelo</p>
-                      <p>{orden.vehiculo?.modelo ?? "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Anio</p>
-                      <p>{orden.vehiculo?.anio ?? "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Color</p>
-                      <p>{orden.vehiculo?.color ?? "-"}</p>
+                      {orden.vehiculo && (
+                        <button
+                          type="button"
+                          onClick={() => setEditingVehiculo(true)}
+                          className="btn-ghost btn-sm text-xs"
+                        >
+                          <Edit2 size={13} /> Editar
+                        </button>
+                      )}
                     </div>
                   </div>
+                  {orden.vehiculo ? (
+                    <div className="grid grid-cols-2 gap-3 bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Placa</p>
+                        <p className="font-mono font-bold text-sm">{orden.vehiculo.placa || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Tipo</p>
+                        <p className="capitalize">{orden.vehiculo.tipoVehiculo || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Marca</p>
+                        <p>{orden.vehiculo.marca || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Modelo</p>
+                        <p>{orden.vehiculo.modelo || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Año</p>
+                        <p>{orden.vehiculo.anio || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Color</p>
+                        <p>{orden.vehiculo.color || "-"}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg flex items-center justify-between gap-3 text-amber-800">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                        <span className="text-xs font-semibold">Sin vehículo asignado</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsVehiculoSelectorOpen(true)}
+                        className="btn btn-primary text-xs h-7 px-2.5 rounded-lg"
+                      >
+                        Asignar
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="card bg-[var(--bg-card)]">
-                  <div className="flex items-center gap-2 mb-4">
-                    <User size={18} className="text-[var(--success)]" />
-                    <h3 className="font-semibold text-sm">Datos del Cliente</h3>
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-2">
+                      <User size={18} className="text-[var(--success)]" />
+                      <h3 className="font-semibold text-sm">Datos del Cliente</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsClienteSelectorOpen(true)}
+                      className="btn-ghost btn-sm text-xs text-blue-600 font-semibold"
+                    >
+                      {orden.cliente ? "Cambiar" : "Asignar"}
+                    </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Nombre</p>
-                      <p>{orden.cliente?.nombre} {orden.cliente?.apellido}</p>
+                  {orden.cliente ? (
+                    <div className="grid grid-cols-2 gap-3 bg-[var(--bg-secondary)] p-3 rounded-lg border border-[var(--border)] text-xs">
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Nombre</p>
+                        <p>{orden.cliente.nombre} {orden.cliente.apellido || ""}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Identificación</p>
+                        <p>{orden.cliente.identificacion || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Teléfono</p>
+                        <p>{orden.cliente.telefono || "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Email</p>
+                        <p className="truncate">{orden.cliente.email || "-"}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Identificacion</p>
-                      <p>{orden.cliente?.identificacion ?? "-"}</p>
+                  ) : (
+                    <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-lg flex items-center justify-between gap-3 text-amber-800">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={14} className="text-amber-600 shrink-0" />
+                        <span className="text-xs font-semibold">Sin cliente asignado</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsClienteSelectorOpen(true)}
+                        className="btn btn-primary text-xs h-7 px-2.5 rounded-lg"
+                      >
+                        Asignar
+                      </button>
                     </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Telefono</p>
-                      <p>{orden.cliente?.telefono ?? "-"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-[var(--text-muted)]">Email</p>
-                      <p className="truncate">{orden.cliente?.email || "-"}</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </div>
 
@@ -1678,6 +1733,63 @@ export default function OrdenDetalleSidebar({ ordenId, onClose, onUpdate, onEdit
             </button>
           </div>
         </div>
+      )}
+
+      {isClienteSelectorOpen && orden && (
+        <ClienteSelectorModal
+          onClose={() => setIsClienteSelectorOpen(false)}
+          selectedClienteId={orden.clienteId}
+          onSelect={async (newCliente) => {
+            if (!newCliente?.id) return;
+            const newClienteId = newCliente.id;
+            const toastId = toast.loading("Asignando cliente a la orden...");
+            try {
+              await updateOrden(ordenId, { clienteId: newClienteId });
+              setOrden((prev) => (prev ? { ...prev, clienteId: newClienteId, cliente: newCliente } : prev));
+              toast.success("Cliente asignado", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar cliente:", err);
+              toast.error("Error al asignar cliente", { id: toastId });
+            }
+          }}
+        />
+      )}
+
+      {isVehiculoSelectorOpen && orden && (
+        <VehiculoSelectorModal
+          onClose={() => setIsVehiculoSelectorOpen(false)}
+          selectedVehiculoId={orden.vehiculoId}
+          clienteId={orden.cliente?.id}
+          clienteNombre={orden.cliente ? `${orden.cliente.nombre} ${orden.cliente.apellido || ""}`.trim() : undefined}
+          onSelect={async (newVehiculo, clienteAsociado) => {
+            if (!newVehiculo?.id) return;
+            const newVehiculoId = newVehiculo.id;
+            const toastId = toast.loading("Asignando vehículo a la orden...");
+            try {
+              const payload: Partial<OrdenTrabajo> = { vehiculoId: newVehiculoId };
+              if (!orden.cliente && clienteAsociado?.id) {
+                payload.clienteId = clienteAsociado.id;
+              }
+              await updateOrden(ordenId, payload);
+              const clienteIdResolved = payload.clienteId || orden.clienteId || "";
+              setOrden((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      vehiculoId: newVehiculoId,
+                      vehiculo: newVehiculo,
+                      clienteId: clienteIdResolved,
+                      cliente: clienteAsociado || prev.cliente,
+                    }
+                  : prev
+              );
+              toast.success("Vehículo asignado", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar vehículo:", err);
+              toast.error("Error al asignar vehículo", { id: toastId });
+            }
+          }}
+        />
       )}
     </div>,
     document.body

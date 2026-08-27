@@ -1,7 +1,24 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { X, Calendar, Clock, User, Car, Wrench, Trash2, CheckCircle2, AlertCircle, FileText, ExternalLink, Loader2 } from "lucide-react";
+import { useRef, useState, useEffect } from "react";
+import {
+  X,
+  Calendar,
+  Clock,
+  User,
+  Car,
+  Wrench,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  ExternalLink,
+  Loader2,
+  Edit2,
+  AlertTriangle,
+  RotateCcw,
+  Save,
+} from "lucide-react";
 import { toast } from "react-hot-toast";
 import { updateCita, deleteCita } from "@/lib/services";
 import { useUIStore } from "@/store";
@@ -41,6 +58,33 @@ export default function ModalDetalleEvento({
   const backdropRef = useRef<HTMLDivElement>(null);
   const { setOrdenSidebarOpen, setPresupuestoSidebarOpen } = useUIStore();
   const [updating, setUpdating] = useState(false);
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+
+  // Form states for editing
+  const [editEstado, setEditEstado] = useState<"Agendada" | "Completada" | "Cancelada">("Agendada");
+  const [editTitulo, setEditTitulo] = useState("");
+  const [editFecha, setEditFecha] = useState("");
+  const [editHoraInicio, setEditHoraInicio] = useState("");
+  const [editHoraFin, setEditHoraFin] = useState("");
+  const [editClienteNombre, setEditClienteNombre] = useState("");
+  const [editVehiculoPlaca, setEditVehiculoPlaca] = useState("");
+  const [editDescripcion, setEditDescripcion] = useState("");
+
+  useEffect(() => {
+    if (evento) {
+      setShowConfirmCancel(false);
+      setIsEditing(false);
+      setEditEstado((evento.estado as "Agendada" | "Completada" | "Cancelada") || "Agendada");
+      setEditTitulo(evento.titulo || "");
+      setEditFecha(evento.fecha || "");
+      setEditHoraInicio(evento.horaInicio || "");
+      setEditHoraFin(evento.horaFin || "");
+      setEditClienteNombre(evento.clienteNombre || "");
+      setEditVehiculoPlaca(evento.vehiculoPlaca || "");
+      setEditDescripcion(evento.descripcion || "");
+    }
+  }, [evento]);
 
   if (!evento) return null;
 
@@ -60,10 +104,43 @@ export default function ModalDetalleEvento({
       await updateCita(evento.id, { estado: nuevoEstado });
       toast.success(`Cita marcada como ${nuevoEstado}`);
       if (onEventoActualizado) onEventoActualizado();
+      setShowConfirmCancel(false);
       onClose();
     } catch (err) {
       console.error("Error al actualizar estado de la cita", err);
       toast.error("No se pudo actualizar el estado de la cita");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleGuardarEdicion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isCita || !evento.id) return;
+    if (!editTitulo.trim()) {
+      toast.error("El título es obligatorio");
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      await updateCita(evento.id, {
+        titulo: editTitulo.trim(),
+        fecha: editFecha,
+        horaInicio: editHoraInicio,
+        horaFin: editHoraFin,
+        clienteNombre: editClienteNombre.trim(),
+        vehiculoPlaca: editVehiculoPlaca.trim(),
+        descripcion: editDescripcion.trim(),
+        estado: editEstado,
+      });
+      toast.success("Cita actualizada correctamente");
+      if (onEventoActualizado) onEventoActualizado();
+      setIsEditing(false);
+      onClose();
+    } catch (err) {
+      console.error("Error al guardar cambios de la cita:", err);
+      toast.error("Error al actualizar la cita");
     } finally {
       setUpdating(false);
     }
@@ -106,8 +183,8 @@ export default function ModalDetalleEvento({
       onClick={handleBackdropClick}
       className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150"
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col my-auto">
-        {/* Header con color representativo */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col my-auto max-h-[90vh]">
+        {/* Header */}
         <div
           className={`px-5 py-4 border-b flex items-start justify-between gap-3 ${
             isCita
@@ -125,14 +202,22 @@ export default function ModalDetalleEvento({
                 }`}
               >
                 {isCita ? <Calendar size={11} /> : <Wrench size={11} />}
-                {isCita ? "Cita Agendada" : "Entrega de Orden"}
+                {isCita ? (isEditing ? "Editar Cita" : "Cita Agendada") : "Entrega de Orden"}
               </span>
-              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                {evento.estado}
+              <span
+                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  evento.estado === "Completada"
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200"
+                    : evento.estado === "Cancelada"
+                    ? "bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200"
+                    : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                }`}
+              >
+                {isEditing ? editEstado : evento.estado}
               </span>
             </div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 leading-snug break-words">
-              {evento.titulo}
+              {isEditing ? "Modificar detalles de la cita" : evento.titulo}
             </h3>
           </div>
           <button
@@ -144,97 +229,260 @@ export default function ModalDetalleEvento({
           </button>
         </div>
 
-        {/* Content Details */}
-        <div className="p-5 space-y-3 text-xs text-slate-700 dark:text-slate-300">
-          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
-            <div className="flex items-center gap-2">
-              <Calendar size={14} className={isCita ? "text-blue-500" : "text-purple-500"} />
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-bold">Fecha</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-200">{evento.fecha}</span>
-              </div>
-            </div>
-
-            {evento.horaInicio && (
-              <div className="flex items-center gap-2">
-                <Clock size={14} className={isCita ? "text-blue-500" : "text-purple-500"} />
+        {/* Modal Body */}
+        <div className="p-5 overflow-y-auto space-y-4 text-xs text-slate-700 dark:text-slate-300">
+          {/* Advertencia de Confirmación para Cancelar */}
+          {showConfirmCancel && (
+            <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/50 space-y-3 animate-in fade-in duration-200">
+              <div className="flex items-start gap-3">
+                <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/80 text-amber-600 dark:text-amber-300 shrink-0">
+                  <AlertTriangle size={20} />
+                </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 block uppercase font-bold">Horario</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">
-                    {evento.horaInicio} {evento.horaFin ? `- ${evento.horaFin}` : ""}
-                  </span>
+                  <h4 className="font-extrabold text-slate-900 dark:text-slate-100 text-xs">
+                    ¿Deseas cancelar esta cita?
+                  </h4>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                    La cita pasará al estado <strong>Cancelada</strong>. Podrás reactivarla o editarla en cualquier momento si lo necesitas.
+                  </p>
                 </div>
               </div>
-            )}
-          </div>
-
-          {evento.clienteNombre && (
-            <div className="flex items-center gap-2.5">
-              <User size={14} className="text-slate-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-semibold">Cliente</span>
-                <span className="font-bold text-slate-800 dark:text-slate-100">{evento.clienteNombre}</span>
+              <div className="flex items-center justify-end gap-2 pt-1 border-t border-amber-200/60 dark:border-amber-900/40">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmCancel(false)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 transition-colors border-0 cursor-pointer"
+                >
+                  No, mantener
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCambiarEstadoCita("Cancelada")}
+                  disabled={updating}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors border-0 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {updating ? <Loader2 size={13} className="animate-spin" /> : <AlertCircle size={13} />}
+                  Sí, cancelar cita
+                </button>
               </div>
             </div>
           )}
 
-          {evento.vehiculoPlaca && (
-            <div className="flex items-center gap-2.5">
-              <Car size={14} className="text-slate-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-semibold">Vehículo</span>
-                <span className="font-bold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px]">
-                  {evento.vehiculoPlaca}
-                </span>
+          {/* MODO EDICIÓN DE CITA */}
+          {isEditing ? (
+            <form onSubmit={handleGuardarEdicion} className="space-y-3.5">
+              {/* Seleccionar Estado */}
+              <div className="form-group">
+                <label className="label text-[11px]">Estado de la Cita *</label>
+                <select
+                  value={editEstado}
+                  onChange={(e) => setEditEstado(e.target.value as "Agendada" | "Completada" | "Cancelada")}
+                  className="input font-semibold"
+                >
+                  <option value="Agendada">Agendada (Activa)</option>
+                  <option value="Completada">Completada</option>
+                  <option value="Cancelada">Cancelada</option>
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Si cancelaste por error, selecciona <strong>Agendada</strong> para restaurarla.
+                </p>
               </div>
-            </div>
-          )}
 
-          {evento.asignadoANombre && (
-            <div className="flex items-center gap-2.5">
-              <User size={14} className="text-slate-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 block uppercase font-semibold">Asignado a</span>
-                <span className="font-medium text-slate-700 dark:text-slate-300">{evento.asignadoANombre}</span>
+              {/* Título */}
+              <div className="form-group">
+                <label className="label text-[11px]">Título / Motivo *</label>
+                <input
+                  type="text"
+                  value={editTitulo}
+                  onChange={(e) => setEditTitulo(e.target.value)}
+                  className="input"
+                  required
+                  placeholder="Ej: Mantenimiento de frenos"
+                />
               </div>
-            </div>
-          )}
 
-          {evento.descripcion && (
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-[10px] text-slate-400 block uppercase font-semibold mb-1">Descripción / Notas</span>
-              <p className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                {evento.descripcion}
-              </p>
-            </div>
-          )}
+              {/* Fecha y Horario */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="form-group sm:col-span-1">
+                  <label className="label text-[11px]">Fecha *</label>
+                  <input
+                    type="date"
+                    value={editFecha}
+                    onChange={(e) => setEditFecha(e.target.value)}
+                    className="input"
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label text-[11px]">Hora Inicio</label>
+                  <input
+                    type="time"
+                    value={editHoraInicio}
+                    onChange={(e) => setEditHoraInicio(e.target.value)}
+                    className="input font-mono"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label text-[11px]">Hora Fin</label>
+                  <input
+                    type="time"
+                    value={editHoraFin}
+                    onChange={(e) => setEditHoraFin(e.target.value)}
+                    className="input font-mono"
+                  />
+                </div>
+              </div>
 
-          {/* Links a Presupuesto u Orden */}
-          {isEntrega && evento.ordenId && (
-            <button
-              type="button"
-              onClick={handleAbrirOrden}
-              className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-0 shadow-xs"
-            >
-              <ExternalLink size={14} />
-              Ver Orden de Trabajo #{String(evento.ordenRaw?.numeroOrden || evento.ordenRaw?.numero || "").padStart(4, "0")}
-            </button>
-          )}
+              {/* Cliente y Vehículo */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="form-group">
+                  <label className="label text-[11px]">Cliente</label>
+                  <input
+                    type="text"
+                    value={editClienteNombre}
+                    onChange={(e) => setEditClienteNombre(e.target.value)}
+                    className="input"
+                    placeholder="Nombre del cliente"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="label text-[11px]">Placa / Vehículo</label>
+                  <input
+                    type="text"
+                    value={editVehiculoPlaca}
+                    onChange={(e) => setEditVehiculoPlaca(e.target.value)}
+                    className="input uppercase font-mono"
+                    placeholder="ABC-1234"
+                  />
+                </div>
+              </div>
 
-          {isCita && evento.presupuestoId && (
-            <button
-              type="button"
-              onClick={handleAbrirPresupuesto}
-              className="w-full py-2 px-3 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-blue-200 dark:border-blue-800"
-            >
-              <FileText size={14} />
-              Ver Presupuesto Vinculado
-            </button>
+              {/* Descripción */}
+              <div className="form-group">
+                <label className="label text-[11px]">Notas / Detalles</label>
+                <textarea
+                  value={editDescripcion}
+                  onChange={(e) => setEditDescripcion(e.target.value)}
+                  className="input resize-none"
+                  rows={2.5}
+                  placeholder="Detalles adicionales de la cita..."
+                />
+              </div>
+
+              {/* Botones de Acción Formulario */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  disabled={updating}
+                  className="btn-ghost text-xs py-1.5 px-3"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={updating}
+                  className="btn-primary text-xs py-1.5 px-4 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {updating ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          ) : (
+            /* MODO VISTA DETALLADA */
+            <>
+              <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Calendar size={14} className={isCita ? "text-blue-500" : "text-purple-500"} />
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-bold">Fecha</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{evento.fecha}</span>
+                  </div>
+                </div>
+
+                {evento.horaInicio && (
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className={isCita ? "text-blue-500" : "text-purple-500"} />
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase font-bold">Horario</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {evento.horaInicio} {evento.horaFin ? `- ${evento.horaFin}` : ""}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {evento.clienteNombre && (
+                <div className="flex items-center gap-2.5">
+                  <User size={14} className="text-slate-400 shrink-0" />
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-semibold">Cliente</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100">{evento.clienteNombre}</span>
+                  </div>
+                </div>
+              )}
+
+              {evento.vehiculoPlaca && (
+                <div className="flex items-center gap-2.5">
+                  <Car size={14} className="text-slate-400 shrink-0" />
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-semibold">Vehículo</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-100 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[11px]">
+                      {evento.vehiculoPlaca}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {evento.asignadoANombre && (
+                <div className="flex items-center gap-2.5">
+                  <User size={14} className="text-slate-400 shrink-0" />
+                  <div>
+                    <span className="text-[10px] text-slate-400 block uppercase font-semibold">Asignado a</span>
+                    <span className="font-medium text-slate-700 dark:text-slate-300">{evento.asignadoANombre}</span>
+                  </div>
+                </div>
+              )}
+
+              {evento.descripcion && (
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-400 block uppercase font-semibold mb-1">Descripción / Notas</span>
+                  <p className="p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                    {evento.descripcion}
+                  </p>
+                </div>
+              )}
+
+              {/* Links a Presupuesto u Orden */}
+              {isEntrega && evento.ordenId && (
+                <button
+                  type="button"
+                  onClick={handleAbrirOrden}
+                  className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border-0 shadow-xs"
+                >
+                  <ExternalLink size={14} />
+                  Ver Orden de Trabajo #{String(evento.ordenRaw?.numeroOrden || evento.ordenRaw?.numero || "").padStart(4, "0")}
+                </button>
+              )}
+
+              {isCita && evento.presupuestoId && (
+                <button
+                  type="button"
+                  onClick={handleAbrirPresupuesto}
+                  className="w-full py-2 px-3 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-blue-200 dark:border-blue-800"
+                >
+                  <FileText size={14} />
+                  Ver Presupuesto Vinculado
+                </button>
+              )}
+            </>
           )}
         </div>
 
-        {/* Action Buttons for Citas */}
-        {isCita && (
+        {/* Action Buttons for Citas (Only when NOT editing) */}
+        {isCita && !isEditing && (
           <div className="px-5 py-3 bg-slate-50/80 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
@@ -247,7 +495,19 @@ export default function ModalDetalleEvento({
               Eliminar
             </button>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Botón Editar */}
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                disabled={updating}
+                className="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 rounded-lg text-xs font-semibold flex items-center gap-1 border-0 cursor-pointer transition-colors"
+              >
+                <Edit2 size={13} />
+                Editar
+              </button>
+
+              {/* Botón Completar */}
               {evento.estado !== "Completada" && (
                 <button
                   type="button"
@@ -259,12 +519,14 @@ export default function ModalDetalleEvento({
                   Completar
                 </button>
               )}
+
+              {/* Botón Cancelar (con advertencia de confirmación) */}
               {evento.estado !== "Cancelada" && (
                 <button
                   type="button"
-                  onClick={() => handleCambiarEstadoCita("Cancelada")}
+                  onClick={() => setShowConfirmCancel(true)}
                   disabled={updating}
-                  className="px-2.5 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-rose-100 hover:text-rose-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 border-0 cursor-pointer transition-colors"
+                  className="px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 rounded-lg text-xs font-semibold flex items-center gap-1 border border-rose-200 dark:border-rose-800/60 cursor-pointer transition-colors"
                 >
                   <AlertCircle size={13} />
                   Cancelar

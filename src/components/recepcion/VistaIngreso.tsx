@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { ChevronLeft, ChevronDown, ChevronUp, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut, MessageSquare, UserPlus, CheckCircle2, FileText, Wrench } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, Download, Mail, MoreHorizontal, Printer, FileDown, Loader2, Camera, Trash2, Car, User, Plus, X, Search, Users, Eye, PenTool, ClipboardSignature, Edit, LogOut, MessageSquare, UserPlus, CheckCircle2, FileText, Wrench, AlertTriangle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { 
@@ -28,7 +28,9 @@ import { createOrdenConItems } from "@/lib/services";
 import ModalInspeccion from "./ModalInspeccion";
 import ModalFirmaCliente from "./ModalFirmaCliente";
 import ClienteModal from "@/components/clientes/ClienteModal";
+import ClienteSelectorModal from "@/components/clientes/ClienteSelectorModal";
 import VehiculoModal from "@/components/vehiculos/VehiculoModal";
+import VehiculoSelectorModal from "@/components/vehiculos/VehiculoSelectorModal";
 import { CHECKLIST_DEFAULT, getMergedChecklist } from "@/lib/checklist";
 import ChatOrden from "@/components/ordenes/ChatOrden";
 import { db } from "@/lib/firebase";
@@ -132,7 +134,9 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   const [creatingPresupuesto, setCreatingPresupuesto] = useState(false);
   const [creatingOrden, setCreatingOrden] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
+  const [isClienteSelectorOpen, setIsClienteSelectorOpen] = useState(false);
   const [isVehiculoModalOpen, setIsVehiculoModalOpen] = useState(false);
+  const [isVehiculoSelectorOpen, setIsVehiculoSelectorOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRetirarModalOpen, setIsRetirarModalOpen] = useState(false);
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
@@ -500,8 +504,8 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
     } catch (err) {
       console.error(err);
       toast.error("Error al eliminar el ingreso", { id: toastId });
-    } finally {
       setSaving(false);
+    } finally {
       setIsMenuOpen(false);
     }
   };
@@ -509,14 +513,22 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   const handleRetirarVehiculo = async () => {
     if (!orden) return;
     setSaving(true);
-    const toastId = toast.loading("Registrando retiro de vehículo...");
+    const toastId = toast.loading("Registrando retiro del vehículo...");
     try {
       await updateOrden(ingresoId, {
         archivado: true,
+        estado: "Entregada",
+        notasInternas: (orden.notasInternas || "") + `\n[Retirado del taller sin orden de trabajo]`,
       });
-      toast.success("Vehículo retirado y registro archivado con éxito", { id: toastId });
+      
+      toast.success("Vehículo retirado y archivado correctamente", { id: toastId });
       setIsRetirarModalOpen(false);
-      router.push("/ingresos");
+      
+      if (isSidebar) {
+        setIngresoSidebarOpen(false);
+      } else {
+        router.push("/ingresos");
+      }
     } catch (err) {
       console.error(err);
       toast.error("Error al registrar el retiro del vehículo", { id: toastId });
@@ -526,7 +538,11 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   };
 
   const handleDownloadPDF = async () => {
-    if (!orden || !cliente || !vehiculo) return;
+    if (!orden) return;
+    if (!cliente || !vehiculo) {
+      toast.error("Debes asignar un cliente y un vehículo antes de generar el PDF");
+      return;
+    }
     setGeneratingPdf(true);
     const toastId = toast.loading("Generando PDF...");
     try {
@@ -574,7 +590,11 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
   };
 
   const handlePrintPDF = async () => {
-    if (!orden || !cliente || !vehiculo) return;
+    if (!orden) return;
+    if (!cliente || !vehiculo) {
+      toast.error("Debes asignar un cliente y un vehículo antes de imprimir");
+      return;
+    }
     setGeneratingPdf(true);
     const toastId = toast.loading("Preparando impresión...");
     try {
@@ -646,6 +666,45 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
     }
   };
 
+  const handleCrearOrdenDirecta = async () => {
+    if (!orden) return;
+    if (!cliente || !vehiculo) {
+      toast.error("Debes asignar un cliente y un vehículo antes de generar la orden");
+      return;
+    }
+    const confirmed = window.confirm("¿Deseas crear una Orden de Trabajo directamente desde este ingreso?");
+    if (!confirmed) return;
+
+    setCreatingOrden(true);
+    const toastId = toast.loading("Creando Orden de Trabajo...");
+    try {
+      const ordenIdResult = await convertirIngresoAOrden(ingresoId);
+      toast.success("Orden de Trabajo creada con éxito", { id: toastId });
+      
+      // Enviar mensaje del sistema al chat
+      await sendMensajeOrden(ingresoId, {
+        autorId: "sistema",
+        autorNombre: "Sistema",
+        autorRole: "admin",
+        texto: `Se ha convertido este ingreso en una Orden de Trabajo`,
+        sistema: true,
+        accionSistema: "orden",
+      });
+
+      if (isSidebar) {
+        setIngresoSidebarOpen(false);
+        setOrdenSidebarOpen(true, String(ordenIdResult));
+      } else {
+        router.push(`/ordenes?id=${ordenIdResult}`);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al crear la orden de trabajo", { id: toastId });
+    } finally {
+      setCreatingOrden(false);
+    }
+  };
+
   const toggleTecnico = (tecnico: AppUser) => {
     let nuevos: AppUser[];
     if (tecnicosAsignados.find(t => t.uid === tecnico.uid)) {
@@ -711,7 +770,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
     toast.success("Firma registrada localmente. Recuerde guardar los cambios.");
   };
 
-  if (loading || !orden || !cliente || !vehiculo) {
+  if (loading || !orden) {
     if (isSidebar) {
       return (
         <div className="flex items-center justify-center h-full p-6 bg-slate-50">
@@ -877,7 +936,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         {!(isSidebar && chatAbierto) && (
           <div className="w-full lg:min-w-0 flex flex-col lg:h-full gap-4 shrink-0 lg:shrink" style={{ flex: "1.2 1 0%" }}>
             {/* Tarjeta de Cliente */}
-            {cliente && (
+            {cliente ? (
               <div className="bg-white border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -886,8 +945,15 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                   </h3>
                   <div className="flex items-center gap-1.5">
                     <button 
+                      onClick={() => setIsClienteSelectorOpen(true)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-0.5 rounded hover:bg-blue-50 transition-colors"
+                      title="Cambiar cliente"
+                    >
+                      Cambiar
+                    </button>
+                    <button 
                       onClick={() => setIsClienteModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 rounded text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
                       title="Editar cliente"
                     >
                       <Edit size={14} />
@@ -944,6 +1010,23 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                   </div>
                 )}
               </div>
+            ) : (
+              <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 shadow-sm flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2 text-amber-800">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                  <div>
+                    <p className="font-bold text-xs">Cliente no asignado</p>
+                    <p className="text-[10px] text-amber-700">Este ingreso quedó sin cliente asociado.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsClienteSelectorOpen(true)}
+                  className="btn btn-primary text-xs h-7 px-2.5 rounded-lg flex items-center gap-1 shrink-0"
+                >
+                  <Plus size={13} /> Asignar
+                </button>
+              </div>
             )}
 
           {/* Chat Container */}
@@ -963,7 +1046,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         {/* Column 2: Vehicle details */}
         <div className="w-full lg:min-w-0 flex flex-col gap-6 lg:overflow-y-auto lg:min-h-0 pr-2 custom-scrollbar lg:border-x lg:border-[var(--border)] lg:px-6" style={{ flex: "2 1 0%" }}>
             {/* Tarjeta de Vehículo */}
-            {vehiculo && (
+            {vehiculo ? (
               <div className="bg-white border border-[var(--border)] rounded-xl p-4 shadow-sm flex flex-col gap-3 shrink-0">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -972,8 +1055,15 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                   </h3>
                   <div className="flex items-center gap-1.5">
                     <button 
+                      onClick={() => setIsVehiculoSelectorOpen(true)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-semibold px-2 py-0.5 rounded hover:bg-blue-50 transition-colors"
+                      title="Cambiar vehículo"
+                    >
+                      Cambiar
+                    </button>
+                    <button 
                       onClick={() => setIsVehiculoModalOpen(true)}
-                      className="p-1 hover:bg-slate-100 rounded text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
+                      className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition-colors border-none bg-transparent cursor-pointer flex items-center justify-center"
                       title="Editar vehículo"
                     >
                       <Edit size={14} />
@@ -1020,6 +1110,23 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                     </div>
                   </div>
                 )}
+              </div>
+            ) : (
+              <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 shadow-sm flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-2 text-amber-800">
+                  <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+                  <div>
+                    <p className="font-bold text-xs">Vehículo no asignado</p>
+                    <p className="text-[10px] text-amber-700">Este ingreso no tiene vehículo asociado.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsVehiculoSelectorOpen(true)}
+                  className="btn btn-primary text-xs h-7 px-2.5 rounded-lg flex items-center gap-1 shrink-0"
+                >
+                  <Plus size={13} /> Asignar
+                </button>
               </div>
             )}
 
@@ -1314,7 +1421,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
                   </button>
                   <button 
                     onClick={() => {
-                      if (cliente.email) {
+                      if (cliente?.email) {
                         toast.success(`Solicitud de firma enviada a ${cliente.email}`);
                       } else {
                         toast.error("El cliente no tiene un correo electrónico registrado");
@@ -1337,20 +1444,22 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
 
   const modalesYMas = (
     <>
-      <ModalInspeccion 
-        isOpen={isModalInspeccionOpen}
-        onClose={() => setIsModalInspeccionOpen(false)}
-        vehiculo={vehiculo}
-        danos={danos}
-        onChangeDanos={setDanos}
-        onSave={() => {}}
-        fotos={fotos}
-        onUploadFoto={handleUploadFoto}
-        onUpdateFoto={handleUpdateFoto}
-        onRemoveFoto={handleRemoveFoto}
-        observaciones={observaciones}
-        onChangeObservaciones={setObservaciones}
-      />
+      {isModalInspeccionOpen && vehiculo && (
+        <ModalInspeccion 
+          isOpen={isModalInspeccionOpen}
+          onClose={() => setIsModalInspeccionOpen(false)}
+          vehiculo={vehiculo}
+          danos={danos}
+          onChangeDanos={setDanos}
+          onSave={() => {}}
+          fotos={fotos}
+          onUploadFoto={handleUploadFoto}
+          onUpdateFoto={handleUpdateFoto}
+          onRemoveFoto={handleRemoveFoto}
+          observaciones={observaciones}
+          onChangeObservaciones={setObservaciones}
+        />
+      )}
 
       {isClienteModalOpen && (
         <ClienteModal
@@ -1363,15 +1472,77 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         />
       )}
 
-      <VehiculoModal
-        isOpen={isVehiculoModalOpen}
-        onClose={() => setIsVehiculoModalOpen(false)}
-        editingVehiculo={vehiculo}
-        onSuccess={() => {
-          setIsVehiculoModalOpen(false);
-          void loadData();
-        }}
-      />
+      {isClienteSelectorOpen && (
+        <ClienteSelectorModal
+          onClose={() => setIsClienteSelectorOpen(false)}
+          selectedClienteId={cliente?.id}
+          onSelect={async (newCliente) => {
+            if (!newCliente?.id) return;
+            const newClienteId = newCliente.id;
+            const toastId = toast.loading("Asignando cliente al ingreso...");
+            try {
+              await updateOrden(ingresoId, { clienteId: newClienteId });
+              setCliente(newCliente);
+              setOrden((prev) => (prev ? { ...prev, clienteId: newClienteId, cliente: newCliente } : prev));
+              toast.success("Cliente asignado", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar cliente:", err);
+              toast.error("Error al asignar cliente", { id: toastId });
+            }
+          }}
+        />
+      )}
+
+      {isVehiculoModalOpen && (
+        <VehiculoModal
+          isOpen={isVehiculoModalOpen}
+          onClose={() => setIsVehiculoModalOpen(false)}
+          editingVehiculo={vehiculo}
+          onSuccess={() => {
+            setIsVehiculoModalOpen(false);
+            void loadData();
+          }}
+        />
+      )}
+
+      {isVehiculoSelectorOpen && (
+        <VehiculoSelectorModal
+          onClose={() => setIsVehiculoSelectorOpen(false)}
+          selectedVehiculoId={vehiculo?.id}
+          clienteId={cliente?.id}
+          clienteNombre={cliente ? `${cliente.nombre} ${cliente.apellido || ""}`.trim() : undefined}
+          onSelect={async (newVehiculo, clienteAsociado) => {
+            if (!newVehiculo?.id) return;
+            const newVehiculoId = newVehiculo.id;
+            const toastId = toast.loading("Asignando vehículo al ingreso...");
+            try {
+              const payload: Partial<OrdenTrabajo> = { vehiculoId: newVehiculoId };
+              if (!cliente && clienteAsociado?.id) {
+                payload.clienteId = clienteAsociado.id;
+                setCliente(clienteAsociado);
+              }
+              await updateOrden(ingresoId, payload);
+              setVehiculo(newVehiculo);
+              const clienteIdResolved = payload.clienteId || orden?.clienteId || "";
+              setOrden((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      vehiculoId: newVehiculoId,
+                      vehiculo: newVehiculo,
+                      clienteId: clienteIdResolved,
+                      cliente: clienteAsociado || prev.cliente,
+                    }
+                  : prev
+              );
+              toast.success("Vehículo asignado", { id: toastId });
+            } catch (err) {
+              console.error("Error al asignar vehículo:", err);
+              toast.error("Error al asignar vehículo", { id: toastId });
+            }
+          }}
+        />
+      )}
 
       {isRetirarModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
@@ -1414,7 +1585,7 @@ export default function VistaIngreso({ ingresoId, isSidebar = false }: { ingreso
         isOpen={isFirmaModalOpen}
         onClose={() => setIsFirmaModalOpen(false)}
         onSave={handleSaveFirma}
-        clienteEmail={cliente.email}
+        clienteEmail={cliente?.email}
         numeroIngreso={`ING-${String(orden.numeroIngreso ?? orden.numero ?? 0).padStart(5, "0")}`}
       />
     </>
