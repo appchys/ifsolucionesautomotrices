@@ -153,16 +153,32 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-4 gap-2 sm:gap-4 lg:gap-5">
         {stats.map((stat) => (
-          <div key={stat.label} className="stat-card">
-            <div className="stat-icon" style={{ background: stat.bg }}>
-              <stat.icon size={22} style={{ color: stat.color }} />
+          <div
+            key={stat.label}
+            className="stat-card flex-col sm:flex-row items-center sm:items-center text-center sm:text-left p-2 sm:p-3 gap-1 sm:gap-3 rounded-xl min-w-0 overflow-hidden"
+          >
+            <div
+              className="stat-icon w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{ background: stat.bg }}
+            >
+              <stat.icon size={15} className="sm:hidden" style={{ color: stat.color }} />
+              <stat.icon size={18} className="hidden sm:block" style={{ color: stat.color }} />
             </div>
-            <div>
-              <div className="stat-value">{loading ? "-" : stat.value}</div>
-              <div className="stat-label">{stat.label}</div>
-              <div className="stat-trend" style={{ color: stat.color }}>{stat.trend}</div>
+            <div className="min-w-0 w-full sm:w-auto">
+              <div className="stat-value text-xs sm:text-base font-bold leading-tight truncate">
+                {loading ? "-" : stat.value}
+              </div>
+              <div className="stat-label text-[9px] sm:text-xs text-[var(--text-muted)] truncate leading-tight mt-0.5">
+                {stat.label}
+              </div>
+              <div
+                className="stat-trend text-[9px] font-medium truncate hidden md:block"
+                style={{ color: stat.color }}
+              >
+                {stat.trend}
+              </div>
             </div>
           </div>
         ))}

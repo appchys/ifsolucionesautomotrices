@@ -987,25 +987,25 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
             </div>
 
             {/* Items Table */}
-            <div className="border border-[var(--border)] rounded-xl bg-white overflow-hidden">
-              <div>
+            <div className="border border-[var(--border)] rounded-xl bg-white overflow-hidden shadow-sm">
+              <div className="overflow-x-auto">
                 {items.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-[var(--text-muted)] p-8 text-center">
                     <p className="text-sm">No hay ítems en el presupuesto.</p>
                     <p className="text-xs">Busca un producto o servicio arriba para agregarlo.</p>
                   </div>
                 ) : (
-                  <>
+                  <div className="min-w-[500px]">
                     <div>
                       {/* Sección Mano de obra */}
                       {items.filter((it) => it.tipo === "servicio").length > 0 && (
                         <div>
-                          <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
-                            <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
-                              <Wrench size={14} className="text-blue-600" />
+                          <div className="grid grid-cols-12 gap-1.5 sm:gap-2 p-2.5 sm:p-3 text-[11px] sm:text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                            <div className="col-span-4 sm:col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold truncate">
+                              <Wrench size={14} className="text-blue-600 shrink-0" />
                               Mano de obra
                             </div>
-                            <div className="col-span-2 text-center text-slate-500">Cant</div>
+                            <div className="col-span-3 sm:col-span-2 text-center text-slate-500">Cant</div>
                             <div className="col-span-2 text-right text-slate-500">Precio</div>
                             <div className="col-span-1 text-center text-slate-500">IVA</div>
                             <div className="col-span-2 text-right text-slate-500">Total</div>
@@ -1013,18 +1013,18 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                           {items.filter((it) => it.tipo === "servicio").map((item) => {
                             const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
                             return (
-                              <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
-                                <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
-                                <div className="col-span-2 flex items-center justify-center gap-1">
+                              <div key={item.id || idx} className="grid grid-cols-12 gap-1.5 sm:gap-2 p-2.5 sm:p-3 text-xs sm:text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
+                                <div className="col-span-4 sm:col-span-5 font-semibold uppercase truncate text-xs sm:text-sm" title={item.descripcion}>{item.descripcion}</div>
+                                <div className="col-span-3 sm:col-span-2 flex items-center justify-center gap-0.5 sm:gap-1">
                                   <button 
-                                    className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                    className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold shrink-0 cursor-pointer" 
                                     onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
                                   >
                                     -
                                   </button>
                                   <input 
                                     type="number" 
-                                    className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs" 
+                                    className="w-8 sm:w-10 text-center border border-[var(--border)] rounded py-0.5 px-0.5 text-xs font-mono" 
                                     value={item.cantidad} 
                                     onChange={(e) => {
                                       const newItems = [...items];
@@ -1036,7 +1036,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                     onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Number(e.target.value))}
                                   />
                                   <button 
-                                    className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                    className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold shrink-0 cursor-pointer" 
                                     onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
                                   >
                                     +
@@ -1045,7 +1045,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                 <div className="col-span-2 text-right">
                                   <input 
                                     type="number" 
-                                    className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs" 
+                                    className="w-14 sm:w-16 text-right border border-[var(--border)] rounded py-0.5 px-1 text-xs font-mono" 
                                     value={item.precioUnitario} 
                                     onChange={(e) => {
                                       const newItems = [...items];
@@ -1057,9 +1057,9 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                     onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
                                   />
                                 </div>
-                                <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
-                                <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
-                                  ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                                <div className="col-span-1 text-center text-xs font-mono text-[var(--text-muted)]">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
+                                <div className="col-span-2 text-right font-bold font-mono flex items-center justify-end gap-1 sm:gap-1.5 relative whitespace-nowrap">
+                                  <span className="text-xs sm:text-sm">${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
                                   <button
                                     type="button"
                                     onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
@@ -1068,14 +1068,14 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                     }`}
                                     title="Opciones de ítem"
                                   >
-                                    <MoreVertical size={14} />
+                                    <MoreVertical size={13} />
                                   </button>
                                   <button 
                                     onClick={() => handleDeleteItem(item.id)}
                                     className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
                                     title="Eliminar ítem"
                                   >
-                                    <Trash2 size={14} />
+                                    <Trash2 size={13} />
                                   </button>
 
                                   {activePopoverItemId === item.id && (
@@ -1098,12 +1098,12 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                       {/* Sección Repuestos */}
                       {items.filter((it) => it.tipo !== "servicio").length > 0 && (
                         <div>
-                          <div className="grid grid-cols-12 gap-2 p-3 text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
-                            <div className="col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold">
-                              <Package size={14} className="text-amber-600" />
+                          <div className="grid grid-cols-12 gap-1.5 sm:gap-2 p-2.5 sm:p-3 text-[11px] sm:text-xs font-bold uppercase tracking-wider bg-slate-100/90 border-b border-[var(--border)] items-center">
+                            <div className="col-span-4 sm:col-span-5 flex items-center gap-1.5 text-slate-800 font-extrabold truncate">
+                              <Package size={14} className="text-amber-600 shrink-0" />
                               Repuestos
                             </div>
-                            <div className="col-span-2 text-center text-slate-500">Cant</div>
+                            <div className="col-span-3 sm:col-span-2 text-center text-slate-500">Cant</div>
                             <div className="col-span-2 text-right text-slate-500">Precio</div>
                             <div className="col-span-1 text-center text-slate-500">IVA</div>
                             <div className="col-span-2 text-right text-slate-500">Total</div>
@@ -1111,18 +1111,18 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                           {items.filter((it) => it.tipo !== "servicio").map((item) => {
                             const idx = items.findIndex((it) => (it.id && it.id === item.id) || it === item);
                             return (
-                              <div key={item.id || idx} className="grid grid-cols-12 gap-2 p-3 text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
-                                <div className="col-span-5 font-semibold uppercase truncate" title={item.descripcion}>{item.descripcion}</div>
-                                <div className="col-span-2 flex items-center justify-center gap-1">
+                              <div key={item.id || idx} className="grid grid-cols-12 gap-1.5 sm:gap-2 p-2.5 sm:p-3 text-xs sm:text-sm border-b border-[var(--border)] items-center hover:bg-slate-50">
+                                <div className="col-span-4 sm:col-span-5 font-semibold uppercase truncate text-xs sm:text-sm" title={item.descripcion}>{item.descripcion}</div>
+                                <div className="col-span-3 sm:col-span-2 flex items-center justify-center gap-0.5 sm:gap-1">
                                   <button 
-                                    className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                    className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold shrink-0 cursor-pointer" 
                                     onClick={() => handleUpdateItem(item.id!, "cantidad", Math.max(1, item.cantidad - 1))}
                                   >
                                     -
                                   </button>
                                   <input 
                                     type="number" 
-                                    className="w-10 text-center border border-[var(--border)] rounded p-1 text-xs" 
+                                    className="w-8 sm:w-10 text-center border border-[var(--border)] rounded py-0.5 px-0.5 text-xs font-mono" 
                                     value={item.cantidad} 
                                     onChange={(e) => {
                                       const newItems = [...items];
@@ -1134,7 +1134,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                     onBlur={(e) => handleUpdateItem(item.id!, "cantidad", Number(e.target.value))}
                                   />
                                   <button 
-                                    className="w-6 h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600" 
+                                    className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded text-xs border border-slate-200 text-slate-600 font-bold shrink-0 cursor-pointer" 
                                     onClick={() => handleUpdateItem(item.id!, "cantidad", item.cantidad + 1)}
                                   >
                                     +
@@ -1143,7 +1143,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                 <div className="col-span-2 text-right">
                                   <input 
                                     type="number" 
-                                    className="w-16 text-right border border-[var(--border)] rounded p-1 text-xs" 
+                                    className="w-14 sm:w-16 text-right border border-[var(--border)] rounded py-0.5 px-1 text-xs font-mono" 
                                     value={item.precioUnitario} 
                                     onChange={(e) => {
                                       const newItems = [...items];
@@ -1155,9 +1155,9 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                     onBlur={(e) => handleUpdateItem(item.id!, "precioUnitario", Number(e.target.value))}
                                   />
                                 </div>
-                                <div className="col-span-1 text-center text-xs">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
-                                <div className="col-span-2 text-right font-bold flex items-center justify-end gap-2 relative">
-                                  ${(item.precioUnitario * item.cantidad).toFixed(2)}
+                                <div className="col-span-1 text-center text-xs font-mono text-[var(--text-muted)]">{item.impuestoAplicable > 0 ? `${item.impuestoAplicable}%` : '0%'}</div>
+                                <div className="col-span-2 text-right font-bold font-mono flex items-center justify-end gap-1 sm:gap-1.5 relative whitespace-nowrap">
+                                  <span className="text-xs sm:text-sm">${(item.precioUnitario * item.cantidad).toFixed(2)}</span>
                                   <button
                                     type="button"
                                     onClick={() => setActivePopoverItemId(activePopoverItemId === item.id ? null : (item.id || null))}
@@ -1166,14 +1166,14 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                                     }`}
                                     title="Opciones de ítem"
                                   >
-                                    <MoreVertical size={14} />
+                                    <MoreVertical size={13} />
                                   </button>
                                   <button 
                                     onClick={() => handleDeleteItem(item.id)}
                                     className="text-[var(--text-muted)] hover:text-red-500 p-1 rounded-md cursor-pointer hover:bg-slate-100 flex items-center justify-center"
                                     title="Eliminar ítem"
                                   >
-                                    <Trash2 size={14} />
+                                    <Trash2 size={13} />
                                   </button>
 
                                   {activePopoverItemId === item.id && (
@@ -1193,7 +1193,7 @@ export default function VistaPresupuesto({ presupuestoId, isSidebar = false }: {
                         </div>
                       )}
                     </div>
-                  </>
+                  </div>
                 )}
               </div>
 

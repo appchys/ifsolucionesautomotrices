@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense, Fragment } from "react";
 import AppShell from "@/components/layout/AppShell";
 import {
   subscribeOrdenes,
@@ -189,6 +189,24 @@ function PresupuestosPageContent() {
       montoTotal: monto,
     };
   }, [filtered, totalesInfoMap]);
+
+  // Agrupación por fecha
+  const gruposFecha = useMemo(() => {
+    const grupos: Record<string, typeof filtered> = {};
+    filtered.forEach((item) => {
+      const date = toDate(item.createdAt);
+      const key = date ? format(date, "yyyy-MM-dd") : "Sin fecha";
+      if (!grupos[key]) {
+        grupos[key] = [];
+      }
+      grupos[key].push(item);
+    });
+    return grupos;
+  }, [filtered]);
+
+  const keysFechaOrdenadas = useMemo(() => {
+    return Object.keys(gruposFecha).sort((a, b) => b.localeCompare(a));
+  }, [gruposFecha]);
   const crearOrdenDesdePresupuesto = async (orden: OrdenTrabajo) => {
     const id = orden.id;
     if (!id || convertingId) return;
@@ -237,241 +255,224 @@ function PresupuestosPageContent() {
 
   return (
     <AppShell>
-      <div className="flex flex-col gap-5 p-2">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-4 flex-1 min-w-[300px]">
-            <h1 className="text-2xl font-bold">Presupuestos</h1>
-            <div className="relative flex-1 max-w-md">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-              />
-              <input
-                type="text"
-                className="input pl-9 h-10 w-full"
-                placeholder="Buscar por número, cliente, placa..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
+      <div className="w-full max-w-full min-w-0 space-y-3">
+        {/* Header superior */}
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)]">Presupuestos</h1>
+            <p className="text-[11px] text-[var(--text-muted)]">
+              {filtered.length} {filtered.length === 1 ? "presupuesto" : "presupuestos"} en total
+            </p>
           </div>
           <button
             onClick={() => setShowModal(true)}
-            className="btn-primary h-10"
+            className="btn-primary btn-sm flex items-center gap-1.5 shrink-0"
           >
-            <Plus size={18} /> Nuevo Presupuesto
+            <Plus size={15} /> Nuevo Presupuesto
           </button>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="stat-card">
-            <div
-              className="stat-icon"
-              style={{ background: "rgba(37,99,235,0.12)" }}
-            >
-              <FileText size={16} style={{ color: "var(--accent)" }} />
+        {/* Resumen de métricas 2x2 en móvil / 4 cols en desktop */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="card flex items-center gap-2.5 p-2 sm:p-2.5 bg-[var(--bg-card)]">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-blue-500/10 text-blue-600">
+              <FileText size={15} />
             </div>
-            <div>
-              <div className="stat-value">{totalPresupuestos}</div>
-              <div className="stat-label">Total</div>
+            <div className="min-w-0">
+              <div className="text-sm sm:text-base font-bold leading-tight">{totalPresupuestos}</div>
+              <div className="text-[10px] text-[var(--text-muted)] truncate">Total</div>
             </div>
           </div>
-          <div className="stat-card">
-            <div
-              className="stat-icon"
-              style={{ background: "rgba(245,158,11,0.12)" }}
-            >
-              <Clock size={16} style={{ color: "var(--warning)" }} />
+
+          <div className="card flex items-center gap-2.5 p-2 sm:p-2.5 bg-[var(--bg-card)]">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-amber-500/10 text-amber-600">
+              <Clock size={15} />
             </div>
-            <div>
-              <div className="stat-value">{pendientes}</div>
-              <div className="stat-label">Pendientes</div>
+            <div className="min-w-0">
+              <div className="text-sm sm:text-base font-bold leading-tight">{pendientes}</div>
+              <div className="text-[10px] text-[var(--text-muted)] truncate">Pendientes</div>
             </div>
           </div>
-          <div className="stat-card">
-            <div
-              className="stat-icon"
-              style={{ background: "rgba(16,185,129,0.12)" }}
-            >
-              <CheckCircle2 size={16} style={{ color: "var(--success)" }} />
+
+          <div className="card flex items-center gap-2.5 p-2 sm:p-2.5 bg-[var(--bg-card)]">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-emerald-500/10 text-emerald-600">
+              <CheckCircle2 size={15} />
             </div>
-            <div>
-              <div className="stat-value">{aprobados}</div>
-              <div className="stat-label">Aprobados</div>
+            <div className="min-w-0">
+              <div className="text-sm sm:text-base font-bold leading-tight">{aprobados}</div>
+              <div className="text-[10px] text-[var(--text-muted)] truncate">Aprobados</div>
             </div>
           </div>
-          <div className="stat-card">
-            <div
-              className="stat-icon"
-              style={{ background: "rgba(139,92,246,0.12)" }}
-            >
-              <DollarSign size={16} style={{ color: "#8b5cf6" }} />
+
+          <div className="card flex items-center gap-2.5 p-2 sm:p-2.5 bg-[var(--bg-card)]">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-purple-500/10 text-purple-600">
+              <DollarSign size={15} />
             </div>
-            <div>
-              <div className="stat-value">${montoTotal.toFixed(2)}</div>
-              <div className="stat-label">Monto total</div>
+            <div className="min-w-0">
+              <div className="text-sm sm:text-base font-bold leading-tight">${montoTotal.toFixed(2)}</div>
+              <div className="text-[10px] text-[var(--text-muted)] truncate">Monto Total</div>
             </div>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          <span className="text-sm font-medium text-[var(--text-muted)] mr-2">
-            {filtered.length} presupuestos
-          </span>
-          {FILTROS.map((f) => (
-            <button
-              key={f}
-              onClick={() => setFiltroActivo(f)}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-colors ${
-                filtroActivo === f
-                  ? "bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900"
-                  : "bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              }`}
-            >
-              {f}
-            </button>
-          ))}
+        {/* Buscador y Filtros */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+          <div className="relative flex-1 max-w-md">
+            <Search
+              size={14}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
+            />
+            <input
+              type="search"
+              className="input pl-8.5 h-8.5 w-full text-xs bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+              placeholder="Buscar por número, cliente, placa..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar">
+            {FILTROS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFiltroActivo(f)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                  filtroActivo === f
+                    ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-sm"
+                    : "bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                }`}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Table */}
-        <div className="card p-0 overflow-hidden">
+        {/* Tabla Deslizable */}
+        <div className="card p-0 overflow-hidden shadow-sm w-full max-w-full min-w-0">
           {loading ? (
-            <div className="flex justify-center py-16">
-              <Loader2 className="animate-spin text-[var(--accent)]" />
+            <div className="flex justify-center py-12">
+              <Loader2 className="animate-spin text-[var(--accent)]" size={24} />
             </div>
           ) : filtered.length === 0 ? (
             <div
-              className="text-center py-16"
+              className="text-center py-12"
               style={{ color: "var(--text-muted)" }}
             >
               <FileCheck
-                size={40}
-                className="mx-auto mb-3 opacity-20"
+                size={36}
+                className="mx-auto mb-2 opacity-20"
               />
-              <p>No se encontraron presupuestos</p>
+              <p className="text-xs">No se encontraron presupuestos</p>
             </div>
           ) : (
-            <div className="table-container">
-              <table className="table">
+            <div className="w-full overflow-x-auto overscroll-x-contain">
+              <table className="w-full text-left border-collapse min-w-[540px]">
                 <thead>
-                  <tr className="text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
-                    <th>N° PRESUP.</th>
-                    <th>FECHA</th>
-                    <th>CLIENTE</th>
-                    <th>VEHÍCULO</th>
-                    <th>PLACA</th>
-                    <th className="text-right">MONTO</th>
-                    <th className="text-center">ESTADO</th>
-                    <th className="w-12 text-right">
-                      <span className="sr-only">Acciones</span>
-                    </th>
+                  <tr className="border-b border-[var(--border)] text-[11px] uppercase tracking-wider font-bold text-[var(--text-muted)] bg-[var(--bg-secondary)]/60">
+                    <th className="py-2.5 px-3.5 whitespace-nowrap">N° Presup.</th>
+                    <th className="py-2.5 px-3.5 whitespace-nowrap">Cliente / Vehículo</th>
+                    <th className="py-2.5 px-3.5 whitespace-nowrap">Placa</th>
+                    <th className="py-2.5 px-3.5 whitespace-nowrap text-right">Monto</th>
+                    <th className="py-2.5 px-3.5 whitespace-nowrap text-center">Estado</th>
+                    <th className="py-2.5 px-3 whitespace-nowrap text-right w-8"></th>
                   </tr>
                 </thead>
-                <tbody>
-                  {filtered.map((o) => {
-                    const estado = o.presupuestoConfirmadoPorCliente ? "Aprobado" : "Pendiente";
-                    const total = calcularTotalConDescuento(totalesInfoMap[o.id!], o.descuento || 0);
+                <tbody className="divide-y divide-[var(--border)]/40 text-xs sm:text-sm">
+                  {keysFechaOrdenadas.map((key) => {
+                    const itemsGrupo = gruposFecha[key];
+                    let labelFecha = key;
+                    if (key !== "Sin fecha") {
+                      const dateObj = new Date(key + "T00:00:00");
+                      const hoy = format(new Date(), "yyyy-MM-dd");
+                      const ayer = format(new Date(Date.now() - 86400000), "yyyy-MM-dd");
+                      if (key === hoy) labelFecha = "Hoy";
+                      else if (key === ayer) labelFecha = "Ayer";
+                      else {
+                        labelFecha = format(dateObj, "EEEE, d 'de' MMMM yyyy", { locale: es });
+                        labelFecha = labelFecha.charAt(0).toUpperCase() + labelFecha.slice(1);
+                      }
+                    }
+
                     return (
-                      <tr
-                        key={o.id}
-                        className="hover:bg-[var(--bg-hover)] group cursor-pointer"
-                        onClick={() =>
-                          setPresupuestoSidebarOpen(true, o.id)
-                        }
-                      >
-                        <td>
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">
-                            #PRE-
-                            {String(
-                              o.numeroCotizacion ?? o.numero ?? 0
-                            ).padStart(4, "0")}
-                          </span>
-                        </td>
-                        <td className="text-sm text-[var(--text-secondary)]">
-                          {toDate(o.createdAt)
-                            ? format(toDate(o.createdAt)!, "dd-MMM-yy", {
-                                locale: es,
-                              })
-                            : "—"}
-                        </td>
-                        <td className="font-semibold text-[var(--text-primary)]">
-                          {o.cliente?.nombre} {o.cliente?.apellido}
-                        </td>
-                        <td className="text-[var(--text-secondary)]">
-                          {o.vehiculo?.marca} {o.vehiculo?.modelo}{" "}
-                          {o.vehiculo?.anio}
-                        </td>
-                        <td>
-                          <span className="font-mono text-sm font-medium">
-                            {o.vehiculo?.placa ?? "—"}
-                          </span>
-                        </td>
-                        <td className="text-right font-semibold">
-                          {total > 0 ? (
-                            <span>${total.toFixed(2)}</span>
-                          ) : (
-                            <span className="text-[var(--text-muted)]">
-                              —
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-center">
-                          {estado === "Aprobado" ? (
-                            <span className="badge badge-green">
-                              Aprobado
-                            </span>
-                          ) : (
-                            <span className="badge badge-yellow">
-                              Pendiente
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-right">
-                          <div className="relative inline-flex">
-                            <button
-                              type="button"
-                              className="btn-ghost btn-icon h-8 w-8"
-                              title="Acciones"
-                              aria-label="Acciones del presupuesto"
-                              aria-expanded={openMenu?.id === o.id}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                const orderId = o.id;
-                                if (!orderId) return;
-                                const rect =
-                                  event.currentTarget.getBoundingClientRect();
-                                setOpenMenu((current) =>
-                                  current?.id === orderId
-                                    ? null
-                                    : {
-                                        id: orderId,
-                                        top: rect.bottom + 4,
-                                        left: Math.min(
-                                          window.innerWidth - 152,
-                                          Math.max(
-                                            8,
-                                            rect.right - 144
-                                          )
-                                        ),
-                                      }
-                                );
-                              }}
+                      <Fragment key={key}>
+                        <tr className="bg-[var(--bg-secondary)]/80">
+                          <td colSpan={6} className="py-1.5 px-3.5 text-[11px] font-bold text-[var(--text-secondary)] tracking-wide">
+                            {labelFecha}
+                          </td>
+                        </tr>
+                        {itemsGrupo.map((o) => {
+                          const estado = o.presupuestoConfirmadoPorCliente ? "Aprobado" : "Pendiente";
+                          const total = calcularTotalConDescuento(totalesInfoMap[o.id!], o.descuento || 0);
+                          return (
+                            <tr
+                              key={o.id}
+                              className="hover:bg-[var(--bg-hover)] cursor-pointer transition-colors"
+                              onClick={() => setPresupuestoSidebarOpen(true, o.id)}
                             >
-                              {deletingId === o.id ? (
-                                <Loader2
-                                  size={15}
-                                  className="animate-spin"
-                                />
-                              ) : (
-                                <MoreVertical size={16} />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                              <td className="py-2.5 px-3.5 whitespace-nowrap font-mono font-bold text-blue-600 dark:text-blue-400">
+                                #PRE-{String(o.numeroCotizacion ?? o.numero ?? 0).padStart(4, "0")}
+                              </td>
+                              <td className="py-2.5 px-3.5 whitespace-nowrap">
+                                <div
+                                  className="font-medium text-[var(--text-primary)] truncate min-w-[15ch] max-w-[160px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none"
+                                  title={o.cliente ? `${o.cliente.nombre} ${o.cliente.apellido}`.trim() : undefined}
+                                >
+                                  {o.cliente ? `${o.cliente.nombre} ${o.cliente.apellido}`.trim() : "—"}
+                                </div>
+                                <div
+                                  className="text-xs text-[var(--text-secondary)] mt-0.5 truncate min-w-[15ch] max-w-[160px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none"
+                                  title={o.vehiculo ? `${o.vehiculo.marca} ${o.vehiculo.modelo} ${o.vehiculo.anio ?? ""}`.trim() : undefined}
+                                >
+                                  {o.vehiculo ? `${o.vehiculo.marca} ${o.vehiculo.modelo} ${o.vehiculo.anio ?? ""}`.trim() : "—"}
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3.5 whitespace-nowrap font-mono text-xs font-semibold">
+                                {o.vehiculo?.placa ?? "—"}
+                              </td>
+                              <td className="py-2.5 px-3.5 whitespace-nowrap text-right font-bold">
+                                {total > 0 ? `$${total.toFixed(2)}` : "—"}
+                              </td>
+                              <td className="py-2.5 px-3.5 whitespace-nowrap text-center">
+                                {estado === "Aprobado" ? (
+                                  <span className="badge badge-green text-[11px]">Aprobado</span>
+                                ) : (
+                                  <span className="badge badge-yellow text-[11px]">Pendiente</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-2 whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
+                                <button
+                                  type="button"
+                                  className="btn-ghost btn-icon h-7 w-7 rounded p-0 inline-flex items-center justify-center text-slate-400 hover:text-slate-700"
+                                  onClick={(event) => {
+                                    const orderId = o.id;
+                                    if (!orderId) return;
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    setOpenMenu((current) =>
+                                      current?.id === orderId
+                                        ? null
+                                        : {
+                                            id: orderId,
+                                            top: rect.bottom + 4,
+                                            left: Math.min(
+                                              window.innerWidth - 180,
+                                              Math.max(8, rect.right - 170)
+                                            ),
+                                          }
+                                    );
+                                  }}
+                                >
+                                  {deletingId === o.id ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                  ) : (
+                                    <MoreVertical size={15} />
+                                  )}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </Fragment>
                     );
                   })}
                 </tbody>

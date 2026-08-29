@@ -73,7 +73,12 @@ function isProducto(item: InventarioItem): item is Producto {
 
 function Modal({ isOpen, onClose, title, children }: ModalProps) {
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 transition-all duration-200 ${isOpen ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"}`}>
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 transition-all duration-200 ${isOpen ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"}`}
+    >
       <div className={`bg-[var(--bg-card)] rounded-xl shadow-2xl max-w-lg w-full p-6 relative transition-transform duration-200 ${isOpen ? "scale-100" : "scale-95"} max-h-[90vh] overflow-y-auto`}>
         <button type="button" onClick={onClose} className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
           <X size={20} />
@@ -278,6 +283,7 @@ export default function InventarioPage() {
   };
 
   const { register, handleSubmit, reset, setValue, formState: { errors } } = useForm<InventarioForm>();
+  const precioAntesIvaCalculado = Number((Number(costoBaseForm || 0) * (1 + Number(margenGananciaForm || 0) / 100)).toFixed(2));
   const precioVentaCalculado = calcularPrecioVenta(costoBaseForm, margenGananciaForm, aplicaIvaForm);
 
   const cargarDatos = async () => {
@@ -588,10 +594,20 @@ export default function InventarioPage() {
     });
   }, [productosFiltrados]);
 
-  const itemsMostrados: InventarioItem[] = tab === "productos" ? productosFiltrados : servicios;
+  const serviciosFiltrados = useMemo(() => {
+    const term = busquedaProducto.trim().toLowerCase();
+    if (!term) return servicios;
+    return servicios.filter((servicio) => {
+      return [servicio.nombre, servicio.descripcion, servicio.codigo, servicio.categoria].some((value) =>
+        String(value ?? "").toLowerCase().includes(term)
+      );
+    });
+  }, [busquedaProducto, servicios]);
+
+  const itemsMostrados: InventarioItem[] = tab === "productos" ? productosFiltrados : serviciosFiltrados;
 
   return (
-    <AppShell>
+    <AppShell hideHeader>
       <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="page-title text-base sm:text-lg">Productos y Servicios</h1>
@@ -637,50 +653,65 @@ export default function InventarioPage() {
         </button>
       </div>
 
-      <div className="w-full">
-      <div className="card min-w-0">
-        {cargando ? (
-          <div className="flex justify-center p-8">
-            <Loader2 size={32} className="animate-spin text-[var(--accent)]" />
+      {/* Buscador y filtros separados fuera del contenedor de productos/servicios */}
+      {tab === "productos" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[minmax(0,1fr)_180px_180px] gap-2.5 mb-4">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <input
+              type="search"
+              value={busquedaProducto}
+              onChange={(e) => setBusquedaProducto(e.target.value)}
+              placeholder="Buscar por nombre, SKU, categor&iacute;a..."
+              className="input pl-9 w-full bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+            />
           </div>
-        ) : (
-          <div className="space-y-3.5">
-            {tab === "productos" && (
-              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_160px_160px] gap-2 mb-1">
-                <div className="relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                  <input
-                    type="search"
-                    value={busquedaProducto}
-                    onChange={(e) => setBusquedaProducto(e.target.value)}
-                    placeholder="Buscar por nombre, SKU, categor&iacute;a..."
-                    className="input pl-9"
-                  />
-                </div>
-                <select
-                  value={filtroCategoria}
-                  onChange={(e) => setFiltroCategoria(e.target.value)}
-                  className="input"
-                  aria-label="Filtrar por categor&iacute;a"
-                >
-                  <option value="">Todas las categor&iacute;as</option>
-                  {categoriasProducto.map((categoria) => (
-                    <option key={categoria} value={categoria}>{categoria}</option>
-                  ))}
-                </select>
-                <select
-                  value={filtroUnidad}
-                  onChange={(e) => setFiltroUnidad(e.target.value)}
-                  className="input"
-                  aria-label="Filtrar por unidad de medida"
-                >
-                  <option value="">Todas las unidades</option>
-                  {unidadesProducto.map((unidad) => (
-                    <option key={unidad} value={unidad}>{unidad}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
+            className="input bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+            aria-label="Filtrar por categor&iacute;a"
+          >
+            <option value="">Todas las categor&iacute;as</option>
+            {categoriasProducto.map((categoria) => (
+              <option key={categoria} value={categoria}>{categoria}</option>
+            ))}
+          </select>
+          <select
+            value={filtroUnidad}
+            onChange={(e) => setFiltroUnidad(e.target.value)}
+            className="input bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+            aria-label="Filtrar por unidad de medida"
+          >
+            <option value="">Todas las unidades</option>
+            {unidadesProducto.map((unidad) => (
+              <option key={unidad} value={unidad}>{unidad}</option>
+            ))}
+          </select>
+        </div>
+      ) : (
+        <div className="mb-4 max-w-md">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <input
+              type="search"
+              value={busquedaProducto}
+              onChange={(e) => setBusquedaProducto(e.target.value)}
+              placeholder="Buscar servicio por nombre o c&oacute;digo..."
+              className="input pl-9 w-full bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="w-full">
+        <div className="card min-w-0 p-0 overflow-hidden">
+          {cargando ? (
+            <div className="flex justify-center p-8">
+              <Loader2 size={32} className="animate-spin text-[var(--accent)]" />
+            </div>
+          ) : (
+            <div>
 
             <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[760px]">
@@ -1076,38 +1107,35 @@ export default function InventarioPage() {
           )}
 
           {tab === "productos" ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="form-group">
-                  <label className="label">Costo Base *</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">$</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className={`input pl-8 ${errors.costoBase ? "border-red-500" : ""}`}
-                      {...register("costoBase", {
-                        required: true,
-                        min: 0,
-                        onChange: (event) => setCostoBaseForm(Number(event.target.value || 0)),
-                      })}
-                    />
-                  </div>
-                </div>
-                <div className="form-group">
-                  <label className="label">Precio p&uacute;blico</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">$</span>
-                    <input
-                      type="text"
-                      readOnly
-                      value={precioVentaCalculado.toFixed(2)}
-                      className="input pl-8 font-mono bg-[var(--bg-secondary)]"
-                    />
-                  </div>
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-body)]/50 p-4 space-y-3.5">
+              <div className="flex items-center gap-2 pb-2 border-b border-[var(--border)]">
+                <DollarSign size={16} className="text-[var(--accent)]" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                  Configuración de precios
+                </h3>
+              </div>
+
+              {/* 1. Costo base */}
+              <div className="form-group">
+                <label className="label">Costo base *</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[var(--text-muted)]">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    className={`input pl-8 font-mono ${errors.costoBase ? "border-red-500" : ""}`}
+                    {...register("costoBase", {
+                      required: true,
+                      min: 0,
+                      onChange: (event) => setCostoBaseForm(Number(event.target.value || 0)),
+                    })}
+                  />
                 </div>
               </div>
 
+              {/* 2. Margen de ganancia */}
               <div className="form-group">
                 <label className="label">Margen de ganancia (%)</label>
                 <div className="relative">
@@ -1115,6 +1143,7 @@ export default function InventarioPage() {
                     type="number"
                     step="0.1"
                     min="0"
+                    placeholder="25"
                     className={`input pr-8 font-mono ${errors.margenGanancia ? "border-red-500" : ""}`}
                     {...register("margenGanancia", {
                       required: true,
@@ -1125,44 +1154,107 @@ export default function InventarioPage() {
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--text-muted)]">%</span>
                 </div>
               </div>
+
+              {/* 3. Precio antes de IVA | Check de IVA */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+                <div className="form-group">
+                  <label className="label">Precio antes de IVA</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-[var(--text-muted)]">$</span>
+                    <input
+                      type="text"
+                      readOnly
+                      value={precioAntesIvaCalculado.toFixed(2)}
+                      className="input pl-8 font-mono bg-[var(--bg-secondary)] text-[var(--text-primary)] cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="flex items-center gap-2.5 h-[42px] px-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                      {...register("aplicaIva", {
+                        onChange: (event) => {
+                          setAplicaIvaForm(event.target.checked);
+                        },
+                      })}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-xs font-semibold text-[var(--text-primary)]">Aplica IVA (15%)</span>
+                      <span className="text-[10px] text-[var(--text-muted)] leading-tight">
+                        {aplicaIvaForm ? "Incluido en precio venta" : "Sin IVA aplicado"}
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* 4. Precio público */}
+              <div className="form-group pt-1">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-[var(--accent)]">
+                    Precio público
+                  </label>
+                  <span className="text-[11px] font-mono text-[var(--text-muted)]">
+                    {aplicaIvaForm ? "(Incluye 15% IVA)" : "(Sin IVA)"}
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-bold text-[var(--accent)]">$</span>
+                  <input
+                    type="text"
+                    readOnly
+                    value={precioVentaCalculado.toFixed(2)}
+                    className="input pl-8 text-base font-bold font-mono bg-[var(--bg-secondary)] border-[var(--accent)]/40 text-[var(--text-primary)] cursor-not-allowed"
+                  />
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="form-group">
-                <label className="label">Costo Base *</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">$</span>
-                  <input type="number" step="0.01" className={`input pl-8 ${errors.costoBase ? "border-red-500" : ""}`} {...register("costoBase", { required: true, min: 0 })} />
+            <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-body)]/50 p-4 space-y-3.5">
+              <div className="flex items-center gap-2 pb-2 border-b border-[var(--border)]">
+                <DollarSign size={16} className="text-[var(--accent)]" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                  Precios del servicio
+                </h3>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="form-group">
+                  <label className="label">Costo Base *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">$</span>
+                    <input type="number" step="0.01" className={`input pl-8 font-mono ${errors.costoBase ? "border-red-500" : ""}`} {...register("costoBase", { required: true, min: 0 })} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="label">Precio Base *</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">$</span>
+                    <input type="number" step="0.01" className={`input pl-8 font-mono ${errors.precioBase ? "border-red-500" : ""}`} {...register("precioBase", { required: true, min: 0 })} />
+                  </div>
                 </div>
               </div>
               <div className="form-group">
-                <label className="label">Precio Base *</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">$</span>
-                  <input type="number" step="0.01" className={`input pl-8 ${errors.precioBase ? "border-red-500" : ""}`} {...register("precioBase", { required: true, min: 0 })} />
-                </div>
+                <label className="flex items-center gap-2.5 h-[42px] px-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] hover:bg-[var(--bg-hover)] cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]"
+                    {...register("aplicaIva", {
+                      onChange: (event) => setAplicaIvaForm(event.target.checked),
+                    })}
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-[var(--text-primary)]">Aplica IVA (15%)</span>
+                    <span className="text-[10px] text-[var(--text-muted)] leading-tight">
+                      {aplicaIvaForm ? "Se calculará IVA en órdenes" : "Sin impuesto"}
+                    </span>
+                  </div>
+                </label>
               </div>
             </div>
           )}
-
-          <div className="form-group mt-2">
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                className="w-4 h-4 rounded border-[var(--border)] text-[var(--accent)]"
-                {...register("aplicaIva", {
-                  onChange: (event) => {
-                    if (event.target.checked !== aplicaIvaForm && !confirm("¿Segura que deseas cambiarlo?")) {
-                      event.target.checked = aplicaIvaForm;
-                    } else {
-                      setAplicaIvaForm(event.target.checked);
-                    }
-                  },
-                })}
-              />
-              <span className="text-sm font-medium text-[var(--text-primary)]">Aplica IVA (15%)</span>
-            </label>
-          </div>
 
           <button type="submit" disabled={guardando} className="btn-primary w-full mt-6 justify-center">
             {guardando ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}

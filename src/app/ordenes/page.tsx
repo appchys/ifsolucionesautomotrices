@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, Suspense, Fragment } from "react";
 import AppShell from "@/components/layout/AppShell";
 import { deleteOrden, subscribeOrdenes, updateEstadoOrden, subscribeClientes, subscribeVehiculos } from "@/lib/services";
 import { OrdenTrabajo, EstadoOrden, Cliente, Vehiculo } from "@/types";
@@ -23,6 +23,19 @@ const ESTADOS: EstadoOrden[] = [
   "Entregada",
   "Cancelada",
 ];
+
+const ESTADO_COLORES: Record<EstadoOrden, { dot: string; bg: string; text: string }> = {
+  "Borrador": { dot: "#ef4444", bg: "rgba(239, 68, 68, 0.08)", text: "text-red-700 dark:text-red-400" },
+  "En Diagnóstico": { dot: "#3b82f6", bg: "rgba(59, 130, 246, 0.08)", text: "text-blue-700 dark:text-blue-400" },
+  "Esperando Repuestos": { dot: "#f59e0b", bg: "rgba(245, 158, 11, 0.08)", text: "text-amber-700 dark:text-amber-400" },
+  "Esperando Aprobación": { dot: "#8b5cf6", bg: "rgba(139, 92, 246, 0.08)", text: "text-purple-700 dark:text-purple-400" },
+  "En Reparación": { dot: "#06b6d4", bg: "rgba(6, 182, 212, 0.08)", text: "text-cyan-700 dark:text-cyan-400" },
+  "Listo para Entrega": { dot: "#14b8a6", bg: "rgba(20, 184, 166, 0.08)", text: "text-teal-700 dark:text-teal-400" },
+  "Completada": { dot: "#10b981", bg: "rgba(16, 185, 129, 0.08)", text: "text-emerald-700 dark:text-emerald-400" },
+  "Entregada": { dot: "#64748b", bg: "rgba(100, 116, 139, 0.08)", text: "text-slate-700 dark:text-slate-400" },
+  "Cancelada": { dot: "#71717a", bg: "rgba(113, 113, 122, 0.08)", text: "text-zinc-700 dark:text-zinc-400" },
+};
+
 type MenuPosition = { id: string; top: number; left: number };
 
 const getNumeroDocumento = (orden: OrdenTrabajo) =>
@@ -45,6 +58,9 @@ function OrdenesPageContent() {
   const [tipoNuevo, setTipoNuevo] = useState<"ingreso" | "presupuesto" | "orden" | null>(null);
   const [openMenu, setOpenMenu] = useState<MenuPosition | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
+  const [estadosColapsados, setEstadosColapsados] = useState<Record<string, boolean>>({
+    Entregada: true,
+  });
   const router = useRouter();
   const searchParams = useSearchParams();
   const idParam = searchParams.get("id");
@@ -122,6 +138,32 @@ function OrdenesPageContent() {
       });
   }, [ordenes, clientesMap, vehiculosMap, filtroEstado, search]);
 
+  const gruposEstado = useMemo(() => {
+    const grupos: Record<string, typeof filtered> = {};
+    filtered.forEach((orden) => {
+      const estadoKey = orden.estado || "Borrador";
+      if (!grupos[estadoKey]) {
+        grupos[estadoKey] = [];
+      }
+      grupos[estadoKey].push(orden);
+    });
+    return grupos;
+  }, [filtered]);
+
+  const estadosConOrdenes = useMemo(() => {
+    const baseEstados = filtroEstado === "Todos" 
+      ? ESTADOS 
+      : [filtroEstado];
+    return baseEstados.filter((est) => (gruposEstado[est]?.length || 0) > 0);
+  }, [gruposEstado, filtroEstado]);
+
+  const toggleEstadoColapsado = (estado: string) => {
+    setEstadosColapsados((prev) => ({
+      ...prev,
+      [estado]: !prev[estado],
+    }));
+  };
+
   const cambiarEstado = async (id: string, estado: EstadoOrden) => {
     await updateEstadoOrden(id, estado);
     toast.success(`Estado actualizado: ${estado}`);
@@ -149,7 +191,7 @@ function OrdenesPageContent() {
   };
 
   return (
-    <AppShell>
+    <AppShell hideHeader>
       <div className="page-header flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="page-title">Órdenes de Trabajo</h1>
@@ -203,102 +245,159 @@ function OrdenesPageContent() {
             <p>No se encontraron órdenes</p>
           </div>
         ) : (
-          <div className="table-container">
-            <table className="table">
+          <div className="table-container overflow-x-auto">
+            <table className="table min-w-[620px]">
               <thead>
                 <tr>
                   <th># Orden</th>
-                  <th>Cliente</th>
-                  <th>Placa</th>
-                  <th>Vehículo</th>
+                  <th className="whitespace-nowrap">Cliente / Vehículo</th>
+                  <th className="whitespace-nowrap">Placa</th>
                   <th>Tipo</th>
                   <th>Estado</th>
                   <th>Fecha</th>
                   <th className="w-12 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody>
-                {filtered.map((o) => (
-                  <tr 
-                    key={o.id} 
-                    onClick={() => setOrdenSidebarOpen(true, o.id)}
-                    className="cursor-pointer hover:bg-[var(--bg-hover)]"
-                  >
-                    <td>
-                      <span className="font-mono font-bold text-sm" style={{ color: "var(--accent-light)" }}>
-                        #ORD-{String(o.numeroOrden ?? 0).padStart(5, "0")}
-                      </span>
-                    </td>
-                    <td style={{ color: "var(--text-primary)" }}>
-                      {o.cliente?.nombre} {o.cliente?.apellido}
-                    </td>
-                    <td>
-                      <span className="font-mono font-semibold">{o.vehiculo?.placa ?? "—"}</span>
-                    </td>
-                    <td>{o.vehiculo?.marca} {o.vehiculo?.modelo}</td>
-                    <td><span className="badge badge-gray">{o.tipoServicio}</span></td>
-                    <td>
-                      {o.esCotizacion ? (
-                        <span className="badge" style={{ background: "rgba(37,99,235,0.1)", color: "var(--accent)", border: "1px solid var(--accent-alpha)" }}>Cotización</span>
-                      ) : (
-                        <select
-                          className="badge cursor-pointer outline-none"
-                          value={o.estado}
-                          onChange={(e) => cambiarEstado(o.id!, e.target.value as EstadoOrden)}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "inherit",
-                          }}
-                          onClick={(e) => e.stopPropagation()}
+              <tbody className="divide-y divide-[var(--border)]/40 text-xs sm:text-sm">
+                {estadosConOrdenes.map((estado) => {
+                  const ordenesGrupo = gruposEstado[estado] || [];
+                  const isColapsado = Boolean(estadosColapsados[estado]);
+                  const colorConfig = ESTADO_COLORES[estado] || {
+                    dot: "#64748b",
+                    bg: "rgba(100, 116, 139, 0.08)",
+                    text: "text-slate-700 dark:text-slate-400",
+                  };
+
+                  return (
+                    <Fragment key={estado}>
+                      <tr 
+                        onClick={() => toggleEstadoColapsado(estado)}
+                        className="border-y border-[var(--border)] cursor-pointer select-none hover:opacity-90 transition-all"
+                        style={{ background: colorConfig.bg }}
+                      >
+                        <td colSpan={7} className="py-2 px-3.5 text-xs font-bold">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <ChevronDown 
+                                size={15} 
+                                className={`transition-transform duration-200 ${isColapsado ? "-rotate-90" : "rotate-0"}`} 
+                                style={{ color: colorConfig.dot }}
+                              />
+                              <span 
+                                className="w-2.5 h-2.5 rounded-full inline-block shrink-0 shadow-xs" 
+                                style={{ backgroundColor: colorConfig.dot }}
+                              />
+                              <span className={`uppercase tracking-wider font-bold ${colorConfig.text}`}>
+                                {estado}
+                              </span>
+                            </div>
+                            <span 
+                              className="text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-2xs"
+                              style={{
+                                background: "var(--bg-card)",
+                                borderColor: `${colorConfig.dot}40`,
+                                color: colorConfig.dot,
+                              }}
+                            >
+                              {ordenesGrupo.length} {ordenesGrupo.length === 1 ? "orden" : "órdenes"}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {!isColapsado && ordenesGrupo.map((o) => (
+                        <tr 
+                          key={o.id} 
+                          onClick={() => setOrdenSidebarOpen(true, o.id)}
+                          className="cursor-pointer hover:bg-[var(--bg-hover)] transition-colors"
                         >
-                          {ESTADOS.map((est) => (
-                            <option key={est} value={est} style={{ background: "#ffffff", color: "#0f172a" }}>
-                              {est}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-                    <td className="text-xs">
-                      {toDate(o.createdAt)
-                        ? format(toDate(o.createdAt)!, "dd/MM/yy", { locale: es })
-                        : "—"}
-                    </td>
-                    <td className="text-right">
-                      <div className="relative inline-flex">
-                        <button
-                          type="button"
-                          className="btn-ghost btn-icon h-8 w-8"
-                          title="Acciones"
-                          aria-label="Acciones de la orden"
-                          aria-expanded={openMenu?.id === o.id}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            const orderId = o.id;
-                            if (!orderId) return;
-                            const rect = event.currentTarget.getBoundingClientRect();
-                            setOpenMenu((current) =>
-                              current?.id === orderId
-                                ? null
-                                : {
-                                    id: orderId,
-                                    top: rect.bottom + 4,
-                                    left: Math.min(window.innerWidth - 152, Math.max(8, rect.right - 144)),
-                                  }
-                            );
-                          }}
-                        >
-                          {deletingOrderId === o.id ? (
-                            <Loader2 size={15} className="animate-spin" />
-                          ) : (
-                            <MoreVertical size={16} />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          <td className="whitespace-nowrap">
+                            <span className="font-mono font-bold text-sm" style={{ color: "var(--accent-light)" }}>
+                              #ORD-{String(o.numeroOrden ?? 0).padStart(5, "0")}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap">
+                            <div
+                              className="font-medium text-[var(--text-primary)] truncate min-w-[15ch] max-w-[160px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none"
+                              title={o.cliente ? `${o.cliente.nombre} ${o.cliente.apellido}`.trim() : undefined}
+                            >
+                              {o.cliente ? `${o.cliente.nombre} ${o.cliente.apellido}`.trim() : "—"}
+                            </div>
+                            <div
+                              className="text-xs text-[var(--text-secondary)] mt-0.5 truncate min-w-[15ch] max-w-[160px] sm:max-w-[240px] md:max-w-[360px] lg:max-w-none"
+                              title={o.vehiculo ? `${o.vehiculo.marca} ${o.vehiculo.modelo} ${o.vehiculo.anio ?? ""}`.trim() : undefined}
+                            >
+                              {o.vehiculo ? `${o.vehiculo.marca} ${o.vehiculo.modelo} ${o.vehiculo.anio ?? ""}`.trim() : "—"}
+                            </div>
+                          </td>
+                          <td className="whitespace-nowrap">
+                            <span className="font-mono font-semibold text-xs">{o.vehiculo?.placa ?? "—"}</span>
+                          </td>
+                          <td className="whitespace-nowrap"><span className="badge badge-gray">{o.tipoServicio}</span></td>
+                          <td>
+                            {o.esCotizacion ? (
+                              <span className="badge" style={{ background: "rgba(37,99,235,0.1)", color: "var(--accent)", border: "1px solid var(--accent-alpha)" }}>Cotización</span>
+                            ) : (
+                              <select
+                                className="badge cursor-pointer outline-none"
+                                value={o.estado}
+                                onChange={(e) => cambiarEstado(o.id!, e.target.value as EstadoOrden)}
+                                style={{
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "inherit",
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {ESTADOS.map((est) => (
+                                  <option key={est} value={est} style={{ background: "#ffffff", color: "#0f172a" }}>
+                                    {est}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                          <td className="text-xs whitespace-nowrap">
+                            {toDate(o.createdAt)
+                              ? format(toDate(o.createdAt)!, "dd/MM/yy", { locale: es })
+                              : "—"}
+                          </td>
+                          <td className="text-right whitespace-nowrap">
+                            <div className="relative inline-flex">
+                              <button
+                                type="button"
+                                className="btn-ghost btn-icon h-8 w-8"
+                                title="Acciones"
+                                aria-label="Acciones de la orden"
+                                aria-expanded={openMenu?.id === o.id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  const orderId = o.id;
+                                  if (!orderId) return;
+                                  const rect = event.currentTarget.getBoundingClientRect();
+                                  setOpenMenu((current) =>
+                                    current?.id === orderId
+                                      ? null
+                                      : {
+                                          id: orderId,
+                                          top: rect.bottom + 4,
+                                          left: Math.min(window.innerWidth - 152, Math.max(8, rect.right - 144)),
+                                        }
+                                  );
+                                }}
+                              >
+                                {deletingOrderId === o.id ? (
+                                  <Loader2 size={15} className="animate-spin" />
+                                ) : (
+                                  <MoreVertical size={16} />
+                                )}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

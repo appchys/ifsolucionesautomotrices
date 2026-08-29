@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ItemOrden } from "@/types";
 import { Save, X } from "lucide-react";
 
@@ -34,6 +35,54 @@ export default function OpcionesItemPopover({
   onUpdateFields,
 }: OpcionesItemPopoverProps) {
   const [draft, setDraft] = useState<ItemOrden>({ ...item });
+  const [mounted, setMounted] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
+  const markerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+
+    const updatePosition = () => {
+      if (!markerRef.current) return;
+      const parent = markerRef.current.parentElement;
+      const target = parent || markerRef.current;
+      const rect = target.getBoundingClientRect();
+      const popoverWidth = 300;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      // Calcular posición horizontal (right)
+      let right = viewportWidth - rect.right;
+      if (right + popoverWidth > viewportWidth - 12) {
+        right = Math.max(12, viewportWidth - rect.left - popoverWidth);
+      }
+      if (right < 12) right = 12;
+
+      // Calcular posición vertical (top)
+      const estimatedHeight = draft.tipo === "externo" ? 480 : 250;
+      let top = rect.bottom + 6;
+
+      if (top + estimatedHeight > viewportHeight - 12) {
+        const topAbove = rect.top - estimatedHeight - 6;
+        if (topAbove >= 12) {
+          top = topAbove;
+        } else {
+          top = Math.max(12, viewportHeight - estimatedHeight - 12);
+        }
+      }
+
+      setCoords({ top, right });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [draft.tipo]);
 
   const updateDraft = (updates: Partial<ItemOrden>) => {
     setDraft((prev) => {
@@ -58,22 +107,36 @@ export default function OpcionesItemPopover({
 
   const changed = hasChanges(draft, item);
 
-  return (
+  const popoverContent = (
     <>
-      <div className="fixed inset-0 z-[120]" onClick={onClose}></div>
-      <div className="absolute right-10 top-0 z-[130] w-72 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 text-left">
-        
+      {/* Backdrop transparente para capturar clics fuera */}
+      <div 
+        className="fixed inset-0 z-[9998] bg-black/20 backdrop-blur-[0.5px]" 
+        onClick={onClose} 
+      />
+      
+      {/* Popover flotante proyectado al body */}
+      <div 
+        style={{
+          top: coords ? `${coords.top}px` : "50%",
+          right: coords ? `${coords.right}px` : "50%",
+          transform: coords ? "none" : "translate(50%, -50%)",
+        }}
+        className="fixed z-[9999] w-[300px] max-h-[85vh] overflow-y-auto bg-white dark:bg-[var(--bg-card)] border border-slate-200 dark:border-[var(--border)] rounded-2xl shadow-2xl p-4 text-left animate-in fade-in zoom-in-95 duration-150"
+      >
         {/* TIPO DE ITEM */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">TIPO DE ITEM</span>
+            <span className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider">
+              TIPO DE ITEM
+            </span>
             {changed && (
-              <span className="text-[9px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
+              <span className="text-[9px] bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
                 Con cambios
               </span>
             )}
           </div>
-          <div className="flex bg-slate-100 p-0.5 rounded-lg">
+          <div className="flex bg-slate-100 dark:bg-[var(--bg-body)] p-0.5 rounded-lg border border-slate-200/60 dark:border-[var(--border)]">
             {(["servicio", "producto", "externo"] as const).map((t) => (
               <button
                 key={t}
@@ -81,7 +144,7 @@ export default function OpcionesItemPopover({
                 className={`flex-1 text-center py-1 text-xs font-bold rounded-md transition-all capitalize border-0 cursor-pointer ${
                   (draft.tipo === t || (t === "servicio" && !draft.tipo))
                     ? "bg-blue-600 text-white shadow-sm"
-                    : "text-slate-500 bg-transparent hover:bg-slate-200/50"
+                    : "text-slate-500 dark:text-[var(--text-muted)] bg-transparent hover:bg-slate-200/50 dark:hover:bg-[var(--bg-hover)]"
                 }`}
                 onClick={() => {
                   updateDraft({ tipo: t });
@@ -94,20 +157,22 @@ export default function OpcionesItemPopover({
         </div>
 
         {/* IMPUESTO (IVA) */}
-        <div className="border-t border-slate-100 pt-3 mb-3">
+        <div className="border-t border-slate-100 dark:border-[var(--border)] pt-3 mb-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">IMPUESTO (IVA)</span>
-            <span className="text-xs font-bold text-slate-700">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider">
+              IMPUESTO (IVA)
+            </span>
+            <span className="text-xs font-bold text-slate-700 dark:text-[var(--text-primary)]">
               {draft.impuestoAplicable > 0 ? `Con IVA (${draft.impuestoAplicable}%)` : "Sin IVA"}
             </span>
           </div>
-          <div className="flex bg-slate-100 p-0.5 rounded-lg mb-2">
+          <div className="flex bg-slate-100 dark:bg-[var(--bg-body)] p-0.5 rounded-lg mb-2 border border-slate-200/60 dark:border-[var(--border)]">
             <button
               type="button"
               className={`flex-1 text-center py-1 text-xs font-bold rounded-md transition-all border-0 cursor-pointer ${
                 draft.impuestoAplicable > 0
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "text-slate-500 bg-transparent hover:bg-slate-200/50"
+                  : "text-slate-500 dark:text-[var(--text-muted)] bg-transparent hover:bg-slate-200/50 dark:hover:bg-[var(--bg-hover)]"
               }`}
               onClick={() => {
                 updateDraft({ impuestoAplicable: draft.impuestoAplicable > 0 ? draft.impuestoAplicable : 15 });
@@ -119,8 +184,8 @@ export default function OpcionesItemPopover({
               type="button"
               className={`flex-1 text-center py-1 text-xs font-bold rounded-md transition-all border-0 cursor-pointer ${
                 draft.impuestoAplicable === 0
-                  ? "bg-slate-600 text-white shadow-sm"
-                  : "text-slate-500 bg-transparent hover:bg-slate-200/50"
+                  ? "bg-slate-600 dark:bg-slate-700 text-white shadow-sm"
+                  : "text-slate-500 dark:text-[var(--text-muted)] bg-transparent hover:bg-slate-200/50 dark:hover:bg-[var(--bg-hover)]"
               }`}
               onClick={() => {
                 updateDraft({ impuestoAplicable: 0 });
@@ -132,18 +197,18 @@ export default function OpcionesItemPopover({
 
           {draft.impuestoAplicable > 0 && (
             <div className="flex items-center justify-between pt-1">
-              <span className="text-xs text-slate-500 font-medium">% IVA</span>
+              <span className="text-xs text-slate-500 dark:text-[var(--text-muted)] font-medium">% IVA</span>
               <div className="flex items-center gap-1">
                 <input
                   type="number"
-                  className="w-16 border border-slate-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                  className="w-16 border border-slate-200 dark:border-[var(--border)] rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                   value={draft.impuestoAplicable}
                   onChange={(e) => {
                     const val = Number(e.target.value);
                     updateDraft({ impuestoAplicable: val });
                   }}
                 />
-                <span className="text-xs text-slate-500">%</span>
+                <span className="text-xs text-slate-500 dark:text-[var(--text-muted)]">%</span>
               </div>
             </div>
           )}
@@ -151,12 +216,14 @@ export default function OpcionesItemPopover({
 
         {/* OPCIONES DE ITEM EXTERNO (CONDICIONAL) */}
         {draft.tipo === "externo" && (
-          <div className="border-t border-slate-100 pt-3 space-y-2">
+          <div className="border-t border-slate-100 dark:border-[var(--border)] pt-3 space-y-2">
             <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Taller / Proveedor Externo</label>
+              <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                Taller / Proveedor Externo
+              </label>
               <input
                 type="text"
-                className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                 placeholder="Ej: Rectificadora Guayaquil"
                 value={draft.proveedorExterno || ""}
                 onChange={(e) => {
@@ -167,10 +234,12 @@ export default function OpcionesItemPopover({
             
             <div className="flex gap-2">
               <div className="flex-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Costo ($)</label>
+                <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                  Costo ($)
+                </label>
                 <input
                   type="number"
-                  className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                  className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                   placeholder="0.00"
                   value={draft.costoExterno || ""}
                   onChange={(e) => {
@@ -179,9 +248,11 @@ export default function OpcionesItemPopover({
                 />
               </div>
               <div className="flex-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Estado Pago</label>
+                <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                  Estado Pago
+                </label>
                 <select
-                  className="w-full border border-slate-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                  className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                   value={draft.pagadoExterno ? "pagado" : "pendiente"}
                   onChange={(e) => {
                     const isPaid = e.target.value === "pagado";
@@ -198,12 +269,14 @@ export default function OpcionesItemPopover({
             </div>
 
             {draft.pagadoExterno && (
-              <div className="space-y-2 border-t border-slate-100 pt-2">
+              <div className="space-y-2 border-t border-slate-100 dark:border-[var(--border)] pt-2">
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Método</label>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                      Método
+                    </label>
                     <select
-                      className="w-full border border-slate-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                      className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                       value={draft.metodoPagoExterno || "efectivo"}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -222,10 +295,12 @@ export default function OpcionesItemPopover({
                   </div>
                   
                   <div className="flex-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Fecha Pago</label>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                      Fecha Pago
+                    </label>
                     <input
                       type="date"
-                      className="w-full border border-slate-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                      className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                       value={draft.fechaPagoExterno || new Date().toISOString().split("T")[0]}
                       onChange={(e) => {
                         updateDraft({ fechaPagoExterno: e.target.value });
@@ -236,9 +311,11 @@ export default function OpcionesItemPopover({
 
                 {draft.metodoPagoExterno === "transferencia" && (
                   <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Banco de Transferencia</label>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                      Banco de Transferencia
+                    </label>
                     <select
-                      className="w-full border border-slate-200 rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                      className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-1.5 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                       value={draft.bancoExterno || ""}
                       onChange={(e) => {
                         updateDraft({ bancoExterno: e.target.value });
@@ -253,15 +330,19 @@ export default function OpcionesItemPopover({
                 )}
 
                 {(draft.metodoPagoExterno === "tarjeta_credito" || draft.metodoPagoExterno === "tarjeta_debito") && (
-                  <div className="space-y-1.5 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Acreditación (Banco Guayaquil)</p>
+                  <div className="space-y-1.5 bg-slate-50 dark:bg-[var(--bg-body)] p-2 rounded-lg border border-slate-100 dark:border-[var(--border)]">
+                    <p className="text-[9px] text-slate-400 dark:text-[var(--text-muted)] font-bold uppercase tracking-wider">
+                      Acreditación (Banco Guayaquil)
+                    </p>
                     
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase block mb-0.5">Fecha Acred.</label>
+                        <label className="text-[9px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase block mb-0.5">
+                          Fecha Acred.
+                        </label>
                         <input
                           type="date"
-                          className="w-full border border-slate-200 rounded-lg px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                          className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                           value={draft.fechaAcreditacionExterno || ""}
                           onChange={(e) => {
                             updateDraft({ fechaAcreditacionExterno: e.target.value });
@@ -269,9 +350,11 @@ export default function OpcionesItemPopover({
                         />
                       </div>
                       <div className="flex-1">
-                        <label className="text-[9px] font-bold text-slate-400 uppercase block mb-0.5">Estado Acred.</label>
+                        <label className="text-[9px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase block mb-0.5">
+                          Estado Acred.
+                        </label>
                         <select
-                          className="w-full border border-slate-200 rounded-lg px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                          className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-1 py-0.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                           value={draft.estadoAcreditacionExterno || "pendiente"}
                           onChange={(e) => {
                             updateDraft({ estadoAcreditacionExterno: e.target.value as "pendiente" | "acreditado" });
@@ -287,10 +370,12 @@ export default function OpcionesItemPopover({
 
                 <div className="flex gap-2">
                   <div className="flex-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Referencia</label>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                      Referencia
+                    </label>
                     <input
                       type="text"
-                      className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                      className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                       placeholder="Ej: #1234"
                       value={draft.referenciaExterno || ""}
                       onChange={(e) => {
@@ -299,10 +384,12 @@ export default function OpcionesItemPopover({
                     />
                   </div>
                   <div className="flex-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Notas Pago</label>
+                    <label className="text-[10px] font-bold text-slate-400 dark:text-[var(--text-muted)] uppercase tracking-wider block mb-0.5">
+                      Notas Pago
+                    </label>
                     <input
                       type="text"
-                      className="w-full border border-slate-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white text-[var(--text-primary)]"
+                      className="w-full border border-slate-200 dark:border-[var(--border)] rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-[var(--bg-body)] text-[var(--text-primary)]"
                       placeholder="Ej: Pago directo"
                       value={draft.notasPagoExterno || ""}
                       onChange={(e) => {
@@ -317,13 +404,13 @@ export default function OpcionesItemPopover({
         )}
 
         {/* BOTONES ACCION */}
-        <div className="border-t border-slate-100 pt-2 mt-3 flex justify-end gap-2">
+        <div className="border-t border-slate-100 dark:border-[var(--border)] pt-2 mt-3 flex justify-end gap-2">
           {changed ? (
             <>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1 bg-slate-150 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1 transition-colors"
+                className="px-3 py-1 bg-slate-100 dark:bg-[var(--bg-body)] hover:bg-slate-200 dark:hover:bg-[var(--bg-hover)] text-slate-700 dark:text-[var(--text-primary)] rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1 transition-colors"
               >
                 <X size={12} />
                 Cancelar
@@ -348,7 +435,7 @@ export default function OpcionesItemPopover({
                   await onUpdateFields(updates);
                   onClose();
                 }}
-                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1 transition-colors"
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1 transition-colors shadow-sm"
               >
                 <Save size={12} />
                 Guardar
@@ -358,7 +445,7 @@ export default function OpcionesItemPopover({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1 transition-colors"
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold border-none cursor-pointer flex items-center gap-1 transition-colors shadow-sm"
             >
               <X size={12} />
               Cerrar
@@ -366,6 +453,13 @@ export default function OpcionesItemPopover({
           )}
         </div>
       </div>
+    </>
+  );
+
+  return (
+    <>
+      <span ref={markerRef} className="inline-block w-0 h-0 overflow-hidden" aria-hidden="true" />
+      {mounted && typeof document !== "undefined" && createPortal(popoverContent, document.body)}
     </>
   );
 }

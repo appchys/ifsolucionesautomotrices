@@ -88,6 +88,9 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: var(--page-stack-gap);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* Desplazamiento responsivo del contenido para el sidebar */

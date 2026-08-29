@@ -41,7 +41,7 @@ export default function AppShell({
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: "var(--bg-primary)" }}>
+    <div className="min-h-screen flex w-full max-w-full overflow-x-hidden" style={{ background: "var(--bg-primary)" }}>
       <Sidebar />
       <ChatInbox />
       <ActiveChatPanel />
@@ -54,23 +54,23 @@ export default function AppShell({
       {/* Main area */}
 
       <div
-        className={`flex-1 flex flex-col transition-all duration-300 ${
+        className={`flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden transition-all duration-300 ${
           sidebarOpen ? "sidebar-displaced" : "sidebar-displaced-collapsed"
         }`}
       >
         {!hideHeader && <Header />}
         <main
-          className="flex-1 overflow-y-auto animate-fade-in"
+          className="flex-1 overflow-y-auto overflow-x-hidden min-w-0 max-w-full animate-fade-in"
           style={{
             marginTop: hideHeader ? "0px" : "var(--header-height)",
             minHeight: hideHeader ? "100vh" : "calc(100vh - var(--header-height))",
             paddingTop: noPadding ? "0px" : (hideHeader ? "1rem" : "var(--app-content-gutter-y)"),
             paddingBottom: noPadding ? "0px" : (hideHeader ? "1rem" : "var(--app-content-gutter-y-lg)"),
-            paddingLeft: noPadding ? "0px" : (hideHeader ? "1.5rem" : "var(--app-content-gutter-x)"),
-            paddingRight: noPadding ? "0px" : (hideHeader ? "1.5rem" : "var(--app-content-gutter-x)"),
+            paddingLeft: noPadding ? "0px" : (hideHeader ? "1rem" : "var(--app-content-gutter-x)"),
+            paddingRight: noPadding ? "0px" : (hideHeader ? "1rem" : "var(--app-content-gutter-x)"),
           }}
         >
-          <div className="app-page-stack">{children}</div>
+          <div className="app-page-stack min-w-0 max-w-full w-full">{children}</div>
         </main>
       </div>
     </div>
