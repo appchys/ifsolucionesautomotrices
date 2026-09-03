@@ -30,6 +30,7 @@ import {
   getCompras,
   registrarMovimientoStockManual,
   calcularPrecioVenta,
+  resolverMargenProducto,
   getOrdenById,
   uploadInventarioImagen,
   getProductos,
@@ -233,54 +234,67 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
     setEliminarImagen(true);
   };
 
-  const [costoBase, setCostoBase] = useState(producto.costoBase || 0);
-  const [margenGanancia, setMargenGanancia] = useState(producto.margenGanancia ?? 25);
-  const [aplicaIva, setAplicaIva] = useState(producto.aplicaIva);
+  const costoInicial = Number(producto.costoBase || 0);
+  const aplicaIvaInicial = Boolean(producto.aplicaIva);
+  const precioBaseExistente = Number(producto.precioBase || 0);
+  const margenInicial = resolverMargenProducto(producto);
 
-  const precioSinIvaInicial = Number(producto.costoBase || 0) * (1 + Number(producto.margenGanancia ?? 25) / 100);
-  const precioConIvaInicial = precioSinIvaInicial * (producto.aplicaIva ? 1.15 : 1.0);
+  let precioSinIvaInicial = 0;
+  let precioConIvaInicial = 0;
 
-  const [costoInput, setCostoInput] = useState(String(producto.costoBase || 0));
-  const [margenInput, setMargenInput] = useState(String(producto.margenGanancia ?? 25));
-  const [precioSinIvaInput, setPrecioSinIvaInput] = useState(precioSinIvaInicial.toFixed(2));
-  const [precioConIvaInput, setPrecioConIvaInput] = useState(precioConIvaInicial.toFixed(2));
+  if (precioBaseExistente > 0) {
+    precioConIvaInicial = precioBaseExistente;
+    precioSinIvaInicial = aplicaIvaInicial ? precioBaseExistente / 1.15 : precioBaseExistente;
+  } else if (costoInicial > 0) {
+    precioSinIvaInicial = costoInicial * (1 + margenInicial / 100);
+    precioConIvaInicial = precioSinIvaInicial * (aplicaIvaInicial ? 1.15 : 1.0);
+  }
+
+  const [costoBase, setCostoBase] = useState(costoInicial);
+  const [margenGanancia, setMargenGanancia] = useState(margenInicial);
+  const [aplicaIva, setAplicaIva] = useState(aplicaIvaInicial);
+
+  const [costoInput, setCostoInput] = useState(String(costoInicial));
+  const [margenInput, setMargenInput] = useState(String(margenInicial));
+  const [precioSinIvaInput, setPrecioSinIvaInput] = useState(precioSinIvaInicial > 0 ? precioSinIvaInicial.toFixed(2) : "0.00");
+  const [precioConIvaInput, setPrecioConIvaInput] = useState(precioConIvaInicial > 0 ? precioConIvaInicial.toFixed(2) : "0.00");
 
   const handleCostoChange = (valStr: string) => {
     setCostoInput(valStr);
     const cost = Number(valStr || 0);
     setCostoBase(cost);
-    
+
     const margen = Number(margenInput || 0);
-    const sinIva = cost * (1 + margen / 100);
-    setPrecioSinIvaInput(sinIva.toFixed(2));
-    
-    const conIva = sinIva * (aplicaIva ? 1.15 : 1.0);
-    setPrecioConIvaInput(conIva.toFixed(2));
+    if (cost > 0) {
+      const sinIva = cost * (1 + margen / 100);
+      setPrecioSinIvaInput(sinIva.toFixed(2));
+      const conIva = sinIva * (aplicaIva ? 1.15 : 1.0);
+      setPrecioConIvaInput(conIva.toFixed(2));
+    }
   };
 
   const handleMargenChange = (valStr: string) => {
     setMargenInput(valStr);
     const margen = Number(valStr || 0);
     setMargenGanancia(margen);
-    
-    const sinIva = costoBase * (1 + margen / 100);
-    setPrecioSinIvaInput(sinIva.toFixed(2));
-    
-    const conIva = sinIva * (aplicaIva ? 1.15 : 1.0);
-    setPrecioConIvaInput(conIva.toFixed(2));
+
+    if (costoBase > 0) {
+      const sinIva = costoBase * (1 + margen / 100);
+      setPrecioSinIvaInput(sinIva.toFixed(2));
+      const conIva = sinIva * (aplicaIva ? 1.15 : 1.0);
+      setPrecioConIvaInput(conIva.toFixed(2));
+    }
   };
 
   const handlePrecioSinIvaChange = (valStr: string) => {
     setPrecioSinIvaInput(valStr);
     const sinIva = Number(valStr || 0);
-    
-    let margen = 0;
+
     if (costoBase > 0) {
-      margen = ((sinIva / costoBase) - 1) * 100;
+      const margen = ((sinIva / costoBase) - 1) * 100;
+      setMargenInput(Math.max(0, margen).toFixed(1));
+      setMargenGanancia(Number(Math.max(0, margen).toFixed(2)));
     }
-    setMargenInput(margen.toFixed(1));
-    setMargenGanancia(Number(margen.toFixed(2)));
-    
     const conIva = sinIva * (aplicaIva ? 1.15 : 1.0);
     setPrecioConIvaInput(conIva.toFixed(2));
   };
@@ -288,16 +302,15 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
   const handlePrecioConIvaChange = (valStr: string) => {
     setPrecioConIvaInput(valStr);
     const conIva = Number(valStr || 0);
-    
+
     const sinIva = aplicaIva ? (conIva / 1.15) : conIva;
     setPrecioSinIvaInput(sinIva.toFixed(2));
-    
-    let margen = 0;
+
     if (costoBase > 0) {
-      margen = ((sinIva / costoBase) - 1) * 100;
+      const margen = ((sinIva / costoBase) - 1) * 100;
+      setMargenInput(Math.max(0, margen).toFixed(1));
+      setMargenGanancia(Number(Math.max(0, margen).toFixed(2)));
     }
-    setMargenInput(margen.toFixed(1));
-    setMargenGanancia(Number(margen.toFixed(2)));
   };
 
   const handleAplicaIvaChange = (checked: boolean) => {
@@ -460,8 +473,9 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
     archivoImagen !== null ||
     (Boolean(producto.imagenUrl) && eliminarImagen) ||
     Number(costoBase) !== Number(producto.costoBase || 0) ||
-    Number(margenGanancia) !== Number(producto.margenGanancia ?? 25) ||
-    Boolean(aplicaIva) !== Boolean(producto.aplicaIva);
+    Number(margenGanancia) !== Number(producto.margenGanancia ?? resolverMargenProducto(producto)) ||
+    Boolean(aplicaIva) !== Boolean(producto.aplicaIva) ||
+    Number(Number(precioConIvaInput || 0).toFixed(2)) !== Number(Number(producto.precioBase || 0).toFixed(2));
 
   const handleGuardarGlobal = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -483,6 +497,8 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         finalImageUrl = await uploadInventarioImagen(producto.id, archivoImagen, "producto");
       }
 
+      const precioVentaFinal = Number(Number(precioConIvaInput || 0).toFixed(2));
+
       const updates: Partial<Producto> = {
         nombre: nombre.trim(),
         sku: sku.trim().toUpperCase(),
@@ -494,6 +510,7 @@ export default function ProductoDetalleSidebar({ producto, onClose, onUpdate }: 
         costoBase: Number(costoBase),
         margenGanancia: Number(margenGanancia),
         aplicaIva: Boolean(aplicaIva),
+        precioBase: precioVentaFinal,
       };
 
       await updateProducto(producto.id, updates);

@@ -116,9 +116,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   categoryHeader: {
-    backgroundColor: "#e2e8f0",
+    backgroundColor: "#0f172a",
     borderRadius: 3,
-    paddingVertical: 4,
+    paddingVertical: 3.5,
     paddingHorizontal: 8,
     marginTop: 8,
     marginBottom: 2,
@@ -129,12 +129,12 @@ const styles = StyleSheet.create({
   categoryTitle: {
     fontSize: 8.5,
     fontFamily: "Helvetica-Bold",
-    color: "#0f172a",
+    color: "#ffffff",
     textTransform: "uppercase",
   },
   categoryCount: {
     fontSize: 7.5,
-    color: "#475569",
+    color: "#94a3b8",
     fontFamily: "Helvetica-Bold",
   },
   tableRow: {

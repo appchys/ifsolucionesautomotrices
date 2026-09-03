@@ -78,7 +78,10 @@ export function resolverMargenProducto(producto?: Producto | null): number {
   if (typeof producto.margenGanancia === "number") return producto.margenGanancia;
   const costoBase = Number(producto.costoBase ?? 0);
   if (costoBase <= 0) return 25;
-  return Number(((Number(producto.precioBase ?? 0) / costoBase - 1) * 100).toFixed(2));
+  const precioBase = Number(producto.precioBase ?? 0);
+  if (precioBase <= 0) return 25;
+  const sinIva = producto.aplicaIva ? (precioBase / (1 + IVA_RATE / 100)) : precioBase;
+  return Number(Math.max(0, ((sinIva / costoBase - 1) * 100)).toFixed(2));
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -1222,6 +1225,8 @@ async function aplicarMovimientosStockOrden(
       stockNuevo,
       nota: movimiento.nota,
       unidadMedida: producto.unidadMedida ?? "",
+      costoUnitario: Number(producto.costoBase || 0),
+      precioVentaUnitario: movimiento.item?.precioUnitario != null ? Number(movimiento.item.precioUnitario) : Number(producto.precioBase || 0),
       createdAt: serverTimestamp(),
     } satisfies Omit<MovimientoStock, "id" | "createdAt"> & { createdAt: ReturnType<typeof serverTimestamp> });
   });
@@ -1575,13 +1580,28 @@ export async function getProductoBySku(sku: string): Promise<Producto | null> {
 }
 
 export async function createProducto(data: Omit<Producto, "id">): Promise<string> {
-  const margenGanancia = normalizarMargenGanancia(data.margenGanancia);
+  const costoBase = Number(data.costoBase ?? 0);
+  const aplicaIva = Boolean(data.aplicaIva);
+  let margenGanancia = data.margenGanancia !== undefined ? normalizarMargenGanancia(data.margenGanancia) : 25;
+  let precioBase = data.precioBase !== undefined ? Number(data.precioBase) : 0;
+
+  if (data.precioBase !== undefined && Number(data.precioBase) > 0) {
+    precioBase = Number(Number(data.precioBase).toFixed(2));
+    if (costoBase > 0 && data.margenGanancia === undefined) {
+      const sinIva = aplicaIva ? precioBase / (1 + IVA_RATE / 100) : precioBase;
+      margenGanancia = Number(Math.max(0, ((sinIva / costoBase) - 1) * 100).toFixed(2));
+    }
+  } else if (costoBase > 0) {
+    precioBase = calcularPrecioVenta(costoBase, margenGanancia, aplicaIva);
+  }
+
   const ref = await addDoc(
     collection(db, "productos"),
     removeUndefinedFields({
       ...data,
+      costoBase,
       margenGanancia,
-      precioBase: calcularPrecioVenta(data.costoBase, margenGanancia, data.aplicaIva),
+      precioBase,
       sku: data.sku.trim().toUpperCase(),
       stockActual: Math.floor(Number(data.stockActual ?? 0)),
       createdAt: serverTimestamp(),
@@ -1594,21 +1614,55 @@ export async function createProducto(data: Omit<Producto, "id">): Promise<string
 export async function updateProducto(id: string, data: Partial<Producto>): Promise<void> {
   const payload: Partial<Producto> = { ...data };
   if (typeof payload.sku === "string") payload.sku = payload.sku.trim().toUpperCase();
-  if (payload.costoBase !== undefined || payload.margenGanancia !== undefined || payload.aplicaIva !== undefined) {
+
+  const tieneCambiosDePrecio =
+    payload.precioBase !== undefined ||
+    payload.costoBase !== undefined ||
+    payload.margenGanancia !== undefined ||
+    payload.aplicaIva !== undefined;
+
+  if (tieneCambiosDePrecio) {
     let current: Producto | null = null;
-    if (payload.costoBase === undefined || payload.margenGanancia === undefined || payload.aplicaIva === undefined) {
+    if (
+      payload.costoBase === undefined ||
+      payload.margenGanancia === undefined ||
+      payload.aplicaIva === undefined ||
+      payload.precioBase === undefined
+    ) {
       const snap = await getDoc(doc(db, "productos", id));
       current = snap.exists() ? ({ id: snap.id, ...snap.data() } as Producto) : null;
     }
-    const margenGanancia =
-      payload.margenGanancia !== undefined
-        ? normalizarMargenGanancia(payload.margenGanancia)
-        : resolverMargenProducto(current);
+
     const costoBase = Number(payload.costoBase ?? current?.costoBase ?? 0);
     const aplicaIva = Boolean(payload.aplicaIva ?? current?.aplicaIva ?? false);
-    payload.margenGanancia = margenGanancia;
-    payload.precioBase = calcularPrecioVenta(costoBase, margenGanancia, aplicaIva);
+
+    if (payload.precioBase !== undefined && Number(payload.precioBase) >= 0) {
+      // El usuario especificó un precio de venta explícito
+      payload.precioBase = Number(Number(payload.precioBase).toFixed(2));
+      if (payload.margenGanancia !== undefined) {
+        payload.margenGanancia = normalizarMargenGanancia(payload.margenGanancia);
+      } else if (costoBase > 0) {
+        const sinIva = aplicaIva ? payload.precioBase / (1 + IVA_RATE / 100) : payload.precioBase;
+        payload.margenGanancia = Number(Math.max(0, ((sinIva / costoBase) - 1) * 100).toFixed(2));
+      } else {
+        payload.margenGanancia = current?.margenGanancia ?? 0;
+      }
+    } else {
+      // No vino precioBase explícito, calcularlo a partir de costo y margen
+      const margenGanancia =
+        payload.margenGanancia !== undefined
+          ? normalizarMargenGanancia(payload.margenGanancia)
+          : resolverMargenProducto(current);
+      payload.margenGanancia = margenGanancia;
+
+      if (costoBase > 0) {
+        payload.precioBase = calcularPrecioVenta(costoBase, margenGanancia, aplicaIva);
+      } else if (current?.precioBase !== undefined) {
+        payload.precioBase = current.precioBase;
+      }
+    }
   }
+
   await updateDoc(
     doc(db, "productos", id),
     removeUndefinedFields({ ...payload, updatedAt: serverTimestamp() })
@@ -1641,6 +1695,8 @@ export async function registrarMovimientoStockManual(
     stockNuevo,
     nota: nota?.trim() ?? "",
     unidadMedida: producto.unidadMedida ?? "",
+    costoUnitario: Number(producto.costoBase || 0),
+    precioVentaUnitario: Number(producto.precioBase || 0),
     createdAt: serverTimestamp(),
   } satisfies Omit<MovimientoStock, "id" | "createdAt"> & { createdAt: ReturnType<typeof serverTimestamp> });
   await batch.commit();
@@ -1652,6 +1708,17 @@ export async function deleteProducto(id: string): Promise<void> {
   await deleteDoc(doc(db, "productos", id));
 }
 
+function getTimestampSeconds(createdAt: unknown): number {
+  if (!createdAt) return 0;
+  if (typeof createdAt === "object" && createdAt !== null && "seconds" in (createdAt as { seconds?: unknown })) {
+    return Number((createdAt as { seconds?: number }).seconds ?? 0);
+  }
+  if (createdAt instanceof Date) {
+    return createdAt.getTime() / 1000;
+  }
+  return 0;
+}
+
 export async function getMovimientosStockByProducto(productoId: string): Promise<MovimientoStock[]> {
   const snap = await getDocs(
     query(
@@ -1661,15 +1728,35 @@ export async function getMovimientosStockByProducto(productoId: string): Promise
   );
   return snap.docs
     .map((d) => ({ id: d.id, ...d.data() } as MovimientoStock))
-    .sort((a, b) => {
-      const aTime = a.createdAt && typeof a.createdAt === "object" && "seconds" in a.createdAt
-        ? Number((a.createdAt as { seconds?: number }).seconds ?? 0)
-        : 0;
-      const bTime = b.createdAt && typeof b.createdAt === "object" && "seconds" in b.createdAt
-        ? Number((b.createdAt as { seconds?: number }).seconds ?? 0)
-        : 0;
-      return bTime - aTime;
-    });
+    .sort((a, b) => getTimestampSeconds(b.createdAt) - getTimestampSeconds(a.createdAt));
+}
+
+export async function getMovimientosStock(opciones?: {
+  desde?: Date;
+  hasta?: Date;
+}): Promise<MovimientoStock[]> {
+  const constraints: QueryConstraint[] = [];
+  if (opciones?.desde) {
+    constraints.push(where("createdAt", ">=", Timestamp.fromDate(opciones.desde)));
+  }
+  if (opciones?.hasta) {
+    constraints.push(where("createdAt", "<=", Timestamp.fromDate(opciones.hasta)));
+  }
+
+  let snap;
+  try {
+    const q = constraints.length > 0
+      ? query(collection(db, "movimientosStock"), ...constraints)
+      : collection(db, "movimientosStock");
+    snap = await getDocs(q);
+  } catch (err) {
+    console.warn("Consulta filtrada de movimientosStock falló, recuperando colección completa:", err);
+    snap = await getDocs(collection(db, "movimientosStock"));
+  }
+
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as MovimientoStock))
+    .sort((a, b) => getTimestampSeconds(b.createdAt) - getTimestampSeconds(a.createdAt));
 }
 
 export async function getHistorialPrecios(productoId: string): Promise<Array<{ id: string; createdAt?: unknown; costoBase?: number; margenGanancia?: number; precioBase?: number }>> {
@@ -1967,6 +2054,8 @@ export async function createDevolucionProveedor(data: {
       stockNuevo,
       nota: `Devolucion a proveedor - factura ${freshCompra.numeroFactura}: ${data.motivo.trim()}`,
       unidadMedida: freshProducto.unidadMedida ?? "",
+      costoUnitario: Number(freshProducto.costoBase || 0),
+      precioVentaUnitario: Number(freshProducto.precioBase || 0),
       createdAt: serverTimestamp(),
     });
     transaction.update(compraRef, {
@@ -2297,6 +2386,8 @@ export async function createVenta(venta: Omit<Venta, "id" | "numeroVenta" | "est
         stockNuevo: newStock,
         nota: `Salida por venta ${numeroVenta}`,
         unidadMedida: product.unidadMedida ?? "",
+        costoUnitario: Number(product.costoBase || 0),
+        precioVentaUnitario: Number(item.precioUnitario ?? product.precioBase ?? 0),
         createdAt: serverTimestamp(),
       });
     });
@@ -2381,6 +2472,8 @@ export async function anularVenta(ventaId: string): Promise<void> {
         stockNuevo: newStock,
         nota: `Reversa por anulación de venta ${venta.numeroVenta}`,
         unidadMedida: product.unidadMedida ?? "",
+        costoUnitario: Number(product.costoBase || 0),
+        precioVentaUnitario: Number(item.precioUnitario ?? product.precioBase ?? 0),
         createdAt: serverTimestamp(),
       });
     });

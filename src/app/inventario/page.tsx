@@ -1,21 +1,24 @@
 "use client";
-import { Fragment, useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo, useCallback } from "react";
 import type { ReactNode } from "react";
 import AppShell from "@/components/layout/AppShell";
-import { Plus, Package, Wrench, Edit2, Trash2, Loader2, Image as ImageIcon, X, Check, Tag, DollarSign, Boxes, Truck, Search, Ruler, ArrowDownToLine, ArrowUpFromLine, Clock, Printer } from "lucide-react";
+import { Plus, Package, Wrench, Edit2, Trash2, Loader2, Image as ImageIcon, X, Check, Tag, DollarSign, Boxes, Truck, Search, Ruler, ArrowDownToLine, ArrowUpFromLine, Clock, Printer, Menu, ArrowLeftRight } from "lucide-react";
 import { useForm } from "react-hook-form";
+import { useUIStore } from "@/store";
 import { toast } from "react-hot-toast";
 import {
   getProductos, getServicios, createProducto, updateProducto, deleteProducto,
   createServicio, updateServicio, deleteServicio, uploadInventarioImagen,
   registrarMovimientoStockManual, getDatosTaller
 } from "@/lib/services";
-import { Producto, Servicio, DatosTaller } from "@/types";
+import { Producto, Servicio, DatosTaller, MovimientoStock } from "@/types";
 import ProductoDetalleSidebar from "@/components/inventario/ProductoDetalleSidebar";
 import ModalPreviewInventarioPDF from "@/components/inventario/ModalPreviewInventarioPDF";
+import ModalPreviewMovimientosPDF from "@/components/inventario/ModalPreviewMovimientosPDF";
+import VistaMovimientosInventario from "@/components/inventario/VistaMovimientosInventario";
 
 
-type Tab = "productos" | "servicios";
+type Tab = "productos" | "servicios" | "movimientos";
 type InventarioItem = Producto | Servicio;
 type InventarioForm = {
   nombre: string;
@@ -63,7 +66,10 @@ function resolverMargenProducto(producto: Producto): number {
   if (typeof producto.margenGanancia === "number") return producto.margenGanancia;
   const costoBase = Number(producto.costoBase ?? 0);
   if (costoBase <= 0) return 25;
-  return Number(((Number(producto.precioBase ?? 0) / costoBase - 1) * 100).toFixed(2));
+  const precioBase = Number(producto.precioBase ?? 0);
+  if (precioBase <= 0) return 25;
+  const sinIva = producto.aplicaIva ? (precioBase / (1 + IVA_RATE / 100)) : precioBase;
+  return Number(Math.max(0, ((sinIva / costoBase - 1) * 100)).toFixed(2));
 }
 const PRODUCT_UNITS = ["Unidad", "Litro", "Galón", "Metro", "Kilogramo", "Gramo", "Caja", "Par", "Juego"];
 
@@ -242,11 +248,35 @@ function ProductoDetalle({
 }
 
 export default function InventarioPage() {
+  const { sidebarOpen, toggleSidebar } = useUIStore();
   const [tab, setTab] = useState<Tab>("productos");
   const [productos, setProductos] = useState<Producto[]>([]);
   const [servicios, setServicios] = useState<Servicio[]>([]);
   const [cargando, setCargando] = useState(true);
   const [previewPdfOpen, setPreviewPdfOpen] = useState(false);
+  const [previewMovimientosPdfOpen, setPreviewMovimientosPdfOpen] = useState(false);
+  const [movimientosReporteData, setMovimientosReporteData] = useState<{
+    movimientos: MovimientoStock[];
+    periodo: string;
+    ordenesMap: Record<string, string>;
+  }>({ movimientos: [], periodo: "Período seleccionado", ordenesMap: {} });
+
+  const handleMovimientosDataChange = useCallback((data: {
+    movimientos: MovimientoStock[];
+    periodo: string;
+    ordenesMap: Record<string, string>;
+  }) => {
+    setMovimientosReporteData((prev) => {
+      if (
+        prev.movimientos === data.movimientos &&
+        prev.periodo === data.periodo &&
+        prev.ordenesMap === data.ordenesMap
+      ) {
+        return prev;
+      }
+      return data;
+    });
+  }, []);
   const [tallerData, setTallerData] = useState<DatosTaller | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -437,24 +467,33 @@ export default function InventarioPage() {
     setTogglingIva((prev) => new Set(prev).add(item.id!));
     try {
       const nuevoValor = !item.aplicaIva;
-      if (tab === "productos") {
-        await updateProducto(item.id!, { aplicaIva: nuevoValor });
+      let nuevoPrecioBase = Number(item.precioBase ?? 0);
+
+      if (tab === "productos" && isProducto(item)) {
+        const costo = Number(item.costoBase ?? 0);
+        const margen = resolverMargenProducto(item);
+        if (costo > 0) {
+          nuevoPrecioBase = calcularPrecioVenta(costo, margen, nuevoValor);
+        } else if (nuevoPrecioBase > 0) {
+          nuevoPrecioBase = nuevoValor
+            ? Number((nuevoPrecioBase * (1 + IVA_RATE / 100)).toFixed(2))
+            : Number((nuevoPrecioBase / (1 + IVA_RATE / 100)).toFixed(2));
+        }
+        await updateProducto(item.id!, { aplicaIva: nuevoValor, precioBase: nuevoPrecioBase });
       } else {
         await updateServicio(item.id!, { aplicaIva: nuevoValor });
       }
       setProductos((prev) =>
         prev.map((p) => {
           if (p.id !== item.id) return p;
-          const precioBase = calcularPrecioVenta(Number(p.costoBase ?? 0), resolverMargenProducto(p), nuevoValor);
-          return { ...p, aplicaIva: nuevoValor, precioBase };
+          return { ...p, aplicaIva: nuevoValor, precioBase: nuevoPrecioBase };
         })
       );
       setServicios((prev) => prev.map((s) => s.id === item.id ? { ...s, aplicaIva: nuevoValor } : s));
       setItemSeleccionado((prev) => {
         if (!prev || prev.id !== item.id) return prev;
         if (!isProducto(prev)) return { ...prev, aplicaIva: nuevoValor } as InventarioItem;
-        const precioBase = calcularPrecioVenta(Number(prev.costoBase ?? 0), resolverMargenProducto(prev), nuevoValor);
-        return { ...prev, aplicaIva: nuevoValor, precioBase } as InventarioItem;
+        return { ...prev, aplicaIva: nuevoValor, precioBase: nuevoPrecioBase } as InventarioItem;
       });
     } catch {
       toast.error("Error al cambiar IVA");
@@ -468,10 +507,16 @@ export default function InventarioPage() {
     const margenActual = resolverMargenProducto(producto);
     if (margenActual === margenGanancia) return;
 
+    const costo = Number(producto.costoBase ?? 0);
+    if (costo <= 0) {
+      toast.error("El producto no tiene costo base registrado para calcular el margen porcentual");
+      return;
+    }
+
     setTogglingMargen((prev) => new Set(prev).add(producto.id!));
     try {
-      const precioBase = calcularPrecioVenta(Number(producto.costoBase ?? 0), margenGanancia, producto.aplicaIva);
-      await updateProducto(producto.id, { margenGanancia });
+      const precioBase = calcularPrecioVenta(costo, margenGanancia, producto.aplicaIva);
+      await updateProducto(producto.id, { margenGanancia, precioBase });
       const actualizado = { ...producto, margenGanancia, precioBase };
 
       setProductos((prev) => prev.map((item) => (item.id === producto.id ? actualizado : item)));
@@ -608,25 +653,62 @@ export default function InventarioPage() {
 
   return (
     <AppShell hideHeader>
-      <div className="page-header flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-        <div>
-          <h1 className="page-title text-base sm:text-lg">Productos y Servicios</h1>
-          <p className="page-subtitle text-[11px]">Gestiona tu inventario y catálogo de servicios</p>
+      <div className="page-header flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="btn-ghost btn-icon lg:hidden p-1.5 -ml-1 text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors cursor-pointer"
+            aria-label={sidebarOpen ? "Ocultar menú" : "Mostrar menú"}
+            aria-expanded={sidebarOpen}
+            aria-controls="app-sidebar"
+            title="Menú principal"
+          >
+            <Menu size={20} />
+          </button>
+          <div>
+            <h1 className="page-title text-base sm:text-lg">Productos y Servicios</h1>
+            <p className="page-subtitle text-[11px]">Gestiona tu inventario y catálogo de servicios</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {tab === "productos" && (
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Barra de búsqueda a la derecha del encabezado */}
+          <div className="relative w-full sm:w-60 md:w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <input
+              type="search"
+              value={busquedaProducto}
+              onChange={(e) => setBusquedaProducto(e.target.value)}
+              placeholder={
+                tab === "movimientos"
+                  ? "Buscar por producto, SKU, nota..."
+                  : tab === "productos"
+                  ? "Buscar por nombre, SKU, categoría..."
+                  : "Buscar servicio por nombre o código..."
+              }
+              className="input pl-9 w-full text-xs h-8 sm:h-9 bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+            />
+          </div>
+
+          {(tab === "productos" || tab === "movimientos") && (
             <button
               type="button"
-              onClick={() => setPreviewPdfOpen(true)}
+              onClick={() => {
+                if (tab === "productos") setPreviewPdfOpen(true);
+                else setPreviewMovimientosPdfOpen(true);
+              }}
               className="btn-secondary btn-sm flex items-center gap-1.5 cursor-pointer"
-              title="Imprimir lista de inventario"
+              title={tab === "productos" ? "Imprimir lista de inventario" : "Imprimir reporte de movimientos"}
             >
               <Printer size={15} /> Imprimir
             </button>
           )}
-          <button onClick={abrirModalNuevo} className="btn-primary btn-sm">
-            <Plus size={15} /> Nuevo {tab === "productos" ? "Producto" : "Servicio"}
-          </button>
+          {tab !== "movimientos" && (
+            <button onClick={abrirModalNuevo} className="btn-primary btn-sm">
+              <Plus size={15} /> Nuevo {tab === "productos" ? "Producto" : "Servicio"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -651,25 +733,25 @@ export default function InventarioPage() {
             <Wrench size={14} /> Servicios
           </div>
         </button>
+        <button
+          className={`px-4 py-2 font-semibold text-xs transition-colors border-b-2 ${
+            tab === "movimientos" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+          }`}
+          onClick={() => cambiarTab("movimientos")}
+        >
+          <div className="flex items-center gap-1.5">
+            <ArrowLeftRight size={14} /> Movimientos
+          </div>
+        </button>
       </div>
 
-      {/* Buscador y filtros separados fuera del contenedor de productos/servicios */}
-      {tab === "productos" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[minmax(0,1fr)_180px_180px] gap-2.5 mb-4">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            <input
-              type="search"
-              value={busquedaProducto}
-              onChange={(e) => setBusquedaProducto(e.target.value)}
-              placeholder="Buscar por nombre, SKU, categor&iacute;a..."
-              className="input pl-9 w-full bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
-            />
-          </div>
+      {/* Filtros de categorías y unidades en pestaña productos */}
+      {tab === "productos" && (
+        <div className="flex flex-wrap items-center gap-2.5 mb-4">
           <select
             value={filtroCategoria}
             onChange={(e) => setFiltroCategoria(e.target.value)}
-            className="input bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+            className="input text-xs h-8 sm:h-9 bg-[var(--bg-card)] border border-[var(--border)] shadow-sm w-full sm:w-48"
             aria-label="Filtrar por categor&iacute;a"
           >
             <option value="">Todas las categor&iacute;as</option>
@@ -680,7 +762,7 @@ export default function InventarioPage() {
           <select
             value={filtroUnidad}
             onChange={(e) => setFiltroUnidad(e.target.value)}
-            className="input bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
+            className="input text-xs h-8 sm:h-9 bg-[var(--bg-card)] border border-[var(--border)] shadow-sm w-full sm:w-48"
             aria-label="Filtrar por unidad de medida"
           >
             <option value="">Todas las unidades</option>
@@ -689,21 +771,16 @@ export default function InventarioPage() {
             ))}
           </select>
         </div>
-      ) : (
-        <div className="mb-4 max-w-md">
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            <input
-              type="search"
-              value={busquedaProducto}
-              onChange={(e) => setBusquedaProducto(e.target.value)}
-              placeholder="Buscar servicio por nombre o c&oacute;digo..."
-              className="input pl-9 w-full bg-[var(--bg-card)] border border-[var(--border)] shadow-sm"
-            />
-          </div>
-        </div>
       )}
 
+      {tab === "movimientos" ? (
+        <VistaMovimientosInventario
+          productos={productos}
+          busqueda={busquedaProducto}
+          onVerProducto={(prod) => setItemSeleccionado(prod)}
+          onMovimientosDataChange={handleMovimientosDataChange}
+        />
+      ) : (
       <div className="w-full">
         <div className="card min-w-0 p-0 overflow-hidden">
           {cargando ? (
@@ -741,16 +818,16 @@ export default function InventarioPage() {
                 ) : tab === "productos" ? (
                   productosAgrupados.map((grupo) => (
                     <Fragment key={grupo.categoria}>
-                      <tr className="bg-[var(--bg-secondary)] border-y border-[var(--border)]">
-                        <td colSpan={9} className="py-1.5 px-3 font-semibold text-xs">
+                      <tr className="bg-slate-900 border-y border-slate-800 shadow-xs">
+                        <td colSpan={9} className="py-2 px-3 font-semibold text-xs bg-slate-900 text-white">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
-                              <Tag size={14} className="text-[var(--accent)] shrink-0" />
-                              <span className="text-xs font-bold uppercase tracking-wide text-[var(--text-primary)] truncate">
+                              <Tag size={14} className="text-sky-400 shrink-0" />
+                              <span className="text-xs font-bold uppercase tracking-wide text-white truncate">
                                 {grupo.categoria}
                               </span>
                             </div>
-                            <span className="text-xs font-semibold text-[var(--text-muted)] whitespace-nowrap">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-300 whitespace-nowrap">
                               {grupo.productos.length} {grupo.productos.length === 1 ? "producto" : "productos"}
                             </span>
                           </div>
@@ -1002,6 +1079,7 @@ export default function InventarioPage() {
         )}
       </div>
       </div>
+      )}
 
       {itemSeleccionado && !isProducto(itemSeleccionado) && (
         <div className="fixed inset-0 z-[900]">
@@ -1348,6 +1426,16 @@ export default function InventarioPage() {
         onClose={() => setPreviewPdfOpen(false)}
         productos={productosFiltrados}
         taller={tallerData}
+      />
+
+      <ModalPreviewMovimientosPDF
+        isOpen={previewMovimientosPdfOpen}
+        onClose={() => setPreviewMovimientosPdfOpen(false)}
+        movimientos={movimientosReporteData.movimientos}
+        periodo={movimientosReporteData.periodo}
+        ordenesMap={movimientosReporteData.ordenesMap}
+        taller={tallerData}
+        productos={productos}
       />
 
     </AppShell>

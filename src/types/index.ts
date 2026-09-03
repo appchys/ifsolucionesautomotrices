@@ -402,6 +402,8 @@ export interface MovimientoStock {
   stockNuevo: number;
   nota?: string;
   unidadMedida?: string;
+  costoUnitario?: number;
+  precioVentaUnitario?: number;
   createdAt?: Timestamp;
 }
 
