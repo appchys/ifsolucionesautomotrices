@@ -19,6 +19,8 @@ export default function CajaProvider() {
   const { user } = useAuthStore();
   const {
     setCaja,
+    setCajaLoaded,
+    openCajaModal,
     setMovimientosManuales,
     setCobrosDelDia,
     setPagosProveedorDelDia,
@@ -38,9 +40,13 @@ export default function CajaProvider() {
     if (!user) return;
     const unsub = onCajaDeHoySnapshot((cajaActiva) => {
       setCaja(cajaActiva);
+      setCajaLoaded(true);
+      if (!cajaActiva && !useCajaStore.getState().cajaBypassed) {
+        openCajaModal();
+      }
     });
     return () => unsub();
-  }, [user, setCaja]);
+  }, [user, setCaja, setCajaLoaded, openCajaModal]);
 
   // Cuando hay caja activa, activar listeners de movimientos y cobros
   useEffect(() => {

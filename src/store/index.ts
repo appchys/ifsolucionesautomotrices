@@ -43,12 +43,19 @@ interface OrdenesStore {
 
 interface CajaStore {
   caja: Caja | null;
+  cajaLoaded: boolean;
+  cajaBypassed: boolean;
   movimientosManuales: CajaMovimientoManual[];
   cobrosDelDia: Pago[];
   pagosProveedorDelDia: PagoProveedorDelDia[];
   movimientosUnificados: MovimientoCajaUnificado[];
   isCajaModalOpen: boolean;
+  shakeTrigger: number;
   setCaja: (caja: Caja | null) => void;
+  setCajaLoaded: (loaded: boolean) => void;
+  setCajaBypassed: (bypassed: boolean) => void;
+  bypassCaja: () => void;
+  triggerShake: () => void;
   setMovimientosManuales: (m: CajaMovimientoManual[]) => void;
   setCobrosDelDia: (p: Pago[]) => void;
   setPagosProveedorDelDia: (p: PagoProveedorDelDia[]) => void;
@@ -56,6 +63,7 @@ interface CajaStore {
   toggleCajaModal: () => void;
   openCajaModal: () => void;
   closeCajaModal: () => void;
+  forceCloseCajaModal: () => void;
 }
 
 export const useAuthStore = create<AuthStore>((set) => ({
@@ -99,19 +107,39 @@ export const useOrdenesStore = create<OrdenesStore>((set) => ({
 
 export const useCajaStore = create<CajaStore>((set) => ({
   caja: null,
+  cajaLoaded: false,
+  cajaBypassed: false,
   movimientosManuales: [],
   cobrosDelDia: [],
   pagosProveedorDelDia: [],
   movimientosUnificados: [],
   isCajaModalOpen: false,
+  shakeTrigger: 0,
   setCaja: (caja) => set({ caja }),
+  setCajaLoaded: (cajaLoaded) => set({ cajaLoaded }),
+  setCajaBypassed: (cajaBypassed) => set({ cajaBypassed }),
+  bypassCaja: () => set({ cajaBypassed: true, isCajaModalOpen: false }),
+  triggerShake: () => set((s) => ({ shakeTrigger: s.shakeTrigger + 1 })),
   setMovimientosManuales: (m) => set({ movimientosManuales: m }),
   setCobrosDelDia: (p) => set({ cobrosDelDia: p }),
   setPagosProveedorDelDia: (p) => set({ pagosProveedorDelDia: p }),
   setMovimientosUnificados: (m) => set({ movimientosUnificados: m }),
-  toggleCajaModal: () => set((s) => ({ isCajaModalOpen: !s.isCajaModalOpen })),
+  toggleCajaModal: () =>
+    set((s) => {
+      if (!s.caja && !s.cajaBypassed && s.isCajaModalOpen) {
+        return { shakeTrigger: s.shakeTrigger + 1 };
+      }
+      return { isCajaModalOpen: !s.isCajaModalOpen };
+    }),
   openCajaModal: () => set({ isCajaModalOpen: true }),
-  closeCajaModal: () => set({ isCajaModalOpen: false }),
+  closeCajaModal: () =>
+    set((s) => {
+      if (!s.caja && !s.cajaBypassed) {
+        return { shakeTrigger: s.shakeTrigger + 1 };
+      }
+      return { isCajaModalOpen: false };
+    }),
+  forceCloseCajaModal: () => set({ isCajaModalOpen: false }),
 }));
 
 export * from "./chatStore";

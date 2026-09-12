@@ -1,9 +1,9 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import {
   X, Plus, Minus, Printer, Settings, Lock, TrendingUp, TrendingDown,
   Search, DollarSign, ArrowUpRight, ArrowDownRight, Clock, Banknote,
-  CreditCard, Building2, AlertCircle, Trash2,
+  CreditCard, Building2, AlertCircle, Trash2, KeyRound, Check,
 } from "lucide-react";
 import { useCajaStore, useAuthStore } from "@/store";
 import { abrirCaja, calcularResumenCaja, deleteMovimientoManual, getFechaHoyEcuador } from "@/lib/services";
@@ -57,18 +57,93 @@ function FuenteBadge({ fuente }: { fuente: MovimientoCajaUnificado["fuente"] }) 
   );
 }
 
+const CLAVES_BYPASS = ["admin", "1234", "if2026", "ifsoluciones", "admin123"];
+
 export default function CajaModal() {
-  const { caja, movimientosUnificados, isCajaModalOpen, closeCajaModal } = useCajaStore();
+  const {
+    caja,
+    cajaBypassed,
+    bypassCaja,
+    movimientosUnificados,
+    isCajaModalOpen,
+    closeCajaModal,
+    shakeTrigger,
+  } = useCajaStore();
   const { user } = useAuthStore();
 
   const [montoApertura, setMontoApertura] = useState("");
   const [abriendo, setAbriendo] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
   const [filtro, setFiltro] = useState<FiltroMovimiento>("todos");
   const [search, setSearch] = useState("");
   const [modalTipo, setModalTipo] = useState<"ingreso" | "egreso" | null>(null);
   const [showCorte, setShowCorte] = useState(false);
   const [showCerrar, setShowCerrar] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Estados para omitir apertura con contraseña secreta
+  const [showBypassInput, setShowBypassInput] = useState(false);
+  const [bypassPass, setBypassPass] = useState("");
+  const bypassInputRef = useRef<HTMLInputElement>(null);
+
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const dispararAvisoObligatorio = useCallback(() => {
+    setIsShaking(true);
+    setTimeout(() => setIsShaking(false), 450);
+    try {
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate([100, 50, 100]);
+      }
+    } catch {
+      // Ignorar si no está soportado
+    }
+    toast.error("Debes abrir caja para empezar el día", {
+      id: "caja-obligatoria",
+    });
+    inputRef.current?.focus();
+  }, []);
+
+  const handleIntentarCerrar = useCallback(() => {
+    if (!caja && !cajaBypassed) {
+      dispararAvisoObligatorio();
+      return;
+    }
+    closeCajaModal();
+  }, [caja, cajaBypassed, closeCajaModal, dispararAvisoObligatorio]);
+
+  const handleConfirmarBypass = () => {
+    const pass = bypassPass.trim().toLowerCase();
+    if (CLAVES_BYPASS.includes(pass) || pass === "admin") {
+      bypassCaja();
+      setShowBypassInput(false);
+      setBypassPass("");
+      toast.success("Apertura de caja omitida", { id: "bypass-caja-ok" });
+    } else {
+      toast.error("Contraseña incorrecta", { id: "bypass-caja-err" });
+      bypassInputRef.current?.select();
+    }
+  };
+
+  // Si desde el exterior se intentó cerrar (ej. click en sidebar), sacudir
+  useEffect(() => {
+    if (shakeTrigger > 0 && !caja && !cajaBypassed && isCajaModalOpen) {
+      dispararAvisoObligatorio();
+    }
+  }, [shakeTrigger, caja, cajaBypassed, isCajaModalOpen, dispararAvisoObligatorio]);
+
+  // Interceptar tecla Escape
+  useEffect(() => {
+    if (!isCajaModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleIntentarCerrar();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isCajaModalOpen, handleIntentarCerrar]);
 
   // Todos los hooks deben ir antes de cualquier return condicional
   const resumen = useMemo(
@@ -103,15 +178,15 @@ export default function CajaModal() {
 
   if (!isCajaModalOpen) return null;
 
-
   const handleAbrirCaja = async () => {
     if (!user) return;
-    const monto = parseFloat(montoApertura.replace(",", ".")) || 0;
+    const valorLimpio = montoApertura.trim();
+    const monto = valorLimpio === "" ? 0 : parseFloat(valorLimpio.replace(",", ".")) || 0;
     if (monto < 0) return toast.error("El monto no puede ser negativo");
     setAbriendo(true);
     try {
       await abrirCaja(monto, { uid: user.uid, displayName: user.displayName });
-      toast.success("Caja abierta");
+      toast.success("Caja abierta exitosamente");
       setMontoApertura("");
     } catch (err) {
       console.error(err);
@@ -143,17 +218,20 @@ export default function CajaModal() {
       <div
         className="fixed inset-0 z-[150] bg-black/50"
         style={{ backdropFilter: "blur(4px)" }}
-        onClick={closeCajaModal}
+        onClick={handleIntentarCerrar}
       />
 
       {/* Panel */}
       <div
-        className="fixed top-0 right-0 h-full z-[160] flex flex-col"
+        className={`fixed top-0 right-0 h-full z-[160] flex flex-col ${isShaking ? "animate-modal-shake" : ""}`}
         style={{
           width: "min(680px, 100vw)",
           background: "var(--bg-primary)",
-          borderLeft: "1px solid var(--border)",
-          boxShadow: "-8px 0 40px rgba(0,0,0,0.15)",
+          borderLeft: isShaking ? "2px solid var(--danger)" : "1px solid var(--border)",
+          boxShadow: isShaking
+            ? "-8px 0 40px rgba(239, 68, 68, 0.4)"
+            : "-8px 0 40px rgba(0,0,0,0.15)",
+          transition: "border-color 0.2s, box-shadow 0.2s",
         }}
       >
         {/* Header del panel */}
@@ -179,7 +257,11 @@ export default function CajaModal() {
               {getFechaHoyEcuador()}
             </p>
           </div>
-          <button onClick={closeCajaModal} className="ml-auto btn-ghost btn-icon">
+          <button
+            onClick={handleIntentarCerrar}
+            className="ml-auto btn-ghost btn-icon"
+            title={!caja ? "Apertura de caja requerida" : "Cerrar"}
+          >
             <X size={18} />
           </button>
         </div>
@@ -188,19 +270,23 @@ export default function CajaModal() {
         <div className="flex-1 overflow-y-auto">
           {!caja ? (
             /* ─── CAJA CERRADA ─── */
-            <div className="flex flex-col items-center justify-center h-full gap-6 px-8 py-12">
+            <div className="relative flex flex-col items-center justify-center h-full min-h-[400px] gap-6 px-8 py-12">
               <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center"
                 style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
               >
-                <Lock size={28} style={{ color: "var(--text-muted)" }} />
+                <Lock size={28} style={{ color: "var(--accent)" }} />
               </div>
-              <div className="text-center">
+              <div className="text-center max-w-sm">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 mb-2.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-semibold">
+                  <AlertCircle size={14} />
+                  <span>Apertura obligatoria para iniciar el día</span>
+                </div>
                 <h2 className="text-lg font-bold mb-1" style={{ color: "var(--text-primary)" }}>
-                  Caja cerrada
+                  Apertura de caja
                 </h2>
                 <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-                  No hay ninguna sesión de caja abierta hoy. Ingresa el monto inicial para comenzar.
+                  Debes ingresar el monto inicial para abrir la caja y empezar la jornada (puedes ingresar 0).
                 </p>
               </div>
               <div className="w-full max-w-xs flex flex-col gap-3">
@@ -209,6 +295,7 @@ export default function CajaModal() {
                     Efectivo inicial en caja
                   </label>
                   <input
+                    ref={inputRef}
                     className="input w-full text-center text-xl font-bold"
                     type="number"
                     step="0.01"
@@ -226,8 +313,72 @@ export default function CajaModal() {
                   className="btn w-full font-semibold"
                   style={{ background: "var(--accent)", color: "#fff" }}
                 >
-                  {abriendo ? "Abriendo..." : "Abrir caja"}
+                  {abriendo ? "Abriendo..." : "Abrir caja e iniciar día"}
                 </button>
+              </div>
+
+              {/* Bypass sutil en la esquina inferior derecha */}
+              <div className="absolute bottom-3 right-3 z-10">
+                {!showBypassInput ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBypassInput(true);
+                      setTimeout(() => bypassInputRef.current?.focus(), 60);
+                    }}
+                    className="p-1.5 rounded-lg opacity-25 hover:opacity-80 transition-opacity text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                    title="Acceso administrativo"
+                  >
+                    <KeyRound size={13} />
+                  </button>
+                ) : (
+                  <div
+                    className="flex items-center gap-1.5 p-1.5 rounded-xl border animate-fade-in"
+                    style={{
+                      background: "var(--bg-card)",
+                      borderColor: "var(--border)",
+                      boxShadow: "var(--shadow-lg)",
+                    }}
+                  >
+                    <input
+                      ref={bypassInputRef}
+                      type="password"
+                      value={bypassPass}
+                      onChange={(e) => setBypassPass(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleConfirmarBypass();
+                        } else if (e.key === "Escape") {
+                          e.stopPropagation();
+                          setShowBypassInput(false);
+                          setBypassPass("");
+                        }
+                      }}
+                      placeholder="Contraseña..."
+                      className="input text-xs py-1 px-2.5 w-32 h-7 rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleConfirmarBypass}
+                      className="btn-primary h-7 px-2 rounded-lg text-xs flex items-center justify-center font-medium"
+                      title="Validar y cerrar"
+                    >
+                      <Check size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowBypassInput(false);
+                        setBypassPass("");
+                      }}
+                      className="btn-ghost btn-icon h-7 w-7 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      title="Cancelar"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
